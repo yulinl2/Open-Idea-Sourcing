@@ -35,8 +35,8 @@ make install
 
 ## 3. Reviewing a Paper Locally
 
-All commands assume the virtual environment is active.  
-Use `make shell` to open a new shell with `.venv` pre-activated, or `source .venv/bin/activate` manually.
+All commands assume the virtual environment is active and `OPENAI_API_KEY` is set.  
+Use `make shell` to open a new shell with `.venv` pre-activated, then run `make load-env`; or manually run `source .venv/bin/activate` and `export OPENAI_API_KEY=...`.
 
 ### From a local file
 
