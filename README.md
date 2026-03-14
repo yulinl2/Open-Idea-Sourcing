@@ -77,7 +77,7 @@ Create a `refs.json` file if you want to compare the paper against your own refe
 
 ## Architecture
 
-```         
+```text
 open_idea_sourcing/
 ├── paper_parser.py       Parse PDF/text → structured title, abstract, sections
 ├── reference_store.py    Manage a local corpus of reference papers (JSON)
