@@ -1,6 +1,8 @@
-# Environment / secrets — NEVER commit these
-.env
+# Environment / secrets
+# Block all *.env variants (e.g. production.env) but allow .env itself to be
+# committed as a placeholder so you can edit it in place.
 *.env
+!.env
 
 # Python cache
 __pycache__/
