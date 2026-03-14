@@ -62,10 +62,11 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          REFS=""
           if [ -n "${{ inputs.references_path }}" ]; then
-            REFS="--references ${{ inputs.references_path }}"
+            python review_paper.py "${{ inputs.paper_path }}" \
+              --references "${{ inputs.references_path }}" \
+              --format "${{ inputs.output_format }}"
+          else
+            python review_paper.py "${{ inputs.paper_path }}" \
+              --format "${{ inputs.output_format }}"
           fi
-          python review_paper.py "${{ inputs.paper_path }}" \
-            $REFS \
-            --format "${{ inputs.output_format }}"
