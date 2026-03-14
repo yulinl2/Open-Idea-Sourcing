@@ -177,3 +177,27 @@ class TestMainWithUrl:
     def test_missing_file_returns_error(self, tmp_path):
         rc = main([str(tmp_path / "nonexistent.pdf")])
         assert rc == 1
+
+    def test_bad_url_scheme_returns_error_not_raises(self):
+        """main() must return 1 (not raise SystemExit) when URL has wrong scheme."""
+        rc = main(["http://arxiv.org/pdf/2006.06138"])
+        assert rc == 1
+
+    def test_download_failure_returns_error_not_raises(self, tmp_path):
+        """main() must return 1 (not raise SystemExit) on download failure."""
+        with patch("urllib.request.urlopen", side_effect=OSError("network down")):
+            rc = main(["https://arxiv.org/pdf/2006.06138"])
+        assert rc == 1
+
+    def test_parse_error_returns_error(self, tmp_path):
+        """main() must return 1 with a message when parsing raises an exception."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text("some content", encoding="utf-8")
+
+        with patch(
+            "review_paper.PaperParser.parse_file",
+            side_effect=RuntimeError("corrupt file"),
+        ):
+            rc = main([str(paper)])
+
+        assert rc == 1

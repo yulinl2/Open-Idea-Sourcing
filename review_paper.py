@@ -179,7 +179,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.paper.startswith(("http://", "https://")):
             tmp_dir = tempfile.mkdtemp()
-            paper_path = _download_paper(args.paper, tmp_dir)
+            try:
+                paper_path = _download_paper(args.paper, tmp_dir)
+            except SystemExit as exc:
+                print(exc.code, file=sys.stderr)
+                return 1
         else:
             paper_path = Path(args.paper)
             if not paper_path.exists():
@@ -189,7 +193,11 @@ def main(argv: list[str] | None = None) -> int:
         # --- Parse the submitted paper ---
         parser = PaperParser()
         print(f"Parsing paper: {paper_path.name} ...", file=sys.stderr)
-        paper = parser.parse_file(paper_path)
+        try:
+            paper = parser.parse_file(paper_path)
+        except Exception as exc:
+            print(f"Error: could not parse paper: {exc}", file=sys.stderr)
+            return 1
         if not paper.full_text.strip():
             print("Error: no text could be extracted from the paper.", file=sys.stderr)
             return 1

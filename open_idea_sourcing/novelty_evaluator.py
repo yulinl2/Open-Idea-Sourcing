@@ -41,7 +41,7 @@ class NoveltyReport:
     """Aggregated novelty evaluation for a single paper."""
 
     paper_title: str
-    overall_verdict: str          # "NOVEL", "MARGINAL", "NOT_NOVEL"
+    overall_verdict: str          # "NOVEL", "MARGINAL", "NOT_NOVEL", or "UNCLEAR"
     confidence: str               # "HIGH", "MEDIUM", "LOW"
     summary: str
     dimensions: list[NoveltyDimension] = field(default_factory=list)

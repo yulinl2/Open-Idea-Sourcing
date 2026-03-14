@@ -83,6 +83,21 @@ class TestPaperParser:
         kc = result.key_content(max_chars=100)
         assert len(kc) <= 100
 
+    def test_key_content_accurate_budget(self):
+        """Budget calculation should use the full max_chars allowance accurately."""
+        from open_idea_sourcing.paper_parser import ParsedPaper
+
+        title = "T" * 10
+        abstract = "A" * 20
+        body = "B" * 10000
+        paper = ParsedPaper(title=title, abstract=abstract, full_text=body)
+        max_chars = 200
+        kc = paper.key_content(max_chars=max_chars)
+        assert len(kc) == max_chars, (
+            f"key_content should fill exactly max_chars={max_chars} "
+            f"but got {len(kc)}"
+        )
+
     def test_parse_file_txt(self, tmp_path):
         f = tmp_path / "paper.txt"
         f.write_text(SAMPLE_TEXT, encoding="utf-8")

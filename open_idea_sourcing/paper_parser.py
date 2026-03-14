@@ -44,7 +44,10 @@ class ParsedPaper:
         if self.abstract:
             parts.append(f"Abstract: {self.abstract}")
         body = self.full_text.strip()
-        budget = max_chars - sum(len(p) for p in parts) - len(parts) * 2
+        # Compute budget from the actual prefix length so separator accounting
+        # is always accurate regardless of how many parts are present.
+        prefix = "\n\n".join(parts)
+        budget = max_chars - len(prefix) - (2 if prefix and body else 0)
         if budget > 0 and body:
             parts.append(body[:budget])
         return "\n\n".join(parts)[:max_chars]
