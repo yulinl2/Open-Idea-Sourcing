@@ -47,6 +47,7 @@ class TestDownloadPaper:
     def test_downloads_pdf_to_dest_dir(self, tmp_path):
         fake_pdf_bytes = b"%PDF-1.4 fake content"
         mock_response = MagicMock()
+        mock_response.getheader.return_value = None
         mock_response.read.return_value = fake_pdf_bytes
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
@@ -61,6 +62,7 @@ class TestDownloadPaper:
         """Abstract URL should be rewritten to PDF URL before the request."""
         fake_pdf_bytes = b"%PDF-1.4"
         mock_response = MagicMock()
+        mock_response.getheader.return_value = None
         mock_response.read.return_value = fake_pdf_bytes
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
@@ -90,6 +92,7 @@ class TestDownloadPaper:
         """If the URL path has no .pdf suffix, one should be appended."""
         fake_pdf_bytes = b"%PDF-1.4"
         mock_response = MagicMock()
+        mock_response.getheader.return_value = None
         mock_response.read.return_value = fake_pdf_bytes
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
