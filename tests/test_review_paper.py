@@ -44,17 +44,23 @@ class TestNormaliseArxivUrl:
 # ---------------------------------------------------------------------------
 
 
+# 8.8.8.8 (Google Public DNS) is used because Python 3.12+ classifies TEST-NET
+# addresses (e.g. 203.0.113.0/24) as private, which would trigger the IP check.
+_FAKE_ADDRINFO = [(2, 1, 6, "", ("8.8.8.8", 0))]
+
+
 class TestDownloadPaper:
     def test_downloads_pdf_to_dest_dir(self, tmp_path):
         fake_pdf_bytes = b"%PDF-1.4 fake content"
         mock_response = MagicMock()
         mock_response.getheader.return_value = None
+        mock_response.geturl.return_value = "https://arxiv.org/pdf/2006.06138"
         mock_response.read.return_value = fake_pdf_bytes
-        mock_response.getheader.return_value = None
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
 
-        with patch("urllib.request.urlopen", return_value=mock_response):
+        with patch("urllib.request.urlopen", return_value=mock_response), \
+             patch("review_paper.socket.getaddrinfo", return_value=_FAKE_ADDRINFO):
             result = _download_paper("https://arxiv.org/pdf/2006.06138", str(tmp_path))
 
         assert result.exists()
@@ -65,8 +71,8 @@ class TestDownloadPaper:
         fake_pdf_bytes = b"%PDF-1.4"
         mock_response = MagicMock()
         mock_response.getheader.return_value = None
+        mock_response.geturl.return_value = "https://arxiv.org/pdf/2006.06138"
         mock_response.read.return_value = fake_pdf_bytes
-        mock_response.getheader.return_value = None
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
 
@@ -76,7 +82,8 @@ class TestDownloadPaper:
             captured["url"] = req.full_url
             return mock_response
 
-        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen), \
+             patch("review_paper.socket.getaddrinfo", return_value=_FAKE_ADDRINFO):
             _download_paper("https://arxiv.org/abs/2006.06138", str(tmp_path))
 
         assert captured["url"] == "https://arxiv.org/pdf/2006.06138"
@@ -96,12 +103,13 @@ class TestDownloadPaper:
         fake_pdf_bytes = b"%PDF-1.4"
         mock_response = MagicMock()
         mock_response.getheader.return_value = None
+        mock_response.geturl.return_value = "https://arxiv.org/pdf/2006.06138"
         mock_response.read.return_value = fake_pdf_bytes
-        mock_response.getheader.return_value = None
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
 
-        with patch("urllib.request.urlopen", return_value=mock_response):
+        with patch("urllib.request.urlopen", return_value=mock_response), \
+             patch("review_paper.socket.getaddrinfo", return_value=_FAKE_ADDRINFO):
             result = _download_paper("https://arxiv.org/abs/2006.06138", str(tmp_path))
 
         assert result.suffix.lower() == ".pdf"
