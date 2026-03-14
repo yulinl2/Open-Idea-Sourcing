@@ -343,12 +343,24 @@ def _parse_synthesis_response(text: str) -> tuple[str, str, str]:
 
 
 def _extract_field(text: str, field_name: str, default: str = "") -> str:
-    """Return the value after ``FIELD_NAME:`` up to the next capitalised key."""
+    """Return the value after ``FIELD_NAME:`` up to the next capitalised key.
+
+    The field name is matched case-insensitively.  The lookahead that
+    detects the *next* field is intentionally case-sensitive so that
+    ordinary words followed by a colon inside a field value (e.g.
+    ``Note: …`` or ``Method: …``) do not prematurely terminate the
+    current field.
+
+    When the field is present but has an empty value the *default* is
+    returned, which mirrors the "field not found" behaviour and lets
+    callers supply a meaningful fallback in both cases.
+    """
     pattern = _re.compile(
-        rf"(?:^|\n){field_name}:\s*(.*?)(?=\n[A-Z_]{{2,}}:|\Z)",
-        _re.DOTALL | _re.IGNORECASE,
+        rf"(?:^|\n)(?i:{field_name}):[^\S\n]*(.*?)(?=\n[A-Z_]{{2,}}:|\Z)",
+        _re.DOTALL,
     )
     m = pattern.search(text)
     if m:
-        return m.group(1).strip()
+        value = m.group(1).strip()
+        return value if value else default
     return default

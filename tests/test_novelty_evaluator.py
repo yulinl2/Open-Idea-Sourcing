@@ -119,6 +119,42 @@ class TestExtractField:
         text = "verdict: MEDIUM\n"
         assert _extract_field(text, "VERDICT") == "MEDIUM"
 
+    def test_returns_default_when_field_value_is_empty(self):
+        """An empty field value should fall back to *default*, not return ''."""
+        text = "VERDICT: HIGH\nEXPLANATION:\nREFERENCES: att2017"
+        assert _extract_field(text, "EXPLANATION", default="fallback") == "fallback"
+
+    def test_does_not_consume_newline_after_colon(self):
+        """The field value must not bleed into the next field when the value is blank.
+
+        Previously, the greedy ``\\s*`` after the colon consumed the newline,
+        causing ``(.*?)`` to capture the *next* field's content.
+        """
+        text = "VERDICT: HIGH\nEXPLANATION:\nREFERENCES: att2017"
+        expl = _extract_field(text, "EXPLANATION", default="")
+        assert "REFERENCES" not in expl
+
+    def test_lowercase_label_in_value_does_not_terminate_field(self):
+        """A ``word:`` at the start of a line inside a field value must not cut
+        the field short.  Only all-uppercase labels like ``REFERENCES:`` should
+        act as field terminators.
+        """
+        text = (
+            "EXPLANATION: The method relies on attention.\n"
+            "Note: this extends prior work.\n"
+            "REFERENCES: att2017"
+        )
+        expl = _extract_field(text, "EXPLANATION")
+        assert "Note: this extends prior work" in expl
+
+    def test_uppercase_label_still_terminates_field(self):
+        """An all-uppercase ``FIELD:`` at the start of a line must still mark
+        the end of the preceding field.
+        """
+        text = "EXPLANATION: Some explanation.\nREFERENCES: p1"
+        expl = _extract_field(text, "EXPLANATION")
+        assert "REFERENCES" not in expl
+
 
 class TestParseDimensionResponse:
     def test_parses_all_fields(self):
@@ -137,6 +173,25 @@ class TestParseDimensionResponse:
         _, _, refs = _parse_dimension_response(text)
         assert set(refs) == {"p1", "p2", "p3"}
 
+    def test_empty_explanation_does_not_capture_next_field(self):
+        """When EXPLANATION value is empty, its text must not be set to only
+        the next field's content (regression for the greedy ``\\s*`` bug).
+        """
+        text = "VERDICT: HIGH\nEXPLANATION:\nREFERENCES: att2017"
+        _, explanation, _ = _parse_dimension_response(text)
+        # Old bug: explanation was set to exactly "REFERENCES: att2017"
+        assert explanation != "REFERENCES: att2017"
+
+    def test_explanation_preserved_when_value_contains_lowercase_labels(self):
+        """Inline ``word:`` labels in the explanation must not truncate it."""
+        text = (
+            "VERDICT: LOW\n"
+            "EXPLANATION: The paper is novel.\nNote: see section 3.\n"
+            "REFERENCES: none"
+        )
+        _, explanation, _ = _parse_dimension_response(text)
+        assert "Note: see section 3" in explanation
+
 
 class TestParseSynthesisResponse:
     def test_parses_synthesis(self):
@@ -144,6 +199,19 @@ class TestParseSynthesisResponse:
         assert verdict == "NOT_NOVEL"
         assert confidence == "HIGH"
         assert "duplicate" in summary.lower()
+
+    def test_empty_summary_falls_back_to_full_response(self):
+        """When SUMMARY is present but empty the full response text is used."""
+        text = "OVERALL_VERDICT: NOVEL\nCONFIDENCE: HIGH\nSUMMARY:"
+        _, _, summary = _parse_synthesis_response(text)
+        # Should not be blank — falls back to the raw LLM response text.
+        assert summary != ""
+
+    def test_summary_not_blank_when_response_has_no_summary_field(self):
+        """When there is no SUMMARY field the full response text is used."""
+        text = "OVERALL_VERDICT: NOVEL\nCONFIDENCE: HIGH\nThe paper is novel."
+        _, _, summary = _parse_synthesis_response(text)
+        assert summary != ""
 
 
 # ---------------------------------------------------------------------------
