@@ -33,8 +33,10 @@ class SimilarityResult:
 class SimilaritySearch:
     """Find reference papers that are most similar to a query text.
 
-    The index is rebuilt lazily whenever the underlying store changes.
-    Call :meth:`rebuild_index` explicitly after bulk additions.
+    The TF-IDF index is rebuilt automatically whenever the set of papers in
+    the underlying store differs from what was indexed last.  Call
+    :meth:`rebuild_index` explicitly if you need to force a rebuild for any
+    other reason (e.g. after mutating paper content in-place).
     """
 
     def __init__(self, store: ReferenceStore) -> None:
@@ -82,7 +84,13 @@ class SimilaritySearch:
             Minimum cosine-similarity score; lower-scoring papers are
             excluded even if fewer than *top_k* results remain.
         """
-        if self._matrix is None or self._vectorizer is None:
+        current_ids = [p.id for p in self._store.all_papers()]
+        if (
+            self._matrix is None
+            or self._vectorizer is None
+            or len(current_ids) != len(self._indexed_ids)
+            or current_ids != self._indexed_ids
+        ):
             self.rebuild_index()
         if self._matrix is None:
             return []

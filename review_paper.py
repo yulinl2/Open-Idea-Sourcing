@@ -143,8 +143,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--references",
         metavar="FILE",
         default=None,
-        help="Path to a JSON file containing reference papers "
-             "(produced by --save-references).",
+        help="Path to a JSON file containing reference papers to compare against.",
     )
     parser.add_argument(
         "--save-references",

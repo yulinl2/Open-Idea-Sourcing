@@ -1,6 +1,6 @@
 """Format a :class:`NoveltyReport` into human-readable output.
 
-Two formats are supported:
+Three formats are supported:
 
 * ``"text"`` — plain-text report suitable for terminal output.
 * ``"markdown"`` — Markdown-formatted report suitable for embedding in
@@ -11,7 +11,6 @@ Two formats are supported:
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 from typing import Literal
 
 from .novelty_evaluator import NoveltyReport

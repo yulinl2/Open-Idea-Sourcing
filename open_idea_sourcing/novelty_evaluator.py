@@ -103,6 +103,10 @@ class NoveltyEvaluator:
             proceeds without reference anchoring.
         """
         similar_papers = similar_papers or []
+        # Apply threshold and top-k filtering
+        similar_papers = [
+            p for p in similar_papers if p.score >= self._threshold
+        ][: self._top_k]
         content = paper.key_content()
         refs_text = self._format_references(similar_papers)
         raw: dict[str, str] = {}
