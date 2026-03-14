@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import hashlib
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -44,6 +45,9 @@ class SimilaritySearch:
         self._vectorizer: TfidfVectorizer | None = None
         self._matrix = None  # sparse matrix (n_papers × n_features)
         self._indexed_ids: list[str] = []
+        # Hash of each paper's searchable_text at the time of indexing.
+        # Used to detect content changes for papers with stable IDs.
+        self._indexed_hashes: list[str] = []
 
     # ------------------------------------------------------------------
     # Public API
@@ -56,10 +60,19 @@ class SimilaritySearch:
             self._vectorizer = None
             self._matrix = None
             self._indexed_ids = []
+            self._indexed_hashes = []
             return
 
         corpus = [p.searchable_text for p in papers]
         self._indexed_ids = [p.id for p in papers]
+        # Track a content hash for each paper so we can detect updates where
+        # the paper ID stays the same but the searchable_text changes.
+        self._indexed_hashes = [
+            hashlib.sha1(
+                (p.searchable_text or "").encode("utf-8", "ignore")
+            ).hexdigest()
+            for p in papers
+        ]
         self._vectorizer = TfidfVectorizer(
             analyzer="word",
             ngram_range=(1, 2),
@@ -87,12 +100,20 @@ class SimilaritySearch:
         if top_k <= 0:
             return []
 
-        current_ids = [p.id for p in self._store.all_papers()]
+        papers = self._store.all_papers()
+        current_ids = [p.id for p in papers]
+        current_hashes = [
+            hashlib.sha1(
+                (p.searchable_text or "").encode("utf-8", "ignore")
+            ).hexdigest()
+            for p in papers
+        ]
         if (
             self._matrix is None
             or self._vectorizer is None
             or len(current_ids) != len(self._indexed_ids)
             or current_ids != self._indexed_ids
+            or current_hashes != self._indexed_hashes
         ):
             self.rebuild_index()
         if self._matrix is None:
