@@ -7,8 +7,12 @@ on:
     branches: ["**"]
   workflow_dispatch:
     inputs:
+      paper_url:
+        description: "URL of the paper to review (e.g. https://arxiv.org/abs/2006.06138)"
+        required: false
+        default: ""
       paper_path:
-        description: "Relative path to the paper file inside the repo (e.g. papers/my_paper.pdf)"
+        description: "Relative path to the paper file inside the repo (e.g. papers/my_paper.pdf) — used only when paper_url is empty"
         required: false
         default: ""
       references_path:
@@ -43,7 +47,7 @@ jobs:
   review:
     name: Review paper (manual trigger)
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.paper_path != ''
+    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.paper_url != '' || github.event.inputs.paper_path != '')
     needs: test
 
     steps:
@@ -61,12 +65,23 @@ jobs:
       - name: Review paper
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PAPER_URL: ${{ inputs.paper_url }}
+          PAPER_PATH: ${{ inputs.paper_path }}
+          REFS_PATH: ${{ inputs.references_path }}
+          OUTPUT_FORMAT: ${{ inputs.output_format }}
         run: |
-          if [ -n "${{ inputs.references_path }}" ]; then
-            python review_paper.py "${{ inputs.paper_path }}" \
-              --references "${{ inputs.references_path }}" \
-              --format "${{ inputs.output_format }}"
+          # URL takes precedence over path
+          if [ -n "$PAPER_URL" ]; then
+            PAPER_ARG="$PAPER_URL"
           else
-            python review_paper.py "${{ inputs.paper_path }}" \
-              --format "${{ inputs.output_format }}"
+            PAPER_ARG="$PAPER_PATH"
+          fi
+
+          if [ -n "$REFS_PATH" ]; then
+            python review_paper.py "$PAPER_ARG" \
+              --references "$REFS_PATH" \
+              --format "$OUTPUT_FORMAT"
+          else
+            python review_paper.py "$PAPER_ARG" \
+              --format "$OUTPUT_FORMAT"
           fi

@@ -5,6 +5,8 @@ Usage
 -----
     python review_paper.py paper.pdf [options]
     python review_paper.py paper.txt [options]
+    python review_paper.py https://arxiv.org/abs/2006.06138 [options]
+    python review_paper.py https://arxiv.org/pdf/2006.06138 [options]
 
 Environment variables
 ---------------------
@@ -21,6 +23,9 @@ Examples
     # Review a plain-text paper and add new references interactively:
     python review_paper.py my_paper.txt --format text
 
+    # Review directly from an arXiv URL (downloads to temp directory automatically):
+    python review_paper.py https://arxiv.org/abs/2006.06138 --format markdown
+
     # Output JSON for downstream processing:
     python review_paper.py my_paper.pdf --format json > report.json
 """
@@ -29,14 +34,68 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
+import shutil
 import sys
+import tempfile
+import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator
 from open_idea_sourcing.paper_parser import PaperParser
 from open_idea_sourcing.reference_store import ReferenceStore
 from open_idea_sourcing.report_generator import ReportGenerator
 from open_idea_sourcing.similarity_search import SimilaritySearch
+
+
+def _normalise_arxiv_url(url: str) -> str:
+    """Convert an arXiv abstract page URL to a direct PDF URL.
+
+    Examples
+    --------
+    >>> _normalise_arxiv_url("https://arxiv.org/abs/2006.06138")
+    'https://arxiv.org/pdf/2006.06138'
+    >>> _normalise_arxiv_url("https://arxiv.org/abs/2006.06138v2")
+    'https://arxiv.org/pdf/2006.06138v2'
+    >>> _normalise_arxiv_url("https://arxiv.org/pdf/2006.06138")
+    'https://arxiv.org/pdf/2006.06138'
+    """
+    m = re.match(r"(https?://arxiv\.org)/abs/(.+)", url)
+    if m:
+        return f"{m.group(1)}/pdf/{m.group(2)}"
+    return url
+
+
+def _download_paper(url: str, dest_dir: str) -> Path:
+    """Download a paper PDF from *url* into *dest_dir* and return the path.
+
+    Handles arXiv abstract URLs by rewriting them to the PDF endpoint.
+    Only ``https://`` URLs are accepted to prevent unintended plain-HTTP
+    requests or other scheme abuse.
+    Raises :class:`SystemExit` with a user-friendly message on failure.
+    """
+    if not url.startswith("https://"):
+        raise SystemExit(
+            f"Error: only https:// URLs are supported, got: {url!r}"
+        )
+    pdf_url = _normalise_arxiv_url(url)
+    parsed = urlparse(pdf_url)
+    filename = Path(parsed.path).name or "paper"
+    if not filename.lower().endswith(".pdf"):
+        filename += ".pdf"
+    dest = Path(dest_dir) / filename
+    print(f"Downloading paper from: {pdf_url} ...", file=sys.stderr)
+    req = urllib.request.Request(
+        pdf_url,
+        headers={"User-Agent": "review_paper/1.0 (https://github.com/yulinl2/Open-Idea-Sourcing)"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
+            dest.write_bytes(resp.read())
+    except Exception as exc:
+        raise SystemExit(f"Error: failed to download paper from {pdf_url!r}: {exc}") from exc
+    return dest
 
 
 def _build_llm(model: str):
@@ -75,7 +134,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "paper",
-        help="Path to the paper file (.pdf or .txt).",
+        help=(
+            "Path to the paper file (.pdf or .txt), "
+            "or a URL (e.g. https://arxiv.org/abs/2006.06138)."
+        ),
     )
     parser.add_argument(
         "--references",
@@ -113,52 +175,63 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
-    # --- Parse the submitted paper ---
-    paper_path = Path(args.paper)
-    if not paper_path.exists():
-        print(f"Error: file not found: {paper_path}", file=sys.stderr)
-        return 1
-
-    parser = PaperParser()
-    print(f"Parsing paper: {paper_path.name} ...", file=sys.stderr)
-    paper = parser.parse_file(paper_path)
-    if not paper.full_text.strip():
-        print("Error: no text could be extracted from the paper.", file=sys.stderr)
-        return 1
-
-    # --- Load reference store ---
-    store = ReferenceStore()
-    if args.references:
-        ref_path = Path(args.references)
-        if ref_path.exists():
-            print(f"Loading reference store: {ref_path} ...", file=sys.stderr)
-            store.load(ref_path)
+    # --- Resolve paper source (file path or URL) ---
+    tmp_dir: str | None = None
+    try:
+        if args.paper.startswith(("http://", "https://")):
+            tmp_dir = tempfile.mkdtemp()
+            paper_path = _download_paper(args.paper, tmp_dir)
         else:
+            paper_path = Path(args.paper)
+            if not paper_path.exists():
+                print(f"Error: file not found: {paper_path}", file=sys.stderr)
+                return 1
+
+        # --- Parse the submitted paper ---
+        parser = PaperParser()
+        print(f"Parsing paper: {paper_path.name} ...", file=sys.stderr)
+        paper = parser.parse_file(paper_path)
+        if not paper.full_text.strip():
+            print("Error: no text could be extracted from the paper.", file=sys.stderr)
+            return 1
+
+        # --- Load reference store ---
+        store = ReferenceStore()
+        if args.references:
+            ref_path = Path(args.references)
+            if ref_path.exists():
+                print(f"Loading reference store: {ref_path} ...", file=sys.stderr)
+                store.load(ref_path)
+            else:
+                print(
+                    f"Warning: reference file not found: {ref_path}", file=sys.stderr
+                )
+
+        # --- Similarity search ---
+        searcher = SimilaritySearch(store)
+        similar = searcher.search(paper.key_content(), top_k=args.top_k)
+
+        # --- LLM evaluation ---
+        llm = _build_llm(args.model)
+        evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
+        print("Running novelty evaluation ...", file=sys.stderr)
+        report = evaluator.evaluate(paper, similar_papers=similar)
+
+        # --- Optionally save updated store ---
+        if args.save_references:
+            store.save(args.save_references)
             print(
-                f"Warning: reference file not found: {ref_path}", file=sys.stderr
+                f"Reference store saved to: {args.save_references}", file=sys.stderr
             )
 
-    # --- Similarity search ---
-    searcher = SimilaritySearch(store)
-    similar = searcher.search(paper.key_content(), top_k=args.top_k)
+        # --- Render report ---
+        generator = ReportGenerator()
+        print(generator.generate(report, fmt=args.format))
+        return 0
 
-    # --- LLM evaluation ---
-    llm = _build_llm(args.model)
-    evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
-    print("Running novelty evaluation ...", file=sys.stderr)
-    report = evaluator.evaluate(paper, similar_papers=similar)
-
-    # --- Optionally save updated store ---
-    if args.save_references:
-        store.save(args.save_references)
-        print(
-            f"Reference store saved to: {args.save_references}", file=sys.stderr
-        )
-
-    # --- Render report ---
-    generator = ReportGenerator()
-    print(generator.generate(report, fmt=args.format))
-    return 0
+    finally:
+        if tmp_dir:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
