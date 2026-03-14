@@ -197,7 +197,7 @@ def _build_llm(model: str):
             "openai package is required. Install it with: pip install openai"
         ) from exc
 
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise SystemExit(
             "OPENAI_API_KEY environment variable is not set.\n"
@@ -207,12 +207,15 @@ def _build_llm(model: str):
     client = openai.OpenAI(api_key=api_key)
 
     def call_llm(prompt: str) -> str:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-        )
-        return response.choices[0].message.content or ""
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+            )
+            return response.choices[0].message.content or ""
+        except openai.OpenAIError as exc:
+            raise RuntimeError(str(exc)) from exc
 
     return call_llm
 
@@ -317,7 +320,11 @@ def main(argv: list[str] | None = None) -> int:
         llm = _build_llm(args.model)
         evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
         print("Running novelty evaluation ...", file=sys.stderr)
-        report = evaluator.evaluate(paper, similar_papers=similar)
+        try:
+            report = evaluator.evaluate(paper, similar_papers=similar)
+        except RuntimeError as exc:
+            print(f"Error: novelty evaluation failed: {exc}", file=sys.stderr)
+            return 1
 
         # --- Optionally save updated store ---
         if args.save_references:
