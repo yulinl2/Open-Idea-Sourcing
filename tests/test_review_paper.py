@@ -309,3 +309,39 @@ class TestMainLlmError:
         assert rc == 1
         captured = capsys.readouterr()
         assert "novelty evaluation failed" in captured.err
+
+    def test_llm_error_written_to_stdout_for_tee(self, tmp_path, capsys):
+        """The error message must also appear on stdout so that the workflow's
+        ``| tee report.md`` pipe captures it — preventing a silently empty report.
+        """
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+
+        def failing_llm(_prompt: str) -> str:
+            raise RuntimeError("Connection error")
+
+        with patch("review_paper._build_llm", return_value=failing_llm):
+            rc = main([str(paper), "--format", "markdown"])
+
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "Error" in captured.out
+        assert "novelty evaluation failed" in captured.out
+
+    def test_missing_api_key_written_to_stdout_for_tee(self, tmp_path, capsys):
+        """A missing API key (SystemExit from _build_llm) must produce stdout
+        output so the report file is not left empty.
+        """
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+
+        with patch(
+            "review_paper._build_llm",
+            side_effect=SystemExit("OPENAI_API_KEY environment variable is not set."),
+        ):
+            rc = main([str(paper), "--format", "markdown"])
+
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "Error" in captured.out
+

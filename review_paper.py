@@ -267,6 +267,25 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _fail(message: str, fmt: str = "markdown") -> int:
+    """Print a minimal formatted error report to *stdout* and return 1.
+
+    Writing to stdout ensures the message is captured by the workflow's
+    ``| tee report.md`` pipe, so the report artifact is never silently empty.
+    The same message is also sent to stderr so it appears in the CI job log.
+    """
+    print(f"Error: {message}", file=sys.stderr)  # also visible in raw CI logs
+    if fmt == "json":
+        import json
+
+        print(json.dumps({"error": message}, indent=2))
+    elif fmt == "text":
+        print(f"ERROR: {message}")
+    else:  # markdown (default)
+        print(f"# Novelty Report\n\n> **Error:** {message}")
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     _load_environment()
 
@@ -280,13 +299,11 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 paper_path = _download_paper(args.paper, tmp_dir)
             except SystemExit as exc:
-                print(exc.code, file=sys.stderr)
-                return 1
+                return _fail(str(exc.code), args.format)
         else:
             paper_path = Path(args.paper)
             if not paper_path.exists():
-                print(f"Error: file not found: {paper_path}", file=sys.stderr)
-                return 1
+                return _fail(f"file not found: {paper_path}", args.format)
 
         # --- Parse the submitted paper ---
         parser = PaperParser()
@@ -294,11 +311,9 @@ def main(argv: list[str] | None = None) -> int:
         try:
             paper = parser.parse_file(paper_path)
         except Exception as exc:
-            print(f"Error: could not parse paper: {exc}", file=sys.stderr)
-            return 1
+            return _fail(f"could not parse paper: {exc}", args.format)
         if not paper.full_text.strip():
-            print("Error: no text could be extracted from the paper.", file=sys.stderr)
-            return 1
+            return _fail("no text could be extracted from the paper.", args.format)
 
         # --- Load reference store ---
         store = ReferenceStore()
@@ -317,14 +332,16 @@ def main(argv: list[str] | None = None) -> int:
         similar = searcher.search(paper.key_content(), top_k=args.top_k)
 
         # --- LLM evaluation ---
-        llm = _build_llm(args.model)
+        try:
+            llm = _build_llm(args.model)
+        except SystemExit as exc:
+            return _fail(str(exc.code), args.format)
         evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
         print("Running novelty evaluation ...", file=sys.stderr)
         try:
             report = evaluator.evaluate(paper, similar_papers=similar)
         except RuntimeError as exc:
-            print(f"Error: novelty evaluation failed: {exc}", file=sys.stderr)
-            return 1
+            return _fail(f"novelty evaluation failed: {exc}", args.format)
 
         # --- Optionally save updated store ---
         if args.save_references:
