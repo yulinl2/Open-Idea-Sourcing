@@ -32,7 +32,7 @@ install: $(VENV_PYTHON)
 shell: $(VENV_PYTHON)
 	@echo "Starting a new terminal with $(VENV) activated."
 	@echo "Exit that terminal to return to your previous terminal."
-	@. $(VENV)/bin/activate && exec $$SHELL
+	@. $(VENV)/bin/activate && exec $${SHELL:-/bin/sh}
 
 load-env: $(VENV_PYTHON)
 	@if [ ! -f $(ENV_FILE) ]; then \
@@ -41,12 +41,12 @@ load-env: $(VENV_PYTHON)
 	fi
 	@echo "Starting a new terminal with $(VENV) activated and $(ENV_FILE) loaded."
 	@echo "Exit that terminal to return to your previous terminal."
-	@. $(VENV)/bin/activate && set -a && . ./$(ENV_FILE) && set +a && exec $$SHELL
+	@. $(VENV)/bin/activate && set -a && . ./$(ENV_FILE) && set +a && exec $${SHELL:-/bin/sh}
 
-test:
+test: $(VENV_PYTHON)
 	$(VENV_PYTHON) -m pytest tests/ -v
 
-test-quiet:
+test-quiet: $(VENV_PYTHON)
 	$(VENV_PYTHON) -m pytest tests/ -q
 
 clean:
