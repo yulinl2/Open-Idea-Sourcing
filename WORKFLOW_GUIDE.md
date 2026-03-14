@@ -119,8 +119,12 @@ Only `https://` URLs are accepted.
    | `paper_url` | yes (if no `paper_path`) | `https://arxiv.org/abs/2006.06138` |
    | `paper_path` | yes (if no `paper_url`) | `papers/draft.pdf` (repo-relative) |
    | `output_format` | no | `markdown` *(default)* |
+   | `references_path` | no | `references/corpus/` (repo-relative; overrides default corpus) |
 
    > `paper_url` takes precedence if both are supplied.
+   >  
+   > If `references_path` is provided, the workflow uses that repo-relative directory/file as the reference corpus;  
+   > if omitted, it falls back to the default reference corpus defined in `.github/workflows/ci.yml`.
 
 6. Click the green **"Run workflow"** button
 
