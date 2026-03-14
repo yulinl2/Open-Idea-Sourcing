@@ -135,7 +135,7 @@ make test
 make test-quiet
 ```
 
-All 75 tests run without an API key — the test suite stubs the LLM with canned responses.
+All tests run without an API key — the test suite stubs the LLM with canned responses.
 
 ## Common Commands
 
