@@ -77,11 +77,25 @@ jobs:
             PAPER_ARG="$PAPER_PATH"
           fi
 
+          # Pick file extension to match the chosen format
+          case "$OUTPUT_FORMAT" in
+            json)     REPORT_FILE="report.json" ;;
+            text)     REPORT_FILE="report.txt"  ;;
+            *)        REPORT_FILE="report.md"   ;;
+          esac
+
           if [ -n "$REFS_PATH" ]; then
             python review_paper.py "$PAPER_ARG" \
               --references "$REFS_PATH" \
-              --format "$OUTPUT_FORMAT"
+              --format "$OUTPUT_FORMAT" | tee "$REPORT_FILE"
           else
             python review_paper.py "$PAPER_ARG" \
-              --format "$OUTPUT_FORMAT"
+              --format "$OUTPUT_FORMAT" | tee "$REPORT_FILE"
           fi
+          echo "REPORT_FILE=$REPORT_FILE" >> "$GITHUB_ENV"
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: novelty-report
+          path: ${{ env.REPORT_FILE }}

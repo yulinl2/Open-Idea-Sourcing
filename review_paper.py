@@ -17,14 +17,14 @@ OPENAI_MODEL
 
 Examples
 --------
-    # Review a PDF against a local reference store:
-    python review_paper.py my_paper.pdf --references refs.json --format markdown
+    # Review a PDF against a local reference store (markdown by default):
+    python review_paper.py my_paper.pdf --references refs.json
 
-    # Review a plain-text paper and add new references interactively:
-    python review_paper.py my_paper.txt --format text
+    # Review a plain-text paper:
+    python review_paper.py my_paper.txt
 
     # Review directly from an arXiv URL (downloads to temp directory automatically):
-    python review_paper.py https://arxiv.org/abs/2006.06138 --format markdown
+    python review_paper.py https://arxiv.org/abs/2006.06138
 
     # Output JSON for downstream processing:
     python review_paper.py my_paper.pdf --format json > report.json
@@ -155,8 +155,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--format",
         choices=["text", "markdown", "json"],
-        default="text",
-        help="Output format for the report (default: text).",
+        default="markdown",
+        help="Output format for the report (default: markdown).",
     )
     parser.add_argument(
         "--model",
