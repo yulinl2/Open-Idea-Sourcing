@@ -41,6 +41,8 @@ import tempfile
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
+import ipaddress
+import socket
 
 try:
     from dotenv import load_dotenv
@@ -132,6 +134,32 @@ def _download_paper(url: str, dest_dir: str) -> Path:
     )
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
+            # Re-validate the final response URL after redirects.
+            final_url = resp.geturl()
+            final_parsed = urlparse(final_url)
+            if final_parsed.scheme != "https":
+                raise SystemExit(
+                    f"Error: redirect to non-HTTPS URL is not allowed: {final_url!r}"
+                )
+            host = final_parsed.hostname
+            if not host:
+                raise SystemExit(
+                    f"Error: redirect to URL with no valid hostname is not allowed: {final_url!r}"
+                )
+            try:
+                addr_infos = socket.getaddrinfo(host, None)
+            except socket.gaierror as exc:
+                raise SystemExit(
+                    f"Error: could not resolve host for URL {final_url!r}: {exc}"
+                ) from exc
+            addresses = {info[4][0] for info in addr_infos}
+            for addr in addresses:
+                ip_obj = ipaddress.ip_address(addr)
+                if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
+                    raise SystemExit(
+                        f"Error: redirect to disallowed IP address range ({addr}) from {final_url!r}"
+                    )
+
             content_length = resp.getheader("Content-Length")
             if content_length is not None:
                 try:
