@@ -1,7 +1,6 @@
 # Paper Novelty Review — Developer Guide
 
-End-to-end reference for running the paper novelty evaluator locally or via GitHub Actions.  
-Designed to be self-contained so it can be dropped into any project that adopts this workflow.
+End-to-end reference for running the paper novelty evaluator locally or via GitHub Actions.
 
 ---
 
@@ -35,8 +34,23 @@ make install
 
 ## 3. Reviewing a Paper Locally
 
-All commands assume the virtual environment is active and `OPENAI_API_KEY` is set.  
-Use `make shell` to open a new shell with `.venv` pre-activated, then run `make load-env`; or manually run `source .venv/bin/activate` and `export OPENAI_API_KEY=...`.
+All commands assume the virtual environment is active and `.env` contains `OPENAI_API_KEY`.
+
+macOS/Linux activation:
+
+```bash
+source .venv/bin/activate
+```
+
+Windows activation:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+```bat
+.venv\Scripts\activate.bat
+```
 
 ### From a local file
 

@@ -39,15 +39,29 @@ Open `.env` and replace the placeholder value with your real API key:
 OPENAI_API_KEY=your_real_api_key_here
 ```
 
+`review_paper.py` automatically loads `OPENAI_API_KEY` from `.env` and does not override an already-set environment variable.
+
 ### Review a Paper
 
-First, open a shell with the virtual environment and API key loaded:
+Activate the virtual environment:
+
+* On macOS/Linux:
 
 ``` bash
-make load-env
+source .venv/bin/activate
 ```
 
-Then run the reviewer:
+* On Windows:
+
+``` powershell
+.venv\Scripts\Activate.ps1
+```
+
+``` bat
+.venv\Scripts\activate.bat
+```
+
+Then **run the reviewer** (Markdown report):
 
 ``` bash
 python review_paper.py path/to/paper.pdf --format markdown
@@ -142,10 +156,12 @@ All tests run without an API key — the test suite stubs the LLM with canned re
 ``` bash
 make help      # show all available targets
 make install   # create .venv, bootstrap .env (if missing), install dependencies
-make shell     # open a new terminal with .venv activated
+source .venv/bin/activate  # activate .venv in the current terminal
 make test      # run tests (verbose)
 make test-quiet # run tests (quiet)
 ```
+
+Windows activation commands are in the "Review a Paper" section above.
 
 ## FAQ / Troubleshooting
 
@@ -198,15 +214,13 @@ pyenv local 3.12.12
 make install
 ```
 
-### Why does `make shell` work, but a `make activate`-style target cannot persist?
+### Why isn't there a `make activate` target?
 
 `make` runs each recipe in a child process, not in your current interactive terminal session.
 
 -   A target like `activate` that runs `source .venv/bin/activate` only affects that child process.
 -   After the target exits, your original terminal session is unchanged.
--   This repo does **not** define a `make activate` target; use `make shell` for an interactive venv shell or `make load-env` to load environment variables.
-
-`make shell` works by launching a brand new interactive terminal session that starts with `.venv` activated. When you exit that session, you return to your previous terminal.
+-   Use `source .venv/bin/activate` directly in your terminal before running app commands.
 
 ### `pytest: command not found`
 
@@ -216,12 +230,7 @@ Use:
 make test
 ```
 
-or activate your venv first:
-
-``` bash
-source .venv/bin/activate
-pytest tests/ -v
-```
+If needed, activate first with `source .venv/bin/activate`.
 
 ### `No module named pytest`
 

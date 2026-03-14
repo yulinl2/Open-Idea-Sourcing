@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import review_paper
 
 # Import the helpers we want to test
 from review_paper import _normalise_arxiv_url, _download_paper, main
@@ -207,3 +208,34 @@ class TestMainWithUrl:
             rc = main([str(paper)])
 
         assert rc == 1
+
+
+class TestLoadEnvironment:
+    def test_loads_repo_env_when_cwd_has_none(self, tmp_path, monkeypatch):
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        (repo_root / ".env").write_text("OPENAI_API_KEY=from_repo\n", encoding="utf-8")
+
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+
+        mock_loader = MagicMock()
+        monkeypatch.setattr(review_paper, "load_dotenv", mock_loader)
+        monkeypatch.setattr(review_paper, "__file__", str(repo_root / "review_paper.py"))
+
+        review_paper._load_environment()
+
+        mock_loader.assert_called_once_with(
+            dotenv_path=(repo_root / ".env").resolve(),
+            override=False,
+        )
+
+    def test_warns_if_dotenv_missing_and_no_key(self, monkeypatch, capsys):
+        monkeypatch.setattr(review_paper, "load_dotenv", None)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        review_paper._load_environment()
+
+        captured = capsys.readouterr()
+        assert "python-dotenv is not installed" in captured.err

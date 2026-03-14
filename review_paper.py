@@ -42,6 +42,11 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - dependency is declared in requirements
+    load_dotenv = None
+
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MiB safety limit for downloads
 
 from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator
@@ -49,6 +54,39 @@ from open_idea_sourcing.paper_parser import PaperParser
 from open_idea_sourcing.reference_store import ReferenceStore
 from open_idea_sourcing.report_generator import ReportGenerator
 from open_idea_sourcing.similarity_search import SimilaritySearch
+
+
+def _load_environment() -> None:
+    """Load environment variables from .env without overriding existing env vars.
+
+    Load order is deterministic:
+    1. ``.env`` in the current working directory
+    2. ``.env`` next to this script (repo root in normal usage)
+    """
+    if load_dotenv is None:
+        if not os.environ.get("OPENAI_API_KEY"):
+            print(
+                "Warning: python-dotenv is not installed; .env will not be auto-loaded. "
+                "Run 'make install' or export OPENAI_API_KEY in your shell.",
+                file=sys.stderr,
+            )
+        return
+
+    cwd_env = Path.cwd() / ".env"
+    script_env = Path(__file__).resolve().parent / ".env"
+    seen: set[Path] = set()
+
+    for env_path in (cwd_env, script_env):
+        resolved = env_path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if resolved.is_file():
+            load_dotenv(dotenv_path=resolved, override=False)
+            return
+
+    # Fall back to default discovery (cwd -> parents) while preserving env precedence.
+    load_dotenv(override=False)
 
 
 def _normalise_arxiv_url(url: str) -> str:
@@ -107,19 +145,16 @@ def _download_paper(url: str, dest_dir: str) -> Path:
                             "refusing to download."
                         )
 
-            total_read = 0
+            # Read at most MAX_DOWNLOAD_BYTES + 1 so we can detect oversize
+            # payloads without risking unbounded downloads.
+            payload = resp.read(MAX_DOWNLOAD_BYTES + 1)
+            if len(payload) > MAX_DOWNLOAD_BYTES:
+                raise SystemExit(
+                    "Error: download exceeded maximum allowed size; "
+                    "aborting."
+                )
             with dest.open("wb") as out_f:
-                while True:
-                    chunk = resp.read(8192)
-                    if not chunk:
-                        break
-                    total_read += len(chunk)
-                    if total_read > MAX_DOWNLOAD_BYTES:
-                        raise SystemExit(
-                            "Error: download exceeded maximum allowed size; "
-                            "aborting."
-                        )
-                    out_f.write(chunk)
+                out_f.write(payload)
     except Exception as exc:
         raise SystemExit(f"Error: failed to download paper from {pdf_url!r}: {exc}") from exc
     return dest
@@ -138,7 +173,7 @@ def _build_llm(model: str):
     if not api_key:
         raise SystemExit(
             "OPENAI_API_KEY environment variable is not set.\n"
-            "Export your OpenAI API key before running this command."
+            "Set OPENAI_API_KEY in .env (recommended) or export it in your shell."
         )
 
     client = openai.OpenAI(api_key=api_key)
@@ -202,6 +237,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _load_environment()
+
     args = _parse_args(argv)
 
     # --- Resolve paper source (file path or URL) ---
