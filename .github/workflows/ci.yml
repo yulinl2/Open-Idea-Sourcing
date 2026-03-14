@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+    inputs:
+      paper_path:
+        description: "Relative path to the paper file inside the repo (e.g. papers/my_paper.pdf)"
+        required: false
+        default: ""
+      references_path:
+        description: "Relative path to a references JSON file (optional)"
+        required: false
+        default: ""
+      output_format:
+        description: "Report format: text | markdown | json"
+        required: false
+        default: "markdown"
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest tests/ -v
+
+  review:
+    name: Review paper (manual trigger)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.paper_path != ''
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Review paper
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          REFS=""
+          if [ -n "${{ inputs.references_path }}" ]; then
+            REFS="--references ${{ inputs.references_path }}"
+          fi
+          python review_paper.py "${{ inputs.paper_path }}" \
+            $REFS \
+            --format "${{ inputs.output_format }}"
