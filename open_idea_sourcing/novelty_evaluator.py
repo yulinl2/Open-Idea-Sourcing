@@ -355,8 +355,9 @@ def _extract_field(text: str, field_name: str, default: str = "") -> str:
     returned, which mirrors the "field not found" behaviour and lets
     callers supply a meaningful fallback in both cases.
     """
+    escaped_field_name = _re.escape(field_name)
     pattern = _re.compile(
-        rf"(?:^|\n)(?i:{field_name}):[^\S\n]*(.*?)(?=\n[A-Z_]{{2,}}:|\Z)",
+        rf"(?:^|\n)(?i:{escaped_field_name}):[^\S\n]*(.*?)(?=\n[A-Z_]{{2,}}:|\Z)",
         _re.DOTALL,
     )
     m = pattern.search(text)
