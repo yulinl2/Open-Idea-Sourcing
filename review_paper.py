@@ -176,7 +176,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--save-references",
         metavar="FILE",
         default=None,
-        help="Save the (possibly updated) reference store to this JSON file.",
+        help=(
+            "Save the loaded reference store to this JSON file. "
+            "This does not modify or update any references."
+        ),
     )
     parser.add_argument(
         "--format",
