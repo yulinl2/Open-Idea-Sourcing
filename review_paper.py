@@ -42,6 +42,8 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
+MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MiB safety limit for downloads
+
 from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator
 from open_idea_sourcing.paper_parser import PaperParser
 from open_idea_sourcing.reference_store import ReferenceStore
@@ -92,7 +94,32 @@ def _download_paper(url: str, dest_dir: str) -> Path:
     )
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
-            dest.write_bytes(resp.read())
+            content_length = resp.getheader("Content-Length")
+            if content_length is not None:
+                try:
+                    length_val = int(content_length)
+                except ValueError:
+                    length_val = None
+                else:
+                    if length_val > MAX_DOWNLOAD_BYTES:
+                        raise SystemExit(
+                            f"Error: remote file is too large ({length_val} bytes); "
+                            "refusing to download."
+                        )
+
+            total_read = 0
+            with dest.open("wb") as out_f:
+                while True:
+                    chunk = resp.read(8192)
+                    if not chunk:
+                        break
+                    total_read += len(chunk)
+                    if total_read > MAX_DOWNLOAD_BYTES:
+                        raise SystemExit(
+                            "Error: download exceeded maximum allowed size; "
+                            "aborting."
+                        )
+                    out_f.write(chunk)
     except Exception as exc:
         raise SystemExit(f"Error: failed to download paper from {pdf_url!r}: {exc}") from exc
     return dest
