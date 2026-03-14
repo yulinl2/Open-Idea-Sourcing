@@ -198,12 +198,13 @@ pyenv local 3.12.12
 make install
 ```
 
-### Why does `make shell` work, but `make activate` cannot persist?
+### Why does `make shell` work, but a `make activate`-style target cannot persist?
 
 `make` runs each recipe in a child process, not in your current interactive terminal session.
 
--   `make activate` (or any target that runs `source .venv/bin/activate`) only affects that child process.
+-   A target like `activate` that runs `source .venv/bin/activate` only affects that child process.
 -   After the target exits, your original terminal session is unchanged.
+-   This repo does **not** define a `make activate` target; use `make shell` for an interactive venv shell or `make load-env` to load environment variables.
 
 `make shell` works by launching a brand new interactive terminal session that starts with `.venv` activated. When you exit that session, you return to your previous terminal.
 
