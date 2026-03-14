@@ -49,6 +49,7 @@ class TestDownloadPaper:
         mock_response = MagicMock()
         mock_response.getheader.return_value = None
         mock_response.read.return_value = fake_pdf_bytes
+        mock_response.getheader.return_value = None
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
 
@@ -64,6 +65,7 @@ class TestDownloadPaper:
         mock_response = MagicMock()
         mock_response.getheader.return_value = None
         mock_response.read.return_value = fake_pdf_bytes
+        mock_response.getheader.return_value = None
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
 
@@ -94,6 +96,7 @@ class TestDownloadPaper:
         mock_response = MagicMock()
         mock_response.getheader.return_value = None
         mock_response.read.return_value = fake_pdf_bytes
+        mock_response.getheader.return_value = None
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
 
