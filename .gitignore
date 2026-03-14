@@ -33,10 +33,9 @@ htmlcov/
 # Editor / OS artefacts
 .DS_Store
 Thumbs.db
-
-# Editor / OS artefacts
-.DS_Store
 .idea/
 .vscode/
 *.swp
 *~
+README_files/
+README.html
