@@ -84,6 +84,9 @@ class SimilaritySearch:
             Minimum cosine-similarity score; lower-scoring papers are
             excluded even if fewer than *top_k* results remain.
         """
+        if top_k <= 0:
+            return []
+
         current_ids = [p.id for p in self._store.all_papers()]
         if (
             self._matrix is None
