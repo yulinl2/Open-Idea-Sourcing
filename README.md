@@ -41,6 +41,14 @@ OPENAI_API_KEY=your_real_api_key_here
 
 ### Review a Paper
 
+First, open a shell with the virtual environment and API key loaded:
+
+``` bash
+make load-env
+```
+
+Then run the reviewer:
+
 ``` bash
 python review_paper.py path/to/paper.pdf --format markdown
 ```

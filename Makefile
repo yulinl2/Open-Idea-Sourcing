@@ -4,12 +4,13 @@ VENV_PYTHON := $(VENV)/bin/python
 ENV_FILE := .env
 ENV_TEMPLATE := .env.example
 
-.PHONY: help install shell test test-quiet clean
+.PHONY: help install shell load-env test test-quiet clean
 
 help:
 	@echo "Available targets:"
 	@echo "  make install   Create .venv, bootstrap .env (if missing), install dependencies"
 	@echo "  make shell     Start a new terminal with .venv activated"
+	@echo "  make load-env  Start a new terminal with .venv activated and .env loaded"
 	@echo "  make test      Run test suite (verbose)"
 	@echo "  make test-quiet Run test suite (quiet)"
 	@echo "  make clean     Remove caches and local venv"
@@ -32,6 +33,15 @@ shell: $(VENV_PYTHON)
 	@echo "Starting a new terminal with $(VENV) activated."
 	@echo "Exit that terminal to return to your previous terminal."
 	@. $(VENV)/bin/activate && exec $$SHELL
+
+load-env: $(VENV_PYTHON)
+	@if [ ! -f $(ENV_FILE) ]; then \
+		echo "$(ENV_FILE) not found. Run 'make install' first, then edit $(ENV_FILE)."; \
+		exit 1; \
+	fi
+	@echo "Starting a new terminal with $(VENV) activated and $(ENV_FILE) loaded."
+	@echo "Exit that terminal to return to your previous terminal."
+	@. $(VENV)/bin/activate && set -a && . ./$(ENV_FILE) && set +a && exec $$SHELL
 
 test:
 	$(VENV_PYTHON) -m pytest tests/ -v
