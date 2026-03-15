@@ -262,9 +262,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=(
             "Write the report to this file instead of stdout. "
-            "When --format pdf is used an output file is required. "
-            "If omitted with --format pdf a .pdf file is created "
-            "in the current directory using an auto-generated name."
+            "When --format pdf is used and --output is omitted, "
+            "a .pdf file is created in the current directory using "
+            "an auto-generated name."
         ),
     )
     parser.add_argument(

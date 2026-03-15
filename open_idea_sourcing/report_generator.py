@@ -277,7 +277,7 @@ class ReportGenerator:
                 ]
                 for field_name, value in rows:
                     lines.append(
-                        f"| {field_name} | {str(value).replace('|', chr(124))} |"
+                        f"| {field_name} | {str(value).replace('|', r'\|')} |"
                     )
                 lines.append("")
 
