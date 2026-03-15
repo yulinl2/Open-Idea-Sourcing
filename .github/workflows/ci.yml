@@ -20,9 +20,9 @@ on:
         required: false
         default: ""
       output_format:
-        description: "Report format: text | markdown | json"
+        description: "Report format: text | markdown | json | pdf (default: pdf)"
         required: false
-        default: "markdown"
+        default: "pdf"
 
 jobs:
   test:
@@ -79,18 +79,21 @@ jobs:
 
           # Pick file extension to match the chosen format
           case "$OUTPUT_FORMAT" in
-            json)     REPORT_FILE="report.json" ;;
-            text)     REPORT_FILE="report.txt"  ;;
-            *)        REPORT_FILE="report.md"   ;;
+            json)     REPORT_FILE="reports/report.json" ;;
+            text)     REPORT_FILE="reports/report.txt"  ;;
+            pdf)      REPORT_FILE="reports/report.pdf"  ;;
+            *)        REPORT_FILE="reports/report.md"   ;;
           esac
 
           if [ -n "$REFS_PATH" ]; then
             python review_paper.py "$PAPER_ARG" \
               --references "$REFS_PATH" \
-              --format "$OUTPUT_FORMAT" | tee "$REPORT_FILE"
+              --format "$OUTPUT_FORMAT" \
+              --output "$REPORT_FILE"
           else
             python review_paper.py "$PAPER_ARG" \
-              --format "$OUTPUT_FORMAT" | tee "$REPORT_FILE"
+              --format "$OUTPUT_FORMAT" \
+              --output "$REPORT_FILE"
           fi
           echo "REPORT_FILE=$REPORT_FILE" >> "$GITHUB_ENV"
 
