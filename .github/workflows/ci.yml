@@ -47,12 +47,19 @@ jobs:
   review:
     name: Review paper (manual trigger)
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.paper_url != '' || github.event.inputs.paper_path != '')
+    if: github.event_name == 'workflow_dispatch'
     needs: test
     permissions:
       contents: write
 
     steps:
+      - name: Validate inputs
+        run: |
+          if [ -z "${{ inputs.paper_url }}" ] && [ -z "${{ inputs.paper_path }}" ]; then
+            echo "::error::Please provide either 'paper_url' or 'paper_path' when triggering this workflow. Both are currently empty."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
