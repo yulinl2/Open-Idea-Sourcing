@@ -49,9 +49,13 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && (github.event.inputs.paper_url != '' || github.event.inputs.paper_path != '')
     needs: test
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -77,28 +81,47 @@ jobs:
             PAPER_ARG="$PAPER_PATH"
           fi
 
-          # Pick file extension to match the chosen format
-          case "$OUTPUT_FORMAT" in
-            json)     REPORT_FILE="reports/report.json" ;;
-            text)     REPORT_FILE="reports/report.txt"  ;;
-            pdf)      REPORT_FILE="reports/report.pdf"  ;;
-            *)        REPORT_FILE="reports/report.md"   ;;
-          esac
-
+          # Auto-save to reports/ with an informative filename
           if [ -n "$REFS_PATH" ]; then
             python review_paper.py "$PAPER_ARG" \
               --references "$REFS_PATH" \
               --format "$OUTPUT_FORMAT" \
-              --output "$REPORT_FILE"
+              --reports-dir reports
           else
             python review_paper.py "$PAPER_ARG" \
               --format "$OUTPUT_FORMAT" \
-              --output "$REPORT_FILE"
+              --reports-dir reports
           fi
-          echo "REPORT_FILE=$REPORT_FILE" >> "$GITHUB_ENV"
 
-      - name: Upload report
+          # Capture the filename that was just written
+          REPORT_FILE=$(ls reports/)
+          echo "REPORT_FILE=reports/$REPORT_FILE" >> "$GITHUB_ENV"
+
+      - name: Upload report as artifact
         uses: actions/upload-artifact@v4
         with:
           name: novelty-report
           path: ${{ env.REPORT_FILE }}
+
+      - name: Publish report to reports branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          REPORT_FILE="${{ env.REPORT_FILE }}"
+          REPORT_NAME=$(basename "$REPORT_FILE")
+
+          # Set up a worktree pointing at the reports branch (create orphan if absent)
+          if git ls-remote --exit-code --heads origin reports > /dev/null 2>&1; then
+            git fetch origin reports
+            git worktree add /tmp/reports-branch origin/reports
+          else
+            git worktree add --orphan /tmp/reports-branch reports
+          fi
+
+          cp "$REPORT_FILE" "/tmp/reports-branch/$REPORT_NAME"
+
+          cd /tmp/reports-branch
+          git add "$REPORT_NAME"
+          git commit -m "report: $REPORT_NAME (run #${{ github.run_number }})"
+          git push origin HEAD:reports
