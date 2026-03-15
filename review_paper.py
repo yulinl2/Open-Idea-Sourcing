@@ -33,11 +33,13 @@ Examples
 from __future__ import annotations
 
 import argparse
+import datetime
 import os
 import re
 import shutil
 import sys
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
@@ -51,10 +53,11 @@ except ImportError:  # pragma: no cover - dependency is declared in requirements
 
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MiB safety limit for downloads
 
-from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator
+from open_idea_sourcing import __version__
+from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator, RunMetadata
 from open_idea_sourcing.paper_parser import PaperParser
 from open_idea_sourcing.reference_store import ReferenceStore
-from open_idea_sourcing.report_generator import ReportGenerator
+from open_idea_sourcing.report_generator import ReportGenerator, suggest_filename
 from open_idea_sourcing.similarity_search import SimilaritySearch
 
 
@@ -249,9 +252,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--format",
-        choices=["text", "markdown", "json"],
+        choices=["text", "markdown", "json", "pdf"],
         default="markdown",
         help="Output format for the report (default: markdown).",
+    )
+    parser.add_argument(
+        "--output",
+        metavar="FILE",
+        default=None,
+        help=(
+            "Write the report to this file instead of stdout. "
+            "When --format pdf is used an output file is required. "
+            "If omitted with --format pdf a .pdf file is created "
+            "in the current directory using an auto-generated name."
+        ),
     )
     parser.add_argument(
         "--model",
@@ -291,6 +305,12 @@ def main(argv: list[str] | None = None) -> int:
 
     args = _parse_args(argv)
 
+    run_start = time.monotonic()
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    stage_runtimes: dict[str, float] = {}
+
     # --- Resolve paper source (file path or URL) ---
     tmp_dir: str | None = None
     try:
@@ -308,10 +328,12 @@ def main(argv: list[str] | None = None) -> int:
         # --- Parse the submitted paper ---
         parser = PaperParser()
         print(f"Parsing paper: {paper_path.name} ...", file=sys.stderr)
+        t0 = time.monotonic()
         try:
             paper = parser.parse_file(paper_path)
         except Exception as exc:
             return _fail(f"could not parse paper: {exc}", args.format)
+        stage_runtimes["parsing"] = round(time.monotonic() - t0, 2)
         if not paper.full_text.strip():
             return _fail("no text could be extracted from the paper.", args.format)
 
@@ -328,8 +350,10 @@ def main(argv: list[str] | None = None) -> int:
                 )
 
         # --- Similarity search ---
+        t0 = time.monotonic()
         searcher = SimilaritySearch(store)
         similar = searcher.search(paper.key_content(), top_k=args.top_k)
+        stage_runtimes["similarity"] = round(time.monotonic() - t0, 2)
 
         # --- LLM evaluation ---
         try:
@@ -338,10 +362,23 @@ def main(argv: list[str] | None = None) -> int:
             return _fail(str(exc.code), args.format)
         evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
         print("Running novelty evaluation ...", file=sys.stderr)
+        t0 = time.monotonic()
         try:
             report = evaluator.evaluate(paper, similar_papers=similar)
         except RuntimeError as exc:
             return _fail(f"novelty evaluation failed: {exc}", args.format)
+        stage_runtimes["evaluation"] = round(time.monotonic() - t0, 2)
+
+        # --- Attach run metadata ---
+        total_runtime = round(time.monotonic() - run_start, 2)
+        report.metadata = RunMetadata(
+            model=args.model,
+            input_source=args.paper,
+            timestamp=timestamp,
+            total_runtime_seconds=total_runtime,
+            stage_runtimes=stage_runtimes,
+            code_version=__version__,
+        )
 
         # --- Optionally save updated store ---
         if args.save_references:
@@ -350,9 +387,32 @@ def main(argv: list[str] | None = None) -> int:
                 f"Reference store saved to: {args.save_references}", file=sys.stderr
             )
 
-        # --- Render report ---
+        # --- Render and output report ---
         generator = ReportGenerator()
-        print(generator.generate(report, fmt=args.format))
+
+        if args.format == "pdf":
+            output_path = Path(
+                args.output or suggest_filename(report, "pdf")
+            )
+            try:
+                generator.generate_pdf(report, output_path)
+            except RuntimeError as exc:
+                return _fail(str(exc), args.format)
+            print(f"PDF report written to: {output_path}", file=sys.stderr)
+            return 0
+
+        content = generator.generate(report, fmt=args.format)
+
+        if args.output:
+            output_path = Path(args.output)
+            try:
+                output_path.write_text(content, encoding="utf-8")
+            except OSError as exc:
+                return _fail(f"could not write output file: {exc}", args.format)
+            print(f"Report written to: {output_path}", file=sys.stderr)
+        else:
+            print(content)
+
         return 0
 
     finally:

@@ -27,6 +27,35 @@ LLMCallable = Callable[[str], str]
 
 
 @dataclass
+class RunMetadata:
+    """Metadata about an evaluation run for reproducibility and debugging.
+
+    Attributes
+    ----------
+    model:
+        Name of the LLM used (e.g. ``"gpt-4o"``).
+    input_source:
+        Original filename or URL of the paper that was evaluated.
+    timestamp:
+        ISO 8601 UTC timestamp recorded at the start of the run.
+    total_runtime_seconds:
+        Wall-clock time (seconds) from start to end of the full run.
+    stage_runtimes:
+        Per-stage wall-clock times keyed by stage name, e.g.
+        ``{"parsing": 0.3, "similarity": 0.1, "evaluation": 12.4}``.
+    code_version:
+        Package version string for reproducibility tracing.
+    """
+
+    model: str = ""
+    input_source: str = ""
+    timestamp: str = ""
+    total_runtime_seconds: float = 0.0
+    stage_runtimes: dict[str, float] = field(default_factory=dict)
+    code_version: str = ""
+
+
+@dataclass
 class NoveltyDimension:
     """Result of one novelty-analysis dimension."""
 
@@ -47,6 +76,7 @@ class NoveltyReport:
     dimensions: list[NoveltyDimension] = field(default_factory=list)
     similar_papers: list[SimilarityResult] = field(default_factory=list)
     raw_llm_responses: dict[str, str] = field(default_factory=dict)
+    metadata: RunMetadata | None = None
 
 
 class NoveltyEvaluator:

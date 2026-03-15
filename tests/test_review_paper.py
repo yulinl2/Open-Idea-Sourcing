@@ -345,3 +345,135 @@ class TestMainLlmError:
         captured = capsys.readouterr()
         assert "Error" in captured.out
 
+
+
+class TestMainOutputFlag:
+    """Verify that main() writes to a file when --output is given."""
+
+    _SAMPLE_TEXT = (
+        "Attention Is All You Need\n\n"
+        "Abstract\nWe propose the Transformer.\n\n"
+        "1. Introduction\nNeural networks are great.\n"
+    )
+
+    def test_output_flag_writes_file(self, tmp_path):
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        out_file = tmp_path / "report.md"
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "markdown", "--output", str(out_file)])
+
+        assert rc == 0
+        assert out_file.exists()
+        assert len(out_file.read_text(encoding="utf-8")) > 0
+
+    def test_output_flag_not_stdout(self, tmp_path, capsys):
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        out_file = tmp_path / "report.md"
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            main([str(paper), "--format", "markdown", "--output", str(out_file)])
+
+        captured = capsys.readouterr()
+        # The report body should NOT appear on stdout when --output is used.
+        assert "# Novelty Evaluation" not in captured.out
+
+    def test_output_json_file(self, tmp_path):
+        import json as _json
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        out_file = tmp_path / "report.json"
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "json", "--output", str(out_file)])
+
+        assert rc == 0
+        data = _json.loads(out_file.read_text(encoding="utf-8"))
+        assert "paper_title" in data
+
+
+class TestMainMetadata:
+    """Verify that run metadata is attached to the generated report."""
+
+    _SAMPLE_TEXT = (
+        "Attention Is All You Need\n\n"
+        "Abstract\nWe propose the Transformer.\n\n"
+        "1. Introduction\nNeural networks are great.\n"
+    )
+
+    def test_metadata_present_in_markdown_output(self, tmp_path, capsys):
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "markdown", "--model", "gpt-4o-test"])
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "## Run Metadata" in captured.out
+        assert "gpt-4o-test" in captured.out
+
+    def test_metadata_present_in_json_output(self, tmp_path, capsys):
+        import json as _json
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "json"])
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        data = _json.loads(captured.out)
+        assert "metadata" in data
+        assert data["metadata"]["model"] != ""
+        assert data["metadata"]["input_source"] != ""
+        assert data["metadata"]["timestamp"] != ""
+
+    def test_metadata_contains_input_source(self, tmp_path, capsys):
+        import json as _json
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            main([str(paper), "--format", "json"])
+
+        captured = capsys.readouterr()
+        data = _json.loads(captured.out)
+        assert "paper.txt" in data["metadata"]["input_source"]
+
+    def test_metadata_stage_runtimes_keys(self, tmp_path, capsys):
+        import json as _json
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            main([str(paper), "--format", "json"])
+
+        captured = capsys.readouterr()
+        data = _json.loads(captured.out)
+        stage_runtimes = data["metadata"]["stage_runtimes"]
+        assert "parsing" in stage_runtimes
+        assert "similarity" in stage_runtimes
+        assert "evaluation" in stage_runtimes
+
+    def test_metadata_code_version_set(self, tmp_path, capsys):
+        import json as _json
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            main([str(paper), "--format", "json"])
+
+        captured = capsys.readouterr()
+        data = _json.loads(captured.out)
+        assert data["metadata"]["code_version"] != ""
