@@ -10,7 +10,7 @@ import pytest
 import review_paper
 
 # Import the helpers we want to test
-from review_paper import _normalise_arxiv_url, _download_paper, main
+from review_paper import _normalise_arxiv_url, _download_paper, _build_llm, main
 
 # ---------------------------------------------------------------------------
 # _normalise_arxiv_url
@@ -247,3 +247,101 @@ class TestLoadEnvironment:
 
         captured = capsys.readouterr()
         assert "python-dotenv is not installed" in captured.err
+
+
+class TestBuildLlm:
+    """Tests for _build_llm API-key handling."""
+
+    def test_strips_whitespace_from_api_key(self, monkeypatch):
+        """API keys with leading/trailing whitespace or newlines must be stripped
+        before being passed to openai.OpenAI so that the HTTP Authorization
+        header is never set to an illegal value.
+        """
+        captured_key: list[str] = []
+
+        class FakeClient:
+            def __init__(self, api_key: str):
+                captured_key.append(api_key)
+
+        monkeypatch.setenv("OPENAI_API_KEY", "  sk-test-key\n")
+
+        mock_openai = MagicMock()
+        mock_openai.OpenAI = FakeClient
+
+        with patch.dict("sys.modules", {"openai": mock_openai}):
+            _build_llm("gpt-4o")
+
+        assert captured_key == ["sk-test-key"]
+
+    def test_raises_when_api_key_blank_after_strip(self, monkeypatch):
+        """A key that is only whitespace must trigger the 'not set' error."""
+        monkeypatch.setenv("OPENAI_API_KEY", "   \n  ")
+
+        mock_openai = MagicMock()
+        with patch.dict("sys.modules", {"openai": mock_openai}):
+            with pytest.raises(SystemExit, match="OPENAI_API_KEY"):
+                _build_llm("gpt-4o")
+
+
+class TestMainLlmError:
+    """Verify that main() handles LLM/API failures gracefully."""
+
+    _SAMPLE_TEXT = (
+        "Attention Is All You Need\n\n"
+        "Abstract\nWe propose the Transformer.\n\n"
+        "1. Introduction\nNeural networks are great.\n"
+    )
+
+    def test_llm_exception_returns_error_not_raises(self, tmp_path, capsys):
+        """An exception from the LLM (e.g. connection error) must cause main()
+        to return 1 with an error message rather than crashing with a traceback.
+        This ensures the CI report file is never silently left empty.
+        """
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+
+        def failing_llm(_prompt: str) -> str:
+            raise RuntimeError("Connection error")
+
+        with patch("review_paper._build_llm", return_value=failing_llm):
+            rc = main([str(paper), "--format", "text"])
+
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "novelty evaluation failed" in captured.err
+
+    def test_llm_error_written_to_stdout_for_tee(self, tmp_path, capsys):
+        """The error message must also appear on stdout so that the workflow's
+        ``| tee report.md`` pipe captures it — preventing a silently empty report.
+        """
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+
+        def failing_llm(_prompt: str) -> str:
+            raise RuntimeError("Connection error")
+
+        with patch("review_paper._build_llm", return_value=failing_llm):
+            rc = main([str(paper), "--format", "markdown"])
+
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "Error" in captured.out
+        assert "novelty evaluation failed" in captured.out
+
+    def test_missing_api_key_written_to_stdout_for_tee(self, tmp_path, capsys):
+        """A missing API key (SystemExit from _build_llm) must produce stdout
+        output so the report file is not left empty.
+        """
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+
+        with patch(
+            "review_paper._build_llm",
+            side_effect=SystemExit("OPENAI_API_KEY environment variable is not set."),
+        ):
+            rc = main([str(paper), "--format", "markdown"])
+
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "Error" in captured.out
+
