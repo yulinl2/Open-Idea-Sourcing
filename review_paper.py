@@ -17,7 +17,7 @@ OPENAI_MODEL
 
 Examples
 --------
-    # Review a PDF against a local reference store (markdown by default):
+    # Review a PDF — produces a PDF report in the reports/ directory by default:
     python review_paper.py my_paper.pdf --references refs.json
 
     # Review a plain-text paper:
@@ -26,8 +26,14 @@ Examples
     # Review directly from an arXiv URL (downloads to temp directory automatically):
     python review_paper.py https://arxiv.org/abs/2006.06138
 
+    # Save a Markdown report to a custom location instead of the reports/ directory:
+    python review_paper.py my_paper.pdf --format markdown --output report.md
+
     # Output JSON for downstream processing:
     python review_paper.py my_paper.pdf --format json > report.json
+
+    # Use a custom report store directory:
+    python review_paper.py my_paper.pdf --reports-dir /path/to/my_reports
 """
 
 from __future__ import annotations
@@ -253,18 +259,25 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--format",
         choices=["text", "markdown", "json", "pdf"],
-        default="markdown",
-        help="Output format for the report (default: markdown).",
+        default="pdf",
+        help="Output format for the report (default: pdf).",
     )
     parser.add_argument(
         "--output",
         metavar="FILE",
         default=None,
         help=(
-            "Write the report to this file instead of stdout. "
-            "When --format pdf is used and --output is omitted, "
-            "a .pdf file is created in the current directory using "
-            "an auto-generated name."
+            "Write the report to this exact file path instead of the reports "
+            "directory.  Overrides --reports-dir."
+        ),
+    )
+    parser.add_argument(
+        "--reports-dir",
+        metavar="DIR",
+        default="reports",
+        help=(
+            "Directory where reports are stored when --output is not given "
+            "(default: reports).  Created automatically if it does not exist."
         ),
     )
     parser.add_argument(
@@ -390,10 +403,18 @@ def main(argv: list[str] | None = None) -> int:
         # --- Render and output report ---
         generator = ReportGenerator()
 
+        # Determine the output path: explicit --output takes priority;
+        # otherwise auto-generate an informative filename in --reports-dir.
+        if args.output:
+            output_path = Path(args.output)
+            auto_save = False
+        else:
+            reports_dir = Path(args.reports_dir)
+            reports_dir.mkdir(parents=True, exist_ok=True)
+            output_path = reports_dir / suggest_filename(report, args.format)
+            auto_save = True
+
         if args.format == "pdf":
-            output_path = Path(
-                args.output or suggest_filename(report, "pdf")
-            )
             try:
                 generator.generate_pdf(report, output_path)
             except RuntimeError as exc:
@@ -403,14 +424,16 @@ def main(argv: list[str] | None = None) -> int:
 
         content = generator.generate(report, fmt=args.format)
 
-        if args.output:
-            output_path = Path(args.output)
-            try:
-                output_path.write_text(content, encoding="utf-8")
-            except OSError as exc:
-                return _fail(f"could not write output file: {exc}", args.format)
-            print(f"Report written to: {output_path}", file=sys.stderr)
-        else:
+        try:
+            output_path.write_text(content, encoding="utf-8")
+        except OSError as exc:
+            return _fail(f"could not write output file: {exc}", args.format)
+        print(f"Report written to: {output_path}", file=sys.stderr)
+        # When auto-saving to the reports directory, also echo to stdout so
+        # that piping (e.g. ``| tee``) and CI log capture still work.
+        # When the caller specified an explicit --output path, suppress stdout
+        # to match the original behaviour.
+        if auto_save:
             print(content)
 
         return 0

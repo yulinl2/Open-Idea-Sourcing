@@ -39,3 +39,6 @@ Thumbs.db
 *~
 README_files/
 README.html
+
+# Generated reports directory
+reports/
