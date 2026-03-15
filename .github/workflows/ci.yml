@@ -22,7 +22,7 @@ on:
       output_format:
         description: "Report format: text | markdown | json | pdf (default: pdf)"
         required: false
-        default: "pdf"
+        default: "markdown"
 
 jobs:
   test:
@@ -100,7 +100,7 @@ jobs:
       - name: Upload report as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: novelty-report
+          name: src-ideas-report
           path: ${{ env.REPORT_FILE }}
 
       - name: Publish report to reports branch
