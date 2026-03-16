@@ -39,6 +39,7 @@ import shutil
 import sys
 import tempfile
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 import ipaddress
@@ -51,10 +52,10 @@ except ImportError:  # pragma: no cover - dependency is declared in requirements
 
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MiB safety limit for downloads
 
-from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator
+from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator, PipelineJob, RunMetadata
 from open_idea_sourcing.paper_parser import PaperParser
 from open_idea_sourcing.reference_store import ReferenceStore
-from open_idea_sourcing.report_generator import ReportGenerator
+from open_idea_sourcing.report_generator import ReportGenerator, suggest_filename
 from open_idea_sourcing.similarity_search import SimilaritySearch
 
 
@@ -294,6 +295,13 @@ def main(argv: list[str] | None = None) -> int:
     # --- Resolve paper source (file path or URL) ---
     tmp_dir: str | None = None
     try:
+        run_start = datetime.now(timezone.utc)
+        metadata = RunMetadata(
+            started_at=run_start,
+            model_name=args.model,
+            paper_source=args.paper,
+        )
+
         if args.paper.startswith(("http://", "https://")):
             tmp_dir = tempfile.mkdtemp()
             try:
@@ -308,28 +316,60 @@ def main(argv: list[str] | None = None) -> int:
         # --- Parse the submitted paper ---
         parser = PaperParser()
         print(f"Parsing paper: {paper_path.name} ...", file=sys.stderr)
+        t0 = datetime.now(timezone.utc)
         try:
             paper = parser.parse_file(paper_path)
         except Exception as exc:
             return _fail(f"could not parse paper: {exc}", args.format)
+        t1 = datetime.now(timezone.utc)
         if not paper.full_text.strip():
             return _fail("no text could be extracted from the paper.", args.format)
+        metadata.jobs.append(PipelineJob(
+            name="Parse paper",
+            agent="PaperParser",
+            started_at=t0,
+            finished_at=t1,
+            input_summary=paper_path.name,
+            output_summary=f'"{paper.title}", {len(paper.full_text)} chars',
+        ))
 
         # --- Load reference store ---
         store = ReferenceStore()
+        t2 = datetime.now(timezone.utc)
+        ref_source = "none"
         if args.references:
             ref_path = Path(args.references)
             if ref_path.exists():
                 print(f"Loading reference store: {ref_path} ...", file=sys.stderr)
                 store.load(ref_path)
+                ref_source = ref_path.name
             else:
                 print(
                     f"Warning: reference file not found: {ref_path}", file=sys.stderr
                 )
+        t3 = datetime.now(timezone.utc)
+        metadata.jobs.append(PipelineJob(
+            name="Load references",
+            agent="ReferenceStore",
+            started_at=t2,
+            finished_at=t3,
+            input_summary=ref_source,
+            output_summary=f"{len(store)} paper(s)",
+        ))
 
         # --- Similarity search ---
         searcher = SimilaritySearch(store)
+        t4 = datetime.now(timezone.utc)
         similar = searcher.search(paper.key_content(), top_k=args.top_k)
+        t5 = datetime.now(timezone.utc)
+        metadata.jobs.append(PipelineJob(
+            name="Similarity search",
+            agent="SimilaritySearch",
+            started_at=t4,
+            finished_at=t5,
+            input_summary="paper key content",
+            output_summary=f"top-{len(similar)} match(es)",
+        ))
 
         # --- LLM evaluation ---
         try:
@@ -339,9 +379,11 @@ def main(argv: list[str] | None = None) -> int:
         evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
         print("Running novelty evaluation ...", file=sys.stderr)
         try:
-            report = evaluator.evaluate(paper, similar_papers=similar)
+            report = evaluator.evaluate(paper, similar_papers=similar, metadata=metadata)
         except RuntimeError as exc:
             return _fail(f"novelty evaluation failed: {exc}", args.format)
+
+        metadata.finished_at = datetime.now(timezone.utc)
 
         # --- Optionally save updated store ---
         if args.save_references:
@@ -353,6 +395,14 @@ def main(argv: list[str] | None = None) -> int:
         # --- Render report ---
         generator = ReportGenerator()
         print(generator.generate(report, fmt=args.format))
+
+        # --- Emit suggested filename for CI / downstream tooling ---
+        suggested = suggest_filename(report.paper_title, args.format)
+        github_output = os.environ.get("GITHUB_OUTPUT", "")
+        if github_output:
+            with open(github_output, "a", encoding="utf-8") as fh:
+                fh.write(f"report_file={suggested}\n")
+
         return 0
 
     finally:

@@ -16,6 +16,7 @@ and is straightforward to test without live API calls.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from .paper_parser import ParsedPaper
@@ -24,6 +25,34 @@ from .similarity_search import SimilarityResult
 
 # Type alias for the LLM callable
 LLMCallable = Callable[[str], str]
+
+
+@dataclass
+class PipelineJob:
+    """Record of a single pipeline step execution."""
+
+    name: str
+    agent: str
+    started_at: datetime
+    finished_at: datetime
+    input_summary: str
+    output_summary: str
+
+    @property
+    def duration_s(self) -> float:
+        """Wall-clock duration in seconds."""
+        return (self.finished_at - self.started_at).total_seconds()
+
+
+@dataclass
+class RunMetadata:
+    """Runtime metadata captured during a full evaluation run."""
+
+    started_at: datetime
+    model_name: str
+    paper_source: str
+    jobs: list[PipelineJob] = field(default_factory=list)
+    finished_at: datetime | None = None
 
 
 @dataclass
@@ -47,6 +76,7 @@ class NoveltyReport:
     dimensions: list[NoveltyDimension] = field(default_factory=list)
     similar_papers: list[SimilarityResult] = field(default_factory=list)
     raw_llm_responses: dict[str, str] = field(default_factory=dict)
+    metadata: RunMetadata | None = None
 
 
 class NoveltyEvaluator:
@@ -91,6 +121,7 @@ class NoveltyEvaluator:
         self,
         paper: ParsedPaper,
         similar_papers: Optional[list[SimilarityResult]] = None,
+        metadata: Optional[RunMetadata] = None,
     ) -> NoveltyReport:
         """Run all evaluation passes and return a :class:`NoveltyReport`.
 
@@ -101,6 +132,10 @@ class NoveltyEvaluator:
         similar_papers:
             Pre-computed similarity results.  If *None*, LLM analysis
             proceeds without reference anchoring.
+        metadata:
+            Optional :class:`RunMetadata` to populate with per-job timings.
+            When provided, a :class:`PipelineJob` entry is appended to
+            ``metadata.jobs`` for each LLM call.
         """
         similar_papers = similar_papers or []
         # Apply threshold and top-k filtering
@@ -110,14 +145,56 @@ class NoveltyEvaluator:
         content = paper.key_content()
         refs_text = self._format_references(similar_papers)
         raw: dict[str, str] = {}
+        refs_summary = f"{len(similar_papers)} reference paper(s)"
+        agent = f"LLM ({metadata.model_name})" if metadata else "LLM"
 
+        t0 = datetime.now(timezone.utc)
         dup = self._check_duplication(content, refs_text, raw)
+        t1 = datetime.now(timezone.utc)
         combo = self._check_combination(content, refs_text, raw)
+        t2 = datetime.now(timezone.utc)
         equiv = self._check_equivalence(content, refs_text, raw)
-
+        t3 = datetime.now(timezone.utc)
         overall, confidence, summary = self._synthesise(
             paper.title, dup, combo, equiv, raw
         )
+        t4 = datetime.now(timezone.utc)
+
+        if metadata is not None:
+            metadata.jobs.extend([
+                PipelineJob(
+                    name="Duplication check",
+                    agent=agent,
+                    started_at=t0,
+                    finished_at=t1,
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"verdict={dup.verdict}",
+                ),
+                PipelineJob(
+                    name="Combination check",
+                    agent=agent,
+                    started_at=t1,
+                    finished_at=t2,
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"verdict={combo.verdict}",
+                ),
+                PipelineJob(
+                    name="Equivalence check",
+                    agent=agent,
+                    started_at=t2,
+                    finished_at=t3,
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"verdict={equiv.verdict}",
+                ),
+                PipelineJob(
+                    name="Synthesis",
+                    agent=agent,
+                    started_at=t3,
+                    finished_at=t4,
+                    input_summary="3 dimension results",
+                    output_summary=f"verdict={overall}, confidence={confidence}",
+                ),
+            ])
 
         return NoveltyReport(
             paper_title=paper.title,
@@ -127,6 +204,7 @@ class NoveltyEvaluator:
             dimensions=[dup, combo, equiv],
             similar_papers=similar_papers,
             raw_llm_responses=raw,
+            metadata=metadata,
         )
 
     # ------------------------------------------------------------------
