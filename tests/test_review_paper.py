@@ -531,7 +531,7 @@ class TestMainReportsDir:
 
         files = list(reports_dir.glob("*.md"))
         assert len(files) == 1
-        assert files[0].name.startswith("novelty_")
+        assert files[0].name.startswith("Attention_Is_All_You_Need")
 
     def test_explicit_output_does_not_use_reports_dir(self, tmp_path):
         paper = tmp_path / "paper.txt"

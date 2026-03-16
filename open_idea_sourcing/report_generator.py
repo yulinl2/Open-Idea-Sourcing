@@ -66,7 +66,7 @@ def suggest_filename(report: NoveltyReport, fmt: str = "markdown") -> str:
     --------
     >>> # report with title "Attention Is All You Need" run at 2024-06-01T12:00:00Z
     >>> suggest_filename(report, "markdown")
-    'novelty_Attention_Is_All_You_Need_2024-06-01T120000.md'
+    'Attention_Is_All_You_Need_2024-06-01T120000.md'
     """
     ext_map = {"text": "txt", "markdown": "md", "json": "json", "pdf": "pdf"}
     ext = ext_map.get(fmt, "txt")
@@ -88,7 +88,7 @@ def suggest_filename(report: NoveltyReport, fmt: str = "markdown") -> str:
             # Malformed timestamp: fall back to whatever prefix looks like a date.
             timestamp = ts[:10]
 
-    parts = [p for p in ("novelty", safe_title, timestamp) if p]
+    parts = [p for p in (safe_title, timestamp) if p]
     return "_".join(parts) + f".{ext}"
 
 

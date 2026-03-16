@@ -240,10 +240,10 @@ class TestSuggestFilename:
         # No metadata => no date segment
         assert "2024" not in name
 
-    def test_filename_starts_with_novelty(self):
+    def test_filename_starts_with_paper_title(self):
         name = suggest_filename(self.report, "markdown")
-        assert name.startswith("novelty_")
-        assert not name.startswith("novelty_report_")
+        assert name.startswith("A_Test_Paper")
+        assert not name.startswith("novelty")
 
     def test_special_characters_sanitised(self):
         self.report.paper_title = "Paper: A & B (2024)!"
