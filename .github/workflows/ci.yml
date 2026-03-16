@@ -20,7 +20,7 @@ on:
         required: false
         default: ""
       output_format:
-        description: "Report format: text | markdown | json"
+        description: "Report format: text | markdown | json | pdf (default: pdf)"
         required: false
         default: "markdown"
 
@@ -47,11 +47,27 @@ jobs:
   review:
     name: Review paper (manual trigger)
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.paper_url != '' || github.event.inputs.paper_path != '')
+    if: github.event_name == 'workflow_dispatch'
     needs: test
+    permissions:
+      contents: write
 
     steps:
+      - name: Validate inputs
+        env:
+          PAPER_URL: ${{ inputs.paper_url }}
+          PAPER_PATH: ${{ inputs.paper_path }}
+          GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
+          GH_PAPER_PATH: ${{ github.event.inputs.paper_path }}
+        run: |
+          if [ -z "${PAPER_URL:-$GH_PAPER_URL}" ] && [ -z "${PAPER_PATH:-$GH_PAPER_PATH}" ]; then
+            echo "::error::Please provide either 'paper_url' or 'paper_path' when triggering this workflow. Both are currently empty."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -63,14 +79,23 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Review paper
-        id: review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PAPER_URL: ${{ inputs.paper_url }}
           PAPER_PATH: ${{ inputs.paper_path }}
           REFS_PATH: ${{ inputs.references_path }}
           OUTPUT_FORMAT: ${{ inputs.output_format }}
+          GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
+          GH_PAPER_PATH: ${{ github.event.inputs.paper_path }}
+          GH_REFS_PATH: ${{ github.event.inputs.references_path }}
+          GH_OUTPUT_FORMAT: ${{ github.event.inputs.output_format }}
         run: |
+          # Fall back to github.event.inputs for re-run compatibility
+          PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"
+          PAPER_PATH="${PAPER_PATH:-$GH_PAPER_PATH}"
+          REFS_PATH="${REFS_PATH:-$GH_REFS_PATH}"
+          OUTPUT_FORMAT="${OUTPUT_FORMAT:-$GH_OUTPUT_FORMAT}"
+
           # URL takes precedence over path
           if [ -n "$PAPER_URL" ]; then
             PAPER_ARG="$PAPER_URL"
@@ -78,33 +103,47 @@ jobs:
             PAPER_ARG="$PAPER_PATH"
           fi
 
-          # Pick file extension to match the chosen format
-          case "$OUTPUT_FORMAT" in
-            json)     REPORT_FILE="report.json" ;;
-            text)     REPORT_FILE="report.txt"  ;;
-            *)        REPORT_FILE="report.md"   ;;
-          esac
-
+          # Auto-save to reports/ with an informative filename
           if [ -n "$REFS_PATH" ]; then
             python review_paper.py "$PAPER_ARG" \
               --references "$REFS_PATH" \
-              --format "$OUTPUT_FORMAT" | tee "$REPORT_FILE"
+              --format "$OUTPUT_FORMAT" \
+              --reports-dir reports
           else
             python review_paper.py "$PAPER_ARG" \
-              --format "$OUTPUT_FORMAT" | tee "$REPORT_FILE"
-          fi
-          echo "REPORT_FILE=$REPORT_FILE" >> "$GITHUB_ENV"
-
-      - name: Rename report to paper-title filename
-        run: |
-          TITLE_FILE="${{ steps.review.outputs.report_file }}"
-          if [ -n "$TITLE_FILE" ] && [ "$TITLE_FILE" != "$REPORT_FILE" ]; then
-            mv "$REPORT_FILE" "$TITLE_FILE"
-            echo "REPORT_FILE=$TITLE_FILE" >> "$GITHUB_ENV"
+              --format "$OUTPUT_FORMAT" \
+              --reports-dir reports
           fi
 
-      - name: Upload report
+          # Capture the filename that was just written
+          REPORT_FILE=$(ls reports/)
+          echo "REPORT_FILE=reports/$REPORT_FILE" >> "$GITHUB_ENV"
+
+      - name: Upload report as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: novelty-report
+          name: src-ideas-report
           path: ${{ env.REPORT_FILE }}
+
+      - name: Publish report to reports branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          REPORT_FILE="${{ env.REPORT_FILE }}"
+          REPORT_NAME=$(basename "$REPORT_FILE")
+
+          # Set up a worktree pointing at the reports branch (create orphan if absent)
+          if git ls-remote --exit-code --heads origin reports > /dev/null 2>&1; then
+            git fetch origin reports
+            git worktree add /tmp/reports-branch origin/reports
+          else
+            git worktree add --orphan -b reports /tmp/reports-branch
+          fi
+
+          cp "$REPORT_FILE" "/tmp/reports-branch/$REPORT_NAME"
+
+          cd /tmp/reports-branch
+          git add "$REPORT_NAME"
+          git commit -m "report: $REPORT_NAME (run #${{ github.run_number }})"
+          git push origin HEAD:reports

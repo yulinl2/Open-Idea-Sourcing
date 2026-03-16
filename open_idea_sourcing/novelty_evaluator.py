@@ -15,8 +15,8 @@ and is straightforward to test without live API calls.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from .paper_parser import ParsedPaper
@@ -29,30 +29,63 @@ LLMCallable = Callable[[str], str]
 
 @dataclass
 class PipelineJob:
-    """Record of a single pipeline step execution."""
+    """Record of a single pipeline step execution.
+
+    Attributes
+    ----------
+    name:
+        Human-readable step name, e.g. ``"Duplication check"``.
+    agent:
+        Component that performed the step, e.g. ``"LLM (gpt-4o)"``.
+    offset_s:
+        Seconds elapsed since the start of the run when this job began.
+    duration_s:
+        Wall-clock duration of the job in seconds.
+    input_summary:
+        Brief description of the input, e.g. ``"paper content + 3 refs"``.
+    output_summary:
+        Brief description of the output, e.g. ``"verdict=HIGH"``.
+    """
 
     name: str
     agent: str
-    started_at: datetime
-    finished_at: datetime
+    offset_s: float
+    duration_s: float
     input_summary: str
     output_summary: str
-
-    @property
-    def duration_s(self) -> float:
-        """Wall-clock duration in seconds."""
-        return (self.finished_at - self.started_at).total_seconds()
 
 
 @dataclass
 class RunMetadata:
-    """Runtime metadata captured during a full evaluation run."""
+    """Metadata about an evaluation run for reproducibility and debugging.
 
-    started_at: datetime
-    model_name: str
-    paper_source: str
+    Attributes
+    ----------
+    model:
+        Name of the LLM used (e.g. ``"gpt-4o"``).
+    input_source:
+        Original filename or URL of the paper that was evaluated.
+    timestamp:
+        ISO 8601 UTC timestamp recorded at the start of the run.
+    total_runtime_seconds:
+        Wall-clock time (seconds) from start to end of the full run.
+    stage_runtimes:
+        Per-stage wall-clock times keyed by stage name, e.g.
+        ``{"parsing": 0.3, "similarity": 0.1, "evaluation": 12.4}``.
+    code_version:
+        Package version string for reproducibility tracing.
+    jobs:
+        Ordered list of :class:`PipelineJob` entries recorded during
+        evaluation, suitable for rendering a Gantt-style job log.
+    """
+
+    model: str = ""
+    input_source: str = ""
+    timestamp: str = ""
+    total_runtime_seconds: float = 0.0
+    stage_runtimes: dict[str, float] = field(default_factory=dict)
+    code_version: str = ""
     jobs: list[PipelineJob] = field(default_factory=list)
-    finished_at: datetime | None = None
 
 
 @dataclass
@@ -122,6 +155,7 @@ class NoveltyEvaluator:
         paper: ParsedPaper,
         similar_papers: Optional[list[SimilarityResult]] = None,
         metadata: Optional[RunMetadata] = None,
+        _run_start: Optional[float] = None,
     ) -> NoveltyReport:
         """Run all evaluation passes and return a :class:`NoveltyReport`.
 
@@ -133,9 +167,13 @@ class NoveltyEvaluator:
             Pre-computed similarity results.  If *None*, LLM analysis
             proceeds without reference anchoring.
         metadata:
-            Optional :class:`RunMetadata` to populate with per-job timings.
-            When provided, a :class:`PipelineJob` entry is appended to
-            ``metadata.jobs`` for each LLM call.
+            Optional :class:`RunMetadata` to update with per-job timing
+            entries.  When supplied, a :class:`PipelineJob` entry is
+            appended to ``metadata.jobs`` for each LLM call.
+        _run_start:
+            ``time.monotonic()`` value from the very start of the run,
+            used to compute per-job offset timestamps.  If *None*, the
+            start of this call is used as the reference point.
         """
         similar_papers = similar_papers or []
         # Apply threshold and top-k filtering
@@ -146,51 +184,52 @@ class NoveltyEvaluator:
         refs_text = self._format_references(similar_papers)
         raw: dict[str, str] = {}
         refs_summary = f"{len(similar_papers)} reference paper(s)"
-        agent = f"LLM ({metadata.model_name})" if metadata else "LLM"
+        agent = f"LLM ({metadata.model})" if (metadata and metadata.model) else "LLM"
+        run_start = _run_start if _run_start is not None else time.monotonic()
 
-        t0 = datetime.now(timezone.utc)
+        t0 = time.monotonic()
         dup = self._check_duplication(content, refs_text, raw)
-        t1 = datetime.now(timezone.utc)
+        t1 = time.monotonic()
         combo = self._check_combination(content, refs_text, raw)
-        t2 = datetime.now(timezone.utc)
+        t2 = time.monotonic()
         equiv = self._check_equivalence(content, refs_text, raw)
-        t3 = datetime.now(timezone.utc)
+        t3 = time.monotonic()
         overall, confidence, summary = self._synthesise(
             paper.title, dup, combo, equiv, raw
         )
-        t4 = datetime.now(timezone.utc)
+        t4 = time.monotonic()
 
         if metadata is not None:
             metadata.jobs.extend([
                 PipelineJob(
                     name="Duplication check",
                     agent=agent,
-                    started_at=t0,
-                    finished_at=t1,
+                    offset_s=round(t0 - run_start, 3),
+                    duration_s=round(t1 - t0, 3),
                     input_summary=f"paper content + {refs_summary}",
                     output_summary=f"verdict={dup.verdict}",
                 ),
                 PipelineJob(
                     name="Combination check",
                     agent=agent,
-                    started_at=t1,
-                    finished_at=t2,
+                    offset_s=round(t1 - run_start, 3),
+                    duration_s=round(t2 - t1, 3),
                     input_summary=f"paper content + {refs_summary}",
                     output_summary=f"verdict={combo.verdict}",
                 ),
                 PipelineJob(
                     name="Equivalence check",
                     agent=agent,
-                    started_at=t2,
-                    finished_at=t3,
+                    offset_s=round(t2 - run_start, 3),
+                    duration_s=round(t3 - t2, 3),
                     input_summary=f"paper content + {refs_summary}",
                     output_summary=f"verdict={equiv.verdict}",
                 ),
                 PipelineJob(
                     name="Synthesis",
                     agent=agent,
-                    started_at=t3,
-                    finished_at=t4,
+                    offset_s=round(t3 - run_start, 3),
+                    duration_s=round(t4 - t3, 3),
                     input_summary="3 dimension results",
                     output_summary=f"verdict={overall}, confidence={confidence}",
                 ),
@@ -204,7 +243,6 @@ class NoveltyEvaluator:
             dimensions=[dup, combo, equiv],
             similar_papers=similar_papers,
             raw_llm_responses=raw,
-            metadata=metadata,
         )
 
     # ------------------------------------------------------------------

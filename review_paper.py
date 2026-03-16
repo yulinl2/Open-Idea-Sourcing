@@ -17,7 +17,7 @@ OPENAI_MODEL
 
 Examples
 --------
-    # Review a PDF against a local reference store (markdown by default):
+    # Review a PDF — produces a PDF report in the reports/ directory by default:
     python review_paper.py my_paper.pdf --references refs.json
 
     # Review a plain-text paper:
@@ -26,20 +26,27 @@ Examples
     # Review directly from an arXiv URL (downloads to temp directory automatically):
     python review_paper.py https://arxiv.org/abs/2006.06138
 
+    # Save a Markdown report to a custom location instead of the reports/ directory:
+    python review_paper.py my_paper.pdf --format markdown --output report.md
+
     # Output JSON for downstream processing:
     python review_paper.py my_paper.pdf --format json > report.json
+
+    # Use a custom report store directory:
+    python review_paper.py my_paper.pdf --reports-dir /path/to/my_reports
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import os
 import re
 import shutil
 import sys
 import tempfile
+import time
 import urllib.request
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 import ipaddress
@@ -52,6 +59,7 @@ except ImportError:  # pragma: no cover - dependency is declared in requirements
 
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MiB safety limit for downloads
 
+from open_idea_sourcing import __version__
 from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator, PipelineJob, RunMetadata
 from open_idea_sourcing.paper_parser import PaperParser
 from open_idea_sourcing.reference_store import ReferenceStore
@@ -250,9 +258,27 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--format",
-        choices=["text", "markdown", "json"],
-        default="markdown",
-        help="Output format for the report (default: markdown).",
+        choices=["text", "markdown", "json", "pdf"],
+        default="pdf",
+        help="Output format for the report (default: pdf).",
+    )
+    parser.add_argument(
+        "--output",
+        metavar="FILE",
+        default=None,
+        help=(
+            "Write the report to this exact file path instead of the reports "
+            "directory.  Overrides --reports-dir."
+        ),
+    )
+    parser.add_argument(
+        "--reports-dir",
+        metavar="DIR",
+        default="reports",
+        help=(
+            "Directory where reports are stored when --output is not given "
+            "(default: reports).  Created automatically if it does not exist."
+        ),
     )
     parser.add_argument(
         "--model",
@@ -292,16 +318,15 @@ def main(argv: list[str] | None = None) -> int:
 
     args = _parse_args(argv)
 
+    run_start = time.monotonic()
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    stage_runtimes: dict[str, float] = {}
+
     # --- Resolve paper source (file path or URL) ---
     tmp_dir: str | None = None
     try:
-        run_start = datetime.now(timezone.utc)
-        metadata = RunMetadata(
-            started_at=run_start,
-            model_name=args.model,
-            paper_source=args.paper,
-        )
-
         if args.paper.startswith(("http://", "https://")):
             tmp_dir = tempfile.mkdtemp()
             try:
@@ -316,60 +341,54 @@ def main(argv: list[str] | None = None) -> int:
         # --- Parse the submitted paper ---
         parser = PaperParser()
         print(f"Parsing paper: {paper_path.name} ...", file=sys.stderr)
-        t0 = datetime.now(timezone.utc)
+        t0 = time.monotonic()
         try:
             paper = parser.parse_file(paper_path)
         except Exception as exc:
             return _fail(f"could not parse paper: {exc}", args.format)
-        t1 = datetime.now(timezone.utc)
+        parse_duration = round(time.monotonic() - t0, 2)
+        stage_runtimes["parsing"] = parse_duration
         if not paper.full_text.strip():
             return _fail("no text could be extracted from the paper.", args.format)
-        metadata.jobs.append(PipelineJob(
-            name="Parse paper",
-            agent="PaperParser",
-            started_at=t0,
-            finished_at=t1,
-            input_summary=paper_path.name,
-            output_summary=f'"{paper.title}", {len(paper.full_text)} chars',
-        ))
 
         # --- Load reference store ---
         store = ReferenceStore()
-        t2 = datetime.now(timezone.utc)
-        ref_source = "none"
         if args.references:
             ref_path = Path(args.references)
             if ref_path.exists():
                 print(f"Loading reference store: {ref_path} ...", file=sys.stderr)
                 store.load(ref_path)
-                ref_source = ref_path.name
             else:
                 print(
                     f"Warning: reference file not found: {ref_path}", file=sys.stderr
                 )
-        t3 = datetime.now(timezone.utc)
-        metadata.jobs.append(PipelineJob(
-            name="Load references",
-            agent="ReferenceStore",
-            started_at=t2,
-            finished_at=t3,
-            input_summary=ref_source,
-            output_summary=f"{len(store)} paper(s)",
-        ))
 
         # --- Similarity search ---
+        t0 = time.monotonic()
         searcher = SimilaritySearch(store)
-        t4 = datetime.now(timezone.utc)
         similar = searcher.search(paper.key_content(), top_k=args.top_k)
-        t5 = datetime.now(timezone.utc)
-        metadata.jobs.append(PipelineJob(
-            name="Similarity search",
-            agent="SimilaritySearch",
-            started_at=t4,
-            finished_at=t5,
-            input_summary="paper key content",
-            output_summary=f"top-{len(similar)} match(es)",
-        ))
+        sim_duration = round(time.monotonic() - t0, 2)
+        stage_runtimes["similarity"] = sim_duration
+
+        # Build early pipeline job records for pre-LLM stages
+        early_jobs = [
+            PipelineJob(
+                name="Parse paper",
+                agent="PaperParser",
+                offset_s=0.0,
+                duration_s=parse_duration,
+                input_summary=paper_path.name,
+                output_summary=f'"{paper.title}", {len(paper.full_text)} chars',
+            ),
+            PipelineJob(
+                name="Similarity search",
+                agent="SimilaritySearch",
+                offset_s=round(stage_runtimes["parsing"], 3),
+                duration_s=sim_duration,
+                input_summary="paper key content",
+                output_summary=f"top-{len(similar)} match(es)",
+            ),
+        ]
 
         # --- LLM evaluation ---
         try:
@@ -378,12 +397,33 @@ def main(argv: list[str] | None = None) -> int:
             return _fail(str(exc.code), args.format)
         evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
         print("Running novelty evaluation ...", file=sys.stderr)
+        t0 = time.monotonic()
+        # Pre-build the metadata object so per-job timings can be appended
+        # inside evaluate() as each LLM call completes.
+        run_metadata = RunMetadata(
+            model=args.model,
+            input_source=args.paper,
+            timestamp=timestamp,
+            stage_runtimes=stage_runtimes,
+            code_version=__version__,
+            jobs=early_jobs,
+        )
         try:
-            report = evaluator.evaluate(paper, similar_papers=similar, metadata=metadata)
+            report = evaluator.evaluate(
+                paper,
+                similar_papers=similar,
+                metadata=run_metadata,
+                _run_start=run_start,
+            )
         except RuntimeError as exc:
             return _fail(f"novelty evaluation failed: {exc}", args.format)
+        stage_runtimes["evaluation"] = round(time.monotonic() - t0, 2)
 
-        metadata.finished_at = datetime.now(timezone.utc)
+        # --- Attach run metadata ---
+        total_runtime = round(time.monotonic() - run_start, 2)
+        run_metadata.total_runtime_seconds = total_runtime
+        run_metadata.stage_runtimes = stage_runtimes
+        report.metadata = run_metadata
 
         # --- Optionally save updated store ---
         if args.save_references:
@@ -392,16 +432,41 @@ def main(argv: list[str] | None = None) -> int:
                 f"Reference store saved to: {args.save_references}", file=sys.stderr
             )
 
-        # --- Render report ---
+        # --- Render and output report ---
         generator = ReportGenerator()
-        print(generator.generate(report, fmt=args.format))
 
-        # --- Emit suggested filename for CI / downstream tooling ---
-        suggested = suggest_filename(report.paper_title, args.format)
-        github_output = os.environ.get("GITHUB_OUTPUT", "")
-        if github_output:
-            with open(github_output, "a", encoding="utf-8") as fh:
-                fh.write(f"report_file={suggested}\n")
+        # Determine the output path: explicit --output takes priority;
+        # otherwise auto-generate an informative filename in --reports-dir.
+        if args.output:
+            output_path = Path(args.output)
+            auto_save = False
+        else:
+            reports_dir = Path(args.reports_dir)
+            reports_dir.mkdir(parents=True, exist_ok=True)
+            output_path = reports_dir / suggest_filename(report, args.format)
+            auto_save = True
+
+        if args.format == "pdf":
+            try:
+                generator.generate_pdf(report, output_path)
+            except RuntimeError as exc:
+                return _fail(str(exc), args.format)
+            print(f"PDF report written to: {output_path}", file=sys.stderr)
+            return 0
+
+        content = generator.generate(report, fmt=args.format)
+
+        try:
+            output_path.write_text(content, encoding="utf-8")
+        except OSError as exc:
+            return _fail(f"could not write output file: {exc}", args.format)
+        print(f"Report written to: {output_path}", file=sys.stderr)
+        # When auto-saving to the reports directory, also echo to stdout so
+        # that piping (e.g. ``| tee``) and CI log capture still work.
+        # When the caller specified an explicit --output path, suppress stdout
+        # to match the original behaviour.
+        if auto_save:
+            print(content)
 
         return 0
 
