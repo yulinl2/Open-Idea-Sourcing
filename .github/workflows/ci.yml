@@ -54,8 +54,13 @@ jobs:
 
     steps:
       - name: Validate inputs
+        env:
+          PAPER_URL: ${{ inputs.paper_url }}
+          PAPER_PATH: ${{ inputs.paper_path }}
+          GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
+          GH_PAPER_PATH: ${{ github.event.inputs.paper_path }}
         run: |
-          if [ -z "${{ inputs.paper_url }}" ] && [ -z "${{ inputs.paper_path }}" ]; then
+          if [ -z "${PAPER_URL:-$GH_PAPER_URL}" ] && [ -z "${PAPER_PATH:-$GH_PAPER_PATH}" ]; then
             echo "::error::Please provide either 'paper_url' or 'paper_path' when triggering this workflow. Both are currently empty."
             exit 1
           fi
@@ -80,7 +85,17 @@ jobs:
           PAPER_PATH: ${{ inputs.paper_path }}
           REFS_PATH: ${{ inputs.references_path }}
           OUTPUT_FORMAT: ${{ inputs.output_format }}
+          GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
+          GH_PAPER_PATH: ${{ github.event.inputs.paper_path }}
+          GH_REFS_PATH: ${{ github.event.inputs.references_path }}
+          GH_OUTPUT_FORMAT: ${{ github.event.inputs.output_format }}
         run: |
+          # Fall back to github.event.inputs for re-run compatibility
+          PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"
+          PAPER_PATH="${PAPER_PATH:-$GH_PAPER_PATH}"
+          REFS_PATH="${REFS_PATH:-$GH_REFS_PATH}"
+          OUTPUT_FORMAT="${OUTPUT_FORMAT:-$GH_OUTPUT_FORMAT}"
+
           # URL takes precedence over path
           if [ -n "$PAPER_URL" ]; then
             PAPER_ARG="$PAPER_URL"
