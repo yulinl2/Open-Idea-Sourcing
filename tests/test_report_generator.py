@@ -223,6 +223,18 @@ class TestSuggestFilename:
         name = suggest_filename(self.report, "markdown")
         assert "2024-06-01" in name
 
+    def test_filename_contains_time_component_when_present(self):
+        self.report.metadata = _sample_metadata()
+        name = suggest_filename(self.report, "markdown")
+        # Full datetime (no colons) so same-day re-runs produce distinct names.
+        assert "2024-06-01T120000" in name
+
+    def test_filename_falls_back_gracefully_for_malformed_timestamp(self):
+        self.report.metadata = RunMetadata(timestamp="not-a-date")
+        name = suggest_filename(self.report, "markdown")
+        # Should not raise; falls back to the first 10 chars as-is.
+        assert "not-a-date" in name
+
     def test_filename_omits_timestamp_when_no_metadata(self):
         name = suggest_filename(self.report, "markdown")
         # No metadata => no date segment

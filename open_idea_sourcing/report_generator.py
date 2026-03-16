@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -63,9 +64,9 @@ def suggest_filename(report: NoveltyReport, fmt: str = "markdown") -> str:
 
     Examples
     --------
-    >>> # report with title "Attention Is All You Need" run on 2024-06-01
+    >>> # report with title "Attention Is All You Need" run at 2024-06-01T12:00:00Z
     >>> suggest_filename(report, "markdown")
-    'novelty_report_Attention_Is_All_You_Need_2024-06-01.md'
+    'novelty_report_Attention_Is_All_You_Need_2024-06-01T120000.md'
     """
     ext_map = {"text": "txt", "markdown": "md", "json": "json", "pdf": "pdf"}
     ext = ext_map.get(fmt, "txt")
@@ -76,8 +77,16 @@ def suggest_filename(report: NoveltyReport, fmt: str = "markdown") -> str:
 
     timestamp = ""
     if report.metadata and report.metadata.timestamp:
-        # Use the date part only (YYYY-MM-DD) to keep the filename readable.
-        timestamp = report.metadata.timestamp[:10]
+        ts = report.metadata.timestamp
+        try:
+            # Parse the ISO 8601 timestamp and format as YYYY-MM-DDTHHMMSS so
+            # that same-day re-runs produce distinct filenames.  Colons are
+            # stripped to keep the name filesystem-safe on all platforms.
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            timestamp = dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H%M%S")
+        except ValueError:
+            # Malformed timestamp: fall back to whatever prefix looks like a date.
+            timestamp = ts[:10]
 
     parts = [p for p in ("novelty_report", safe_title, timestamp) if p]
     return "_".join(parts) + f".{ext}"
