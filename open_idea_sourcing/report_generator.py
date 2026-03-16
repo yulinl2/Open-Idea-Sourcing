@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from .novelty_evaluator import NoveltyReport
+from .novelty_evaluator import NoveltyReport, RunMetadata
 
 OutputFormat = Literal["text", "markdown", "json", "pdf"]
 
@@ -66,7 +66,7 @@ def suggest_filename(report: NoveltyReport, fmt: str = "markdown") -> str:
     --------
     >>> # report with title "Attention Is All You Need" run at 2024-06-01T12:00:00Z
     >>> suggest_filename(report, "markdown")
-    'novelty_report_Attention_Is_All_You_Need_2024-06-01T120000.md'
+    'novelty_Attention_Is_All_You_Need_2024-06-01T120000.md'
     """
     ext_map = {"text": "txt", "markdown": "md", "json": "json", "pdf": "pdf"}
     ext = ext_map.get(fmt, "txt")
@@ -88,7 +88,7 @@ def suggest_filename(report: NoveltyReport, fmt: str = "markdown") -> str:
             # Malformed timestamp: fall back to whatever prefix looks like a date.
             timestamp = ts[:10]
 
-    parts = [p for p in ("novelty_report", safe_title, timestamp) if p]
+    parts = [p for p in ("novelty", safe_title, timestamp) if p]
     return "_".join(parts) + f".{ext}"
 
 
@@ -163,6 +163,29 @@ class ReportGenerator:
             "=" * 70,
             "NOVELTY EVALUATION REPORT",
             "=" * 70,
+        ]
+
+        if r.metadata:
+            m = r.metadata
+            lines += ["", "RUN METADATA", "-" * 70]
+            if m.timestamp:
+                lines.append(f"  Timestamp   : {m.timestamp}")
+            if m.model:
+                lines.append(f"  Model       : {m.model}")
+            if m.input_source:
+                lines.append(f"  Input       : {m.input_source}")
+            if m.code_version:
+                lines.append(f"  Code version: {m.code_version}")
+            if m.total_runtime_seconds:
+                lines.append(
+                    f"  Total time  : {m.total_runtime_seconds:.1f}s"
+                )
+            if m.stage_runtimes:
+                lines.append("  Stage times :")
+                lines += self._stage_bar_chart_text(m.stage_runtimes)
+            lines.append("")
+
+        lines += [
             f"Paper  : {r.paper_title}",
             f"Verdict: {r.overall_verdict}  (confidence: {r.confidence})",
             "",
@@ -189,29 +212,25 @@ class ReportGenerator:
                 lines.append(f"  [{res.score:.2f}] {p.title}{year}")
             lines.append("")
 
-        if r.metadata:
-            m = r.metadata
-            lines += ["RUN METADATA", "-" * 70]
-            if m.timestamp:
-                lines.append(f"  Timestamp   : {m.timestamp}")
-            if m.model:
-                lines.append(f"  Model       : {m.model}")
-            if m.input_source:
-                lines.append(f"  Input       : {m.input_source}")
-            if m.code_version:
-                lines.append(f"  Code version: {m.code_version}")
-            if m.total_runtime_seconds:
-                lines.append(
-                    f"  Total time  : {m.total_runtime_seconds:.1f}s"
-                )
-            if m.stage_runtimes:
-                lines.append("  Stage times :")
-                for stage, secs in m.stage_runtimes.items():
-                    lines.append(f"    {stage}: {secs:.1f}s")
-            lines.append("")
-
         lines.append("=" * 70)
         return "\n".join(lines)
+
+    @staticmethod
+    def _stage_bar_chart_text(stage_runtimes: dict[str, float]) -> list[str]:
+        """Return indented ASCII bar-chart lines for *stage_runtimes*."""
+        if not stage_runtimes:
+            return []
+        max_secs = max(stage_runtimes.values(), default=1.0) or 1.0
+        bar_width = 30
+        max_name_len = max(len(s) for s in stage_runtimes)
+        lines = []
+        for stage, secs in stage_runtimes.items():
+            filled = min(round((secs / max_secs) * bar_width), bar_width)
+            bar = "█" * filled + "░" * (bar_width - filled)
+            lines.append(
+                f"    {stage.ljust(max_name_len)}  [{bar}] {secs:.1f}s"
+            )
+        return lines
 
     # ------------------------------------------------------------------
     # Markdown
@@ -222,6 +241,39 @@ class ReportGenerator:
         lines: list[str] = [
             f"# Novelty Evaluation: {r.paper_title}",
             "",
+        ]
+
+        if r.metadata:
+            m = r.metadata
+            lines += ["## Run Metadata", ""]
+            rows = []
+            if m.timestamp:
+                rows.append(("Timestamp", m.timestamp))
+            if m.model:
+                rows.append(("Model", m.model))
+            if m.input_source:
+                rows.append(("Input", m.input_source))
+            if m.code_version:
+                rows.append(("Code version", m.code_version))
+            if m.total_runtime_seconds:
+                rows.append(("Total runtime", f"{m.total_runtime_seconds:.1f}s"))
+            for stage, secs in (m.stage_runtimes or {}).items():
+                rows.append((f"  {stage}", f"{secs:.1f}s"))
+            if rows:
+                lines += [
+                    "| Field | Value |",
+                    "|-------|-------|",
+                ]
+                for field_name, value in rows:
+                    lines.append(
+                        f"| {field_name} | {str(value).replace('|', r'\|')} |"
+                    )
+                lines.append("")
+            if m.stage_runtimes:
+                lines += self._stage_gantt_md(m)
+                lines.append("")
+
+        lines += [
             f"**Overall verdict:** {ov} **{r.overall_verdict}** "
             f"(confidence: {r.confidence})",
             "",
@@ -263,34 +315,40 @@ class ReportGenerator:
                 lines.append(f"| {res.score:.2f} | {title} | {year} |")
             lines.append("")
 
-        if r.metadata:
-            m = r.metadata
-            lines += ["## Run Metadata", ""]
-            rows = []
-            if m.timestamp:
-                rows.append(("Timestamp", m.timestamp))
-            if m.model:
-                rows.append(("Model", m.model))
-            if m.input_source:
-                rows.append(("Input", m.input_source))
-            if m.code_version:
-                rows.append(("Code version", m.code_version))
-            if m.total_runtime_seconds:
-                rows.append(("Total runtime", f"{m.total_runtime_seconds:.1f}s"))
-            for stage, secs in (m.stage_runtimes or {}).items():
-                rows.append((f"  {stage}", f"{secs:.1f}s"))
-            if rows:
-                lines += [
-                    "| Field | Value |",
-                    "|-------|-------|",
-                ]
-                for field_name, value in rows:
-                    lines.append(
-                        f"| {field_name} | {str(value).replace('|', r'\|')} |"
-                    )
-                lines.append("")
-
         return "\n".join(lines)
+
+    @staticmethod
+    def _stage_gantt_md(m: RunMetadata) -> list[str]:
+        """Return a Mermaid gantt-chart block for *m.stage_runtimes*."""
+        if not m.stage_runtimes:
+            return []
+        title_parts = []
+        if m.input_source:
+            title_parts.append(f"input: {m.input_source}")
+        if m.model:
+            title_parts.append(f"model: {m.model}")
+        total = f"{m.total_runtime_seconds:.1f}s"
+        ctx = (
+            f" ({', '.join(title_parts)}, total: {total})"
+            if title_parts
+            else f" (total: {total})"
+        )
+        lines = [
+            "```mermaid",
+            "gantt",
+            f"    title Pipeline Runtime{ctx}",
+            "    dateFormat x",
+            "    axisFormat %Ss",
+            "    section Stages",
+        ]
+        cursor = 0
+        for stage, secs in m.stage_runtimes.items():
+            ms = int(secs * 1000)
+            label = f"{stage} ({secs:.1f}s)"
+            lines.append(f"    {label} :done, {cursor}, {cursor + ms}")
+            cursor += ms
+        lines.append("```")
+        return lines
 
     # ------------------------------------------------------------------
     # JSON

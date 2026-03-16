@@ -240,9 +240,10 @@ class TestSuggestFilename:
         # No metadata => no date segment
         assert "2024" not in name
 
-    def test_filename_starts_with_novelty_report(self):
+    def test_filename_starts_with_novelty(self):
         name = suggest_filename(self.report, "markdown")
-        assert name.startswith("novelty_report_")
+        assert name.startswith("novelty_")
+        assert not name.startswith("novelty_report_")
 
     def test_special_characters_sanitised(self):
         self.report.paper_title = "Paper: A & B (2024)!"
@@ -288,6 +289,16 @@ class TestReportGeneratorMetadataInText:
         out = self.gen.generate(report, fmt="text")
         assert "RUN METADATA" not in out
 
+    def test_text_metadata_appears_before_paper_title(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert out.index("RUN METADATA") < out.index("Paper  :")
+
+    def test_text_stage_bar_chart_rendered(self):
+        out = self.gen.generate(self.report, fmt="text")
+        # ASCII bar chart uses block characters.
+        assert "█" in out
+        assert "░" in out
+
 
 class TestReportGeneratorMetadataInMarkdown:
     def setup_method(self):
@@ -323,6 +334,33 @@ class TestReportGeneratorMetadataInMarkdown:
         report = _sample_report()
         out = self.gen.generate(report, fmt="markdown")
         assert "## Run Metadata" not in out
+
+    def test_markdown_metadata_appears_before_verdict(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert out.index("## Run Metadata") < out.index("**Overall verdict:**")
+
+    def test_markdown_gantt_chart_rendered(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "```mermaid" in out
+        assert "gantt" in out
+        assert "Pipeline Runtime" in out
+
+    def test_markdown_gantt_contains_all_stages(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "parsing" in out
+        assert "similarity" in out
+        assert "evaluation" in out
+
+    def test_markdown_no_gantt_when_no_stage_runtimes(self):
+        report = _sample_report()
+        report.metadata = RunMetadata(
+            model="gpt-4o",
+            input_source="paper.pdf",
+            timestamp="2024-06-01T12:00:00Z",
+            total_runtime_seconds=5.0,
+        )
+        out = self.gen.generate(report, fmt="markdown")
+        assert "```mermaid" not in out
 
     def test_pdf_format_returns_markdown_string(self):
         """generate() with fmt='pdf' must return markdown (not raise)."""
