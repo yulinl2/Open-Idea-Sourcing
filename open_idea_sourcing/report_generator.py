@@ -66,7 +66,7 @@ def suggest_filename(report: NoveltyReport, fmt: str = "markdown") -> str:
     --------
     >>> # report with title "Attention Is All You Need" run at 2024-06-01T12:00:00Z
     >>> suggest_filename(report, "markdown")
-    'novelty_report_Attention_Is_All_You_Need_2024-06-01T120000.md'
+    'Attention_Is_All_You_Need_2024-06-01T120000.md'
     """
     ext_map = {"text": "txt", "markdown": "md", "json": "json", "pdf": "pdf"}
     ext = ext_map.get(fmt, "txt")
@@ -88,7 +88,7 @@ def suggest_filename(report: NoveltyReport, fmt: str = "markdown") -> str:
             # Malformed timestamp: fall back to whatever prefix looks like a date.
             timestamp = ts[:10]
 
-    parts = [p for p in ("novelty_report", safe_title, timestamp) if p]
+    parts = [p for p in (safe_title, timestamp) if p]
     return "_".join(parts) + f".{ext}"
 
 
@@ -168,22 +168,46 @@ class ReportGenerator:
         if r.metadata:
             m = r.metadata
             lines += ["RUN METADATA", "-" * 70]
+
+            lines.append("  [Run Context]")
             if m.timestamp:
-                lines.append(f"  Timestamp   : {m.timestamp}")
+                lines.append(f"    Timestamp   : {m.timestamp}")
+            if m.git_branch:
+                lines.append(f"    Branch      : {m.git_branch}")
+            if m.git_commit:
+                lines.append(f"    Commit      : {m.git_commit}")
+            if m.ci_run_url:
+                lines.append(f"    CI Run      : {m.ci_run_url}")
+
+            lines.append("  [Configuration]")
             if m.model:
-                lines.append(f"  Model       : {m.model}")
+                lines.append(f"    Model       : {m.model}")
             if m.input_source:
-                lines.append(f"  Input       : {m.input_source}")
+                lines.append(f"    Input       : {m.input_source}")
             if m.code_version:
-                lines.append(f"  Code version: {m.code_version}")
-            if m.total_runtime_seconds:
+                lines.append(f"    Code version: {m.code_version}")
+
+            if m.total_runtime_seconds or m.stage_runtimes:
+                lines.append("  [Performance]")
+                if m.total_runtime_seconds:
+                    lines.append(
+                        f"    Total time  : {m.total_runtime_seconds:.1f}s"
+                    )
+                if m.stage_runtimes:
+                    lines.append("    Stage times :")
+                    for stage, secs in m.stage_runtimes.items():
+                        lines.append(f"      {stage}: {secs:.1f}s")
+            lines.append("")
+
+        if r.metadata and r.metadata.jobs:
+            lines += ["PIPELINE JOB LOG", "-" * 70]
+            for i, job in enumerate(r.metadata.jobs, 1):
                 lines.append(
-                    f"  Total time  : {m.total_runtime_seconds:.1f}s"
+                    f"  {i:2d}. {job.name:<25s}  agent={job.agent}"
+                    f"  t+{job.offset_s:.1f}s  dur={job.duration_s:.1f}s"
                 )
-            if m.stage_runtimes:
-                lines.append("  Stage times :")
-                for stage, secs in m.stage_runtimes.items():
-                    lines.append(f"    {stage}: {secs:.1f}s")
+                lines.append(f"       in : {job.input_summary}")
+                lines.append(f"       out: {job.output_summary}")
             lines.append("")
 
         lines += [
@@ -213,17 +237,6 @@ class ReportGenerator:
                 lines.append(f"  [{res.score:.2f}] {p.title}{year}")
             lines.append("")
 
-        if r.metadata and r.metadata.jobs:
-            lines += ["PIPELINE JOB LOG", "-" * 70]
-            for i, job in enumerate(r.metadata.jobs, 1):
-                lines.append(
-                    f"  {i:2d}. {job.name:<25s}  agent={job.agent}"
-                    f"  t+{job.offset_s:.1f}s  dur={job.duration_s:.1f}s"
-                )
-                lines.append(f"       in : {job.input_summary}")
-                lines.append(f"       out: {job.output_summary}")
-            lines.append("")
-
         lines.append("=" * 70)
         return "\n".join(lines)
 
@@ -241,29 +254,96 @@ class ReportGenerator:
         if r.metadata:
             m = r.metadata
             lines += ["## Run Metadata", ""]
-            rows = []
+
+            # --- Run context group ---
+            context_rows = []
             if m.timestamp:
-                rows.append(("Timestamp", m.timestamp))
-            if m.model:
-                rows.append(("Model", m.model))
-            if m.input_source:
-                rows.append(("Input", m.input_source))
-            if m.code_version:
-                rows.append(("Code version", m.code_version))
-            if m.total_runtime_seconds:
-                rows.append(("Total runtime", f"{m.total_runtime_seconds:.1f}s"))
-            for stage, secs in (m.stage_runtimes or {}).items():
-                rows.append((f"  {stage}", f"{secs:.1f}s"))
-            if rows:
+                context_rows.append(("Timestamp", m.timestamp))
+            if m.git_branch:
+                context_rows.append(("Branch", m.git_branch))
+            if m.git_commit:
+                commit_val = (
+                    f"[`{m.git_commit}`]({m.git_commit_url})"
+                    if m.git_commit_url
+                    else f"`{m.git_commit}`"
+                )
+                context_rows.append(("Commit", commit_val))
+            if m.ci_run_url:
+                # ci_run_url is expected to have the form
+                # https://github.com/<owner>/<repo>/actions/runs/<run_id>
+                # Extract the run ID from the last path segment for a short label.
+                run_num = m.ci_run_url.rstrip("/").rsplit("/", 1)[-1]
+                label = f"Run #{run_num}" if run_num.isdigit() else "CI Run"
+                context_rows.append(("CI Run", f"[{label}]({m.ci_run_url})"))
+            if context_rows:
                 lines += [
+                    "**Run context**",
+                    "",
                     "| Field | Value |",
                     "|-------|-------|",
                 ]
-                for field_name, value in rows:
+                for field_name, value in context_rows:
                     lines.append(
                         f"| {field_name} | {str(value).replace('|', r'\|')} |"
                     )
                 lines.append("")
+
+            # --- Configuration group ---
+            config_rows = []
+            if m.model:
+                config_rows.append(("Model", m.model))
+            if m.input_source:
+                config_rows.append(("Input", m.input_source))
+            if m.code_version:
+                config_rows.append(("Code version", m.code_version))
+            if config_rows:
+                lines += [
+                    "**Configuration**",
+                    "",
+                    "| Field | Value |",
+                    "|-------|-------|",
+                ]
+                for field_name, value in config_rows:
+                    lines.append(
+                        f"| {field_name} | {str(value).replace('|', r'\|')} |"
+                    )
+                lines.append("")
+
+            # --- Performance group ---
+            perf_rows: list[tuple[str, str]] = []
+            if m.total_runtime_seconds:
+                perf_rows.append(("Total runtime", f"{m.total_runtime_seconds:.1f}s"))
+            for stage, secs in (m.stage_runtimes or {}).items():
+                perf_rows.append((f"└─ {stage}", f"{secs:.1f}s"))
+            if perf_rows:
+                lines += [
+                    "**Performance**",
+                    "",
+                    "| Field | Value |",
+                    "|-------|-------|",
+                ]
+                for field_name, value in perf_rows:
+                    lines.append(
+                        f"| {field_name} | {str(value).replace('|', r'\|')} |"
+                    )
+                lines.append("")
+
+        if r.metadata and r.metadata.jobs:
+            lines += [
+                "## Pipeline Job Log",
+                "",
+                _build_gantt(r.metadata, r.paper_title),
+                "",
+                "| # | Job | Agent | Start (s) | Duration (s) | Input | Output |",
+                "|---|-----|-------|----------:|-------------:|-------|--------|",
+            ]
+            for i, job in enumerate(r.metadata.jobs, 1):
+                lines.append(
+                    f"| {i} | {job.name} | {job.agent} "
+                    f"| {job.offset_s:.2f} | {job.duration_s:.2f} "
+                    f"| {job.input_summary} | {job.output_summary} |"
+                )
+            lines.append("")
 
         lines += [
             f"**Overall verdict:** {ov} **{r.overall_verdict}** "
@@ -307,23 +387,6 @@ class ReportGenerator:
                 lines.append(f"| {res.score:.2f} | {title} | {year} |")
             lines.append("")
 
-        if r.metadata and r.metadata.jobs:
-            lines += [
-                "## Pipeline Job Log",
-                "",
-                _build_gantt(r.metadata, r.paper_title),
-                "",
-                "| # | Job | Agent | Start (s) | Duration (s) | Input | Output |",
-                "|---|-----|-------|----------:|-------------:|-------|--------|",
-            ]
-            for i, job in enumerate(r.metadata.jobs, 1):
-                lines.append(
-                    f"| {i} | {job.name} | {job.agent} "
-                    f"| {job.offset_s:.2f} | {job.duration_s:.2f} "
-                    f"| {job.input_summary} | {job.output_summary} |"
-                )
-            lines.append("")
-
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
@@ -365,6 +428,10 @@ class ReportGenerator:
                 "total_runtime_seconds": m.total_runtime_seconds,
                 "stage_runtimes": m.stage_runtimes,
                 "code_version": m.code_version,
+                "git_branch": m.git_branch,
+                "git_commit": m.git_commit,
+                "git_commit_url": m.git_commit_url,
+                "ci_run_url": m.ci_run_url,
                 "jobs": [
                     {
                         "name": j.name,

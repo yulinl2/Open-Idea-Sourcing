@@ -398,6 +398,25 @@ def main(argv: list[str] | None = None) -> int:
         evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
         print("Running novelty evaluation ...", file=sys.stderr)
         t0 = time.monotonic()
+
+        # Collect git/CI context from GitHub Actions environment variables.
+        # These are empty strings when running locally.
+        _gh_server = os.environ.get("GITHUB_SERVER_URL", "").rstrip("/")
+        _gh_repo = os.environ.get("GITHUB_REPOSITORY", "")
+        _gh_sha = os.environ.get("GITHUB_SHA", "")
+        _gh_run_id = os.environ.get("GITHUB_RUN_ID", "")
+        git_commit = _gh_sha[:7] if _gh_sha else ""
+        git_commit_url = (
+            f"{_gh_server}/{_gh_repo}/commit/{_gh_sha}"
+            if (_gh_server and _gh_repo and _gh_sha)
+            else ""
+        )
+        ci_run_url = (
+            f"{_gh_server}/{_gh_repo}/actions/runs/{_gh_run_id}"
+            if (_gh_server and _gh_repo and _gh_run_id)
+            else ""
+        )
+
         # Pre-build the metadata object so per-job timings can be appended
         # inside evaluate() as each LLM call completes.
         run_metadata = RunMetadata(
@@ -406,6 +425,10 @@ def main(argv: list[str] | None = None) -> int:
             timestamp=timestamp,
             stage_runtimes=stage_runtimes,
             code_version=__version__,
+            git_branch=os.environ.get("GITHUB_REF_NAME", ""),
+            git_commit=git_commit,
+            git_commit_url=git_commit_url,
+            ci_run_url=ci_run_url,
             jobs=early_jobs,
         )
         try:

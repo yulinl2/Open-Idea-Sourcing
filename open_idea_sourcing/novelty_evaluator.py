@@ -74,6 +74,14 @@ class RunMetadata:
         ``{"parsing": 0.3, "similarity": 0.1, "evaluation": 12.4}``.
     code_version:
         Package version string for reproducibility tracing.
+    git_branch:
+        Name of the Git branch the run was triggered from.
+    git_commit:
+        Short commit SHA (7 chars) for the code that produced the report.
+    git_commit_url:
+        Full URL to the commit on GitHub (e.g. ``https://github.com/org/repo/commit/<sha>``).
+    ci_run_url:
+        URL to the CI workflow run that produced the report (empty when run locally).
     jobs:
         Ordered list of :class:`PipelineJob` entries recorded during
         evaluation, suitable for rendering a Gantt-style job log.
@@ -85,6 +93,10 @@ class RunMetadata:
     total_runtime_seconds: float = 0.0
     stage_runtimes: dict[str, float] = field(default_factory=dict)
     code_version: str = ""
+    git_branch: str = ""
+    git_commit: str = ""
+    git_commit_url: str = ""
+    ci_run_url: str = ""
     jobs: list[PipelineJob] = field(default_factory=list)
 
 
