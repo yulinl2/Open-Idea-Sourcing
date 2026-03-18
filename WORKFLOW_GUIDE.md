@@ -55,14 +55,14 @@ Windows activation:
 ### From a local file
 
 ```bash
-# Markdown report (default) printed to stdout
+# PDF report saved to reports/ (default format)
 python review_paper.py my_paper.pdf
 
 # Plain-text or JSON
 python review_paper.py my_paper.pdf --format text
 python review_paper.py my_paper.pdf --format json > report.json
 
-# With a reference corpus (see Section 5)
+# With a reference corpus (see Section 7)
 python review_paper.py my_paper.pdf --references refs.json
 ```
 
@@ -87,15 +87,61 @@ Only `https://` URLs are accepted.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--format` | `markdown` | Output format: `text`, `markdown`, `json` |
+| `--format` | `pdf` | Output format: `text`, `markdown`, `json`, `pdf` |
+| `--output FILE` | none | Write the report to this exact file path (overrides `--reports-dir`) |
+| `--reports-dir DIR` | `reports` | Directory where auto-named reports are written |
 | `--references FILE` | none | JSON reference corpus to compare against |
 | `--save-references FILE` | none | Persist the current reference store to a JSON file |
 | `--top-k N` | `5` | Max similar reference papers passed to the LLM |
 | `--model NAME` | `gpt-4o` | OpenAI model (or set `OPENAI_MODEL` env var) |
+| `--no-online-search` | off | Disable automatic Semantic Scholar lookup (use for offline runs) |
+| `--papers-file FILE` | none | NDJSON batch file; each line must have a `url` or `path` key |
 
 ---
 
-## 4. Running via GitHub Actions
+## 4. Online Reference Search
+
+By default, `review_paper.py` automatically queries the **Semantic Scholar** public API to discover related papers before the LLM evaluation stages.  No API key or local corpus is required.
+
+### How it works
+
+1. The paper title is sent as a search query (high-precision results).
+2. If fewer than five results are returned, a second query uses the opening terms of the abstract (higher recall).
+3. Duplicates are removed by paper ID.
+4. Fetched papers are merged with any `--references` corpus and ranked by TF-IDF cosine similarity so only the most relevant papers reach the LLM.
+
+### Disable online search
+
+```bash
+python review_paper.py my_paper.pdf --no-online-search
+```
+
+Use this flag when running offline or when you want to control the reference corpus entirely through `--references`.
+
+---
+
+## 5. Batch Mode
+
+Review several papers in one command using an [NDJSON](https://ndjson.org/) file:
+
+```bash
+python review_paper.py --papers-file data/test_papers.ndjson --format pdf
+```
+
+Each line in the file must be a JSON object with a `url` **or** `path` key:
+
+```jsonl
+{"url": "https://arxiv.org/abs/2006.06138"}
+{"url": "https://arxiv.org/abs/1706.03762"}
+{"path": "papers/draft.pdf"}
+```
+
+Reports are saved automatically to `--reports-dir` (default: `reports/`).  
+The `--output` flag is not compatible with batch mode; use `--reports-dir` instead.
+
+---
+
+## 6. Running via GitHub Actions
 
 ### One-time repository setup
 
@@ -141,7 +187,7 @@ After the run completes:
 
 ---
 
-## 5. Reference Corpus Format
+## 7. Reference Corpus Format
 
 The reference store is a JSON array.  
 Only `id`, `title`, and `abstract` are required; all other fields are optional.
@@ -170,7 +216,7 @@ The evaluator selects the most similar papers via TF-IDF cosine similarity and s
 
 ---
 
-## 6. Running Tests
+## 8. Running Tests
 
 ```bash
 make test          # verbose
@@ -181,7 +227,7 @@ Tests never require an API key — the LLM is injected as a stub.
 
 ---
 
-## 7. Using a Custom / Local LLM
+## 9. Using a Custom / Local LLM
 
 Replace the OpenAI backend with any `(str) -> str` callable:
 
@@ -201,13 +247,13 @@ print(ReportGenerator().generate(report, fmt="markdown"))
 
 ---
 
-## 8. Adapting to a New Project
+## 10. Adapting to a New Project
 
 To reuse this workflow in a different repository:
 
 1. Copy `open_idea_sourcing/`, `review_paper.py`, `requirements.txt`, `Makefile`, and `.env.example`
 2. Copy `.github/workflows/ci.yml`
-3. Add `OPENAI_API_KEY` as a repository secret (Step 4 above)
+3. Add `OPENAI_API_KEY` as a repository secret (Step 6 above)
 4. Run `make install` and verify with `make test`
 
 The `workflow_dispatch` trigger and artifact upload in `ci.yml` work out of the box with no further changes.

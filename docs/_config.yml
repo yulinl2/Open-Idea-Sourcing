@@ -1,3 +1,6 @@
 title: Open Idea Sourcing
-description: AI-powered academic novelty evaluation pipeline
+description: AI-powered academic novelty evaluation — duplication, combination, and methodological-equivalence detection with automatic online reference search
 theme: jekyll-theme-primer
+version: "1.2.0"
+github:
+  repository_url: https://github.com/yulinl2/Open-Idea-Sourcing
