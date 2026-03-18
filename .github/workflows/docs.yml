@@ -1,0 +1,102 @@
+name: Update Docs
+
+# Automates documentation housekeeping using an LLM-powered agent.
+#
+# Triggers
+# --------
+# 1. workflow_dispatch — one-click manual run from the Actions tab.
+#    Provide a change_summary describing what changed; optionally narrow
+#    the scope or enable dry_run to preview without committing.
+#
+# 2. push to main — automatically runs when source files change on main
+#    (Python modules, review_paper.py, or CHANGELOG).  Uses the commit
+#    message as the change summary.
+#
+# Transfer guide
+# --------------
+# To reuse in another project:
+#   1. Copy this file, .github/doc-agent-instructions.md, and
+#      .github/scripts/update_docs.py.
+#   2. Update the `paths:` filter below to match the new project's source.
+#   3. Add OPENAI_API_KEY as a repository secret.
+#   4. Adjust the DOC_FILES dict in update_docs.py if the doc layout differs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      change_summary:
+        description: >
+          Brief description of what changed
+          (e.g. "Added --verbose flag", "Bumped version to 1.3.0",
+          "Added citation export feature").  Leave blank to use the latest
+          commit message.
+        required: false
+        default: ""
+      scope:
+        description: >
+          Which doc files to update.
+          Comma-separated keys or "all".
+          Keys: readme, workflow-guide, changelog, site-index, site-config
+        required: false
+        default: "all"
+      dry_run:
+        description: "Print proposed changes without writing or committing (true/false)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+  push:
+    branches: ["main"]
+    paths:
+      - "open_idea_sourcing/**"
+      - "review_paper.py"
+      - "CHANGELOG.md"
+
+jobs:
+  update-docs:
+    name: Update documentation
+    runs-on: ubuntu-latest
+    # Skip on commits made by the bot itself to prevent infinite loops.
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the script can read git log for auto-summary.
+          fetch-depth: 10
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run doc-update agent
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CHANGE_SUMMARY: ${{ inputs.change_summary }}
+          DOC_SCOPE: ${{ inputs.scope || 'all' }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4o' }}
+        run: python .github/scripts/update_docs.py
+
+      - name: Commit and push updated docs
+        if: inputs.dry_run != 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md WORKFLOW_GUIDE.md CHANGELOG.md docs/ || true
+          if git diff --cached --quiet; then
+            echo "No documentation changes to commit."
+          else
+            git commit -m "docs: automated update [skip ci]"
+            git push
+          fi
