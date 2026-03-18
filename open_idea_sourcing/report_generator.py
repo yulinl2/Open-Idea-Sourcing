@@ -195,7 +195,9 @@ class ReportGenerator:
 
             lines.append("  [Run Context]")
             if m.timestamp:
-                lines.append(f"    Timestamp   : {_fmt_datetime_ny(m.timestamp)}")
+                lines.append(
+                    f"    Timestamp (America/New_York): {_fmt_datetime_ny(m.timestamp)}"
+                )
             if m.git_branch:
                 lines.append(f"    Branch      : {m.git_branch}")
             if m.git_commit:
