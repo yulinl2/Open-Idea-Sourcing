@@ -146,7 +146,8 @@ class TestMainWithUrl:
             patch("review_paper._download_paper", side_effect=self._make_fake_download(tmp_path)),
             patch("review_paper._build_llm", return_value=fake_llm),
         ):
-            rc = main(["https://arxiv.org/abs/2006.06138", "--format", "text"])
+            rc = main(["https://arxiv.org/abs/2006.06138", "--format", "text",
+                        "--reports-dir", str(tmp_path)])
 
         assert rc == 0
 
@@ -173,7 +174,8 @@ class TestMainWithUrl:
             patch("review_paper._download_paper", side_effect=fake_download),
             patch("review_paper._build_llm", return_value=fake_llm),
         ):
-            main(["https://arxiv.org/abs/2006.06138", "--format", "text"])
+            main(["https://arxiv.org/abs/2006.06138", "--format", "text",
+                  "--reports-dir", str(tmp_path)])
 
         for d in created_dirs:
             assert not Path(d).exists(), f"Temp dir {d} was not cleaned up"
@@ -185,7 +187,7 @@ class TestMainWithUrl:
         fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
 
         with patch("review_paper._build_llm", return_value=fake_llm):
-            rc = main([str(paper), "--format", "text"])
+            rc = main([str(paper), "--format", "text", "--reports-dir", str(tmp_path)])
 
         assert rc == 0
 
@@ -345,3 +347,421 @@ class TestMainLlmError:
         captured = capsys.readouterr()
         assert "Error" in captured.out
 
+
+
+class TestMainOutputFlag:
+    """Verify that main() writes to a file when --output is given."""
+
+    _SAMPLE_TEXT = (
+        "Attention Is All You Need\n\n"
+        "Abstract\nWe propose the Transformer.\n\n"
+        "1. Introduction\nNeural networks are great.\n"
+    )
+
+    def test_output_flag_writes_file(self, tmp_path):
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        out_file = tmp_path / "report.md"
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "markdown", "--output", str(out_file)])
+
+        assert rc == 0
+        assert out_file.exists()
+        assert len(out_file.read_text(encoding="utf-8")) > 0
+
+    def test_output_flag_not_stdout(self, tmp_path, capsys):
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        out_file = tmp_path / "report.md"
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            main([str(paper), "--format", "markdown", "--output", str(out_file)])
+
+        captured = capsys.readouterr()
+        # The report body should NOT appear on stdout when --output is used.
+        assert "# Novelty Evaluation" not in captured.out
+
+    def test_output_json_file(self, tmp_path):
+        import json as _json
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        out_file = tmp_path / "report.json"
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "json", "--output", str(out_file)])
+
+        assert rc == 0
+        data = _json.loads(out_file.read_text(encoding="utf-8"))
+        assert "paper_title" in data
+
+
+class TestMainMetadata:
+    """Verify that run metadata is attached to the generated report."""
+
+    _SAMPLE_TEXT = (
+        "Attention Is All You Need\n\n"
+        "Abstract\nWe propose the Transformer.\n\n"
+        "1. Introduction\nNeural networks are great.\n"
+    )
+
+    def test_metadata_present_in_markdown_output(self, tmp_path, capsys):
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "markdown", "--model", "gpt-4o-test",
+                        "--reports-dir", str(tmp_path)])
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "## Run Metadata" in captured.out
+        assert "gpt-4o-test" in captured.out
+
+    def test_metadata_present_in_json_output(self, tmp_path, capsys):
+        import json as _json
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "json", "--reports-dir", str(tmp_path)])
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        data = _json.loads(captured.out)
+        assert "metadata" in data
+        assert data["metadata"]["model"] != ""
+        assert data["metadata"]["input_source"] != ""
+        assert data["metadata"]["timestamp"] != ""
+
+    def test_metadata_contains_input_source(self, tmp_path, capsys):
+        import json as _json
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            main([str(paper), "--format", "json", "--reports-dir", str(tmp_path)])
+
+        captured = capsys.readouterr()
+        data = _json.loads(captured.out)
+        assert "paper.txt" in data["metadata"]["input_source"]
+
+    def test_metadata_stage_runtimes_keys(self, tmp_path, capsys):
+        import json as _json
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            main([str(paper), "--format", "json", "--reports-dir", str(tmp_path)])
+
+        captured = capsys.readouterr()
+        data = _json.loads(captured.out)
+        stage_runtimes = data["metadata"]["stage_runtimes"]
+        assert "parsing" in stage_runtimes
+        assert "similarity" in stage_runtimes
+        assert "evaluation" in stage_runtimes
+
+    def test_metadata_code_version_set(self, tmp_path, capsys):
+        import json as _json
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            main([str(paper), "--format", "json", "--reports-dir", str(tmp_path)])
+
+        captured = capsys.readouterr()
+        data = _json.loads(captured.out)
+        assert data["metadata"]["code_version"] != ""
+
+
+class TestMainReportsDir:
+    """Verify the reports directory auto-save behaviour."""
+
+    _SAMPLE_TEXT = (
+        "Attention Is All You Need\n\n"
+        "Abstract\nWe propose the Transformer.\n\n"
+        "1. Introduction\nNeural networks are great.\n"
+    )
+
+    def test_auto_save_creates_file_in_reports_dir(self, tmp_path):
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        reports_dir = tmp_path / "my_reports"
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "markdown",
+                        "--reports-dir", str(reports_dir)])
+
+        assert rc == 0
+        assert reports_dir.exists()
+        files = list(reports_dir.glob("*.md"))
+        assert len(files) == 1
+
+    def test_reports_dir_created_if_missing(self, tmp_path):
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        reports_dir = tmp_path / "new_dir" / "nested"
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "text",
+                        "--reports-dir", str(reports_dir)])
+
+        assert rc == 0
+        assert reports_dir.exists()
+
+    def test_auto_save_filename_contains_paper_title(self, tmp_path):
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        reports_dir = tmp_path / "reports"
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            main([str(paper), "--format", "markdown",
+                  "--reports-dir", str(reports_dir)])
+
+        files = list(reports_dir.glob("*.md"))
+        assert len(files) == 1
+        # Filename should begin with the paper title, not a fixed prefix
+        assert "Attention_Is_All_You_Need" in files[0].name
+        assert not files[0].name.startswith("novelty_report")
+
+    def test_explicit_output_does_not_use_reports_dir(self, tmp_path):
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        out_file = tmp_path / "explicit.md"
+        reports_dir = tmp_path / "reports"
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "markdown",
+                        "--output", str(out_file),
+                        "--reports-dir", str(reports_dir)])
+
+        assert rc == 0
+        assert out_file.exists()
+        # reports_dir should NOT have been populated
+        assert not reports_dir.exists()
+
+    def test_default_format_is_pdf(self):
+        """Verify that the --format argument defaults to 'pdf'."""
+        import review_paper as rp
+        ns = rp._parse_args(["dummy_paper.pdf"])
+        assert ns.format == "pdf"
+
+    def test_default_reports_dir_is_reports(self):
+        """Verify that --reports-dir defaults to 'reports'."""
+        import review_paper as rp
+        ns = rp._parse_args(["dummy_paper.pdf"])
+        assert ns.reports_dir == "reports"
+
+
+# ---------------------------------------------------------------------------
+# _read_papers_file
+# ---------------------------------------------------------------------------
+
+
+class TestReadPapersFile:
+    """Tests for the NDJSON batch-input reader."""
+
+    def _write(self, path: Path, content: str) -> None:
+        path.write_text(content, encoding="utf-8")
+
+    def test_reads_url_entries(self, tmp_path):
+        from review_paper import _read_papers_file
+        f = tmp_path / "p.ndjson"
+        self._write(f, '{"url": "https://arxiv.org/abs/2006.06138"}\n{"url": "https://arxiv.org/pdf/2602.04770"}\n')
+        result = _read_papers_file(f)
+        assert result == [
+            "https://arxiv.org/abs/2006.06138",
+            "https://arxiv.org/pdf/2602.04770",
+        ]
+
+    def test_reads_path_entries(self, tmp_path):
+        from review_paper import _read_papers_file
+        f = tmp_path / "p.ndjson"
+        self._write(f, '{"path": "/some/paper.pdf"}\n{"path": "/other/paper.txt"}\n')
+        result = _read_papers_file(f)
+        assert result == ["/some/paper.pdf", "/other/paper.txt"]
+
+    def test_skips_blank_lines(self, tmp_path):
+        from review_paper import _read_papers_file
+        f = tmp_path / "p.ndjson"
+        self._write(f, '\n{"url": "https://example.com/p.pdf"}\n\n')
+        assert len(_read_papers_file(f)) == 1
+
+    def test_skips_comment_lines(self, tmp_path):
+        from review_paper import _read_papers_file
+        f = tmp_path / "p.ndjson"
+        self._write(f, '# a comment\n{"url": "https://example.com/p.pdf"}\n')
+        assert len(_read_papers_file(f)) == 1
+
+    def test_invalid_json_raises_exit(self, tmp_path):
+        from review_paper import _read_papers_file
+        f = tmp_path / "p.ndjson"
+        self._write(f, "not valid json\n")
+        with pytest.raises(SystemExit, match="invalid JSON"):
+            _read_papers_file(f)
+
+    def test_missing_url_or_path_key_raises_exit(self, tmp_path):
+        from review_paper import _read_papers_file
+        f = tmp_path / "p.ndjson"
+        self._write(f, '{"title": "some paper"}\n')
+        with pytest.raises(SystemExit, match="'url' or 'path'"):
+            _read_papers_file(f)
+
+    def test_empty_file_raises_exit(self, tmp_path):
+        from review_paper import _read_papers_file
+        f = tmp_path / "p.ndjson"
+        self._write(f, "")
+        with pytest.raises(SystemExit, match="no papers"):
+            _read_papers_file(f)
+
+    def test_missing_file_raises_exit(self, tmp_path):
+        from review_paper import _read_papers_file
+        with pytest.raises(SystemExit, match="could not read"):
+            _read_papers_file(tmp_path / "nonexistent.ndjson")
+
+
+# ---------------------------------------------------------------------------
+# Argument parsing — batch mode
+# ---------------------------------------------------------------------------
+
+
+class TestPaperArgOptional:
+    """Verify that the paper positional arg is optional when --papers-file is given."""
+
+    def test_paper_defaults_to_none(self):
+        import review_paper as rp
+        ns = rp._parse_args(["--papers-file", "batch.ndjson"])
+        assert ns.paper is None
+        assert ns.papers_file == "batch.ndjson"
+
+    def test_paper_still_works_positionally(self):
+        import review_paper as rp
+        ns = rp._parse_args(["my_paper.pdf"])
+        assert ns.paper == "my_paper.pdf"
+        assert ns.papers_file is None
+
+    def test_papers_file_default_is_none(self):
+        import review_paper as rp
+        ns = rp._parse_args(["my_paper.pdf"])
+        assert ns.papers_file is None
+
+
+# ---------------------------------------------------------------------------
+# main() — batch mode integration
+# ---------------------------------------------------------------------------
+
+
+class TestMainBatchMode:
+    """Verify batch review behaviour via --papers-file."""
+
+    _SAMPLE_TEXT = (
+        "Attention Is All You Need\n\n"
+        "Abstract\nWe propose the Transformer.\n\n"
+        "1. Introduction\nNeural networks are great.\n"
+    )
+
+    def _write_ndjson(self, path: Path, entries: list) -> None:
+        import json
+        path.write_text(
+            "\n".join(json.dumps(e) for e in entries), encoding="utf-8"
+        )
+
+    def test_batch_reviews_multiple_papers(self, tmp_path):
+        paper1 = tmp_path / "paper1.txt"
+        paper2 = tmp_path / "paper2.txt"
+        paper1.write_text(
+            "Attention Is All You Need\n\n"
+            "Abstract\nWe propose the Transformer.\n\n"
+            "1. Introduction\nNeural networks are great.\n",
+            encoding="utf-8",
+        )
+        paper2.write_text(
+            "BERT: Pre-training Deep Bidirectional Transformers\n\n"
+            "Abstract\nWe introduce BERT for language representation.\n\n"
+            "1. Introduction\nBidirectional training matters.\n",
+            encoding="utf-8",
+        )
+
+        batch_file = tmp_path / "batch.ndjson"
+        self._write_ndjson(batch_file, [
+            {"path": str(paper1)},
+            {"path": str(paper2)},
+        ])
+
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        reports_dir = tmp_path / "reports"
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([
+                "--papers-file", str(batch_file),
+                "--format", "text",
+                "--reports-dir", str(reports_dir),
+            ])
+
+        assert rc == 0
+        assert len(list(reports_dir.glob("*.txt"))) == 2
+
+    def test_batch_partial_failure_returns_nonzero(self, tmp_path):
+        paper_good = tmp_path / "paper1.txt"
+        paper_good.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+
+        batch_file = tmp_path / "batch.ndjson"
+        self._write_ndjson(batch_file, [
+            {"path": str(paper_good)},
+            {"path": str(tmp_path / "missing.txt")},  # does not exist
+        ])
+
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([
+                "--papers-file", str(batch_file),
+                "--format", "text",
+                "--reports-dir", str(tmp_path / "reports"),
+            ])
+
+        assert rc == 1
+
+    def test_no_paper_and_no_file_returns_error(self, capsys):
+        rc = main([])
+        assert rc == 1
+        assert "papers-file" in capsys.readouterr().err
+
+    def test_both_paper_and_file_returns_error(self, tmp_path, capsys):
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        batch_file = tmp_path / "batch.ndjson"
+        batch_file.write_text('{"path": "x.txt"}', encoding="utf-8")
+
+        rc = main([str(paper), "--papers-file", str(batch_file)])
+        assert rc == 1
+        assert "not both" in capsys.readouterr().err
+
+    def test_output_with_batch_returns_error(self, tmp_path, capsys):
+        batch_file = tmp_path / "batch.ndjson"
+        batch_file.write_text('{"path": "x.txt"}', encoding="utf-8")
+
+        rc = main([
+            "--papers-file", str(batch_file),
+            "--output", str(tmp_path / "out.txt"),
+        ])
+        assert rc == 1
+        assert "--output" in capsys.readouterr().err
+
+    def test_batch_file_not_found_returns_error(self, tmp_path, capsys):
+        rc = main(["--papers-file", str(tmp_path / "nonexistent.ndjson")])
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "could not read" in err.lower() or "nonexistent" in err

@@ -11,16 +11,12 @@ on:
         description: "URL of the paper to review (e.g. https://arxiv.org/abs/2006.06138)"
         required: false
         default: ""
-      paper_path:
-        description: "Relative path to the paper file inside the repo (e.g. papers/my_paper.pdf) — used only when paper_url is empty"
+      papers_file:
+        description: "NDJSON batch file name inside data/ listing papers to review (default: test_papers.ndjson) — used only when paper_url is empty"
         required: false
-        default: ""
-      references_path:
-        description: "Relative path to a references JSON file (optional)"
-        required: false
-        default: ""
+        default: "test_papers.ndjson"
       output_format:
-        description: "Report format: text | markdown | json"
+        description: "Report format: text | markdown | json | pdf (default: markdown)"
         required: false
         default: "markdown"
 
@@ -45,13 +41,37 @@ jobs:
         run: python -m pytest tests/ -v
 
   review:
-    name: Review paper (manual trigger)
+    name: Review paper (manual trigger or main merge)
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.paper_url != '' || github.event.inputs.paper_path != '')
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     needs: test
+    permissions:
+      contents: write
 
     steps:
+      - name: Validate inputs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PAPER_URL: ${{ inputs.paper_url }}
+          PAPERS_FILE: ${{ inputs.papers_file }}
+          GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
+          GH_PAPERS_FILE: ${{ github.event.inputs.papers_file }}
+        run: |
+          # Push-triggered runs always use the default batch file — no inputs to validate.
+          if [ "$EVENT_NAME" = "push" ]; then
+            echo "Push-triggered run — using default batch file (data/test_papers.ndjson)."
+            exit 0
+          fi
+          PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"
+          PAPERS_FILE="${PAPERS_FILE:-$GH_PAPERS_FILE}"
+          if [ -z "$PAPER_URL" ] && [ -z "$PAPERS_FILE" ]; then
+            echo "::error::Please provide paper_url or papers_file when triggering this workflow. Both are currently empty."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -62,40 +82,62 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Review paper
+      - name: Review paper(s)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PAPER_URL: ${{ inputs.paper_url }}
-          PAPER_PATH: ${{ inputs.paper_path }}
-          REFS_PATH: ${{ inputs.references_path }}
+          PAPERS_FILE: ${{ inputs.papers_file }}
           OUTPUT_FORMAT: ${{ inputs.output_format }}
+          GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
+          GH_PAPERS_FILE: ${{ github.event.inputs.papers_file }}
+          GH_OUTPUT_FORMAT: ${{ github.event.inputs.output_format }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          # URL takes precedence over path
+          # Fall back to github.event.inputs for re-run compatibility
+          PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"
+          PAPERS_FILE="${PAPERS_FILE:-$GH_PAPERS_FILE}"
+          OUTPUT_FORMAT="${OUTPUT_FORMAT:-$GH_OUTPUT_FORMAT}"
+
+          mkdir -p reports
+
+          # URL takes precedence over batch file; batch file is relative to data/
           if [ -n "$PAPER_URL" ]; then
-            PAPER_ARG="$PAPER_URL"
+            python review_paper.py "$PAPER_URL" \
+              --format "${OUTPUT_FORMAT:-markdown}" \
+              --reports-dir reports
           else
-            PAPER_ARG="$PAPER_PATH"
+            python review_paper.py \
+              --papers-file "data/${PAPERS_FILE:-test_papers.ndjson}" \
+              --format "${OUTPUT_FORMAT:-markdown}" \
+              --reports-dir reports
           fi
 
-          # Pick file extension to match the chosen format
-          case "$OUTPUT_FORMAT" in
-            json)     REPORT_FILE="report.json" ;;
-            text)     REPORT_FILE="report.txt"  ;;
-            *)        REPORT_FILE="report.md"   ;;
-          esac
-
-          if [ -n "$REFS_PATH" ]; then
-            python review_paper.py "$PAPER_ARG" \
-              --references "$REFS_PATH" \
-              --format "$OUTPUT_FORMAT" | tee "$REPORT_FILE"
-          else
-            python review_paper.py "$PAPER_ARG" \
-              --format "$OUTPUT_FORMAT" | tee "$REPORT_FILE"
-          fi
-          echo "REPORT_FILE=$REPORT_FILE" >> "$GITHUB_ENV"
-
-      - name: Upload report
+      - name: Upload reports as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: novelty-report
-          path: ${{ env.REPORT_FILE }}
+          name: src-ideas-reports
+          path: reports/
+
+      - name: Publish reports to reports branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Set up a worktree pointing at the reports branch (create orphan if absent)
+          if git ls-remote --exit-code --heads origin reports > /dev/null 2>&1; then
+            git fetch origin reports
+            git worktree add /tmp/reports-branch origin/reports
+          else
+            git worktree add --orphan -b reports /tmp/reports-branch
+          fi
+
+          cp reports/* "/tmp/reports-branch/"
+
+          cd /tmp/reports-branch
+          git add .
+          if git diff --cached --quiet; then
+            echo "No new reports to commit."
+          else
+            git commit -m "reports: run #${{ github.run_number }}"
+            git push origin HEAD:reports
+          fi

@@ -1,0 +1,75 @@
+name: Release
+
+# Trigger: push an annotated tag like v1.2.3 or v2.0.0-beta.1
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed to create the release and upload assets
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history so we can build a changelog excerpt
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest tests/ -q
+
+      # Extract the version string from the pushed tag (strip leading "v").
+      - name: Derive version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # Verify that __version__ in the package matches the pushed tag.
+      # The recommended workflow is to update __version__ in a PR *before*
+      # creating the tag — this step catches mismatches early.
+      - name: Verify package version matches tag
+        run: |
+          PKG_VERSION=$(python -c "from open_idea_sourcing import __version__; print(__version__)")
+          TAG_VERSION="${{ steps.version.outputs.VERSION }}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::open_idea_sourcing/__version__ ($PKG_VERSION) does not match tag ($TAG_VERSION)."
+            echo "::error::Please update __version__ in open_idea_sourcing/__init__.py in a PR before pushing this tag."
+            exit 1
+          fi
+          echo "Version check passed: $PKG_VERSION"
+
+      # Extract the changelog entry for this tag from CHANGELOG.md.
+      # The stop pattern matches only the next versioned heading (## [x.y.z])
+      # so sub-headings (###) inside an entry are included correctly.
+      # Falls back to a generic message if no entry is found.
+      - name: Extract changelog entry
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          # Grab lines between "## [VERSION]" and the next "## [" heading.
+          NOTES=$(awk "/^## \[$VERSION\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md 2>/dev/null || true)
+          if [ -z "$NOTES" ]; then
+            NOTES="See [CHANGELOG.md](CHANGELOG.md) for details."
+          fi
+          # Write to a temp file to avoid quoting issues with multiline strings.
+          printf '%s' "$NOTES" > /tmp/release_notes.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "${{ github.ref_name }}"
+          body_path: /tmp/release_notes.txt
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

@@ -302,3 +302,64 @@ class TestNoveltyEvaluator:
         text = NoveltyEvaluator._format_references(similar)
         assert "Attention Is All You Need" in text
         assert "0.90" in text
+
+
+# ---------------------------------------------------------------------------
+# NoveltyEvaluator.evaluate() with metadata (job log)
+# ---------------------------------------------------------------------------
+
+class TestNoveltyEvaluatorJobLog:
+    def _make_metadata(self) -> "RunMetadata":
+        from open_idea_sourcing.novelty_evaluator import RunMetadata
+        return RunMetadata(model="gpt-test", input_source="paper.txt")
+
+    def test_evaluate_with_metadata_appends_four_jobs(self):
+        meta = self._make_metadata()
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        evaluator.evaluate(SAMPLE_PAPER, metadata=meta)
+        # 4 LLM jobs: duplication, combination, equivalence, synthesis
+        assert len(meta.jobs) == 4
+
+    def test_evaluate_job_names(self):
+        meta = self._make_metadata()
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        evaluator.evaluate(SAMPLE_PAPER, metadata=meta)
+        names = [j.name for j in meta.jobs]
+        assert "Duplication check" in names
+        assert "Combination check" in names
+        assert "Equivalence check" in names
+        assert "Synthesis" in names
+
+    def test_evaluate_job_agent_includes_model(self):
+        meta = self._make_metadata()
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        evaluator.evaluate(SAMPLE_PAPER, metadata=meta)
+        for job in meta.jobs:
+            assert "gpt-test" in job.agent
+
+    def test_evaluate_without_metadata_no_jobs(self):
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        report = evaluator.evaluate(SAMPLE_PAPER)
+        assert report.metadata is None
+
+    def test_evaluate_jobs_have_non_negative_durations(self):
+        meta = self._make_metadata()
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        evaluator.evaluate(SAMPLE_PAPER, metadata=meta)
+        for job in meta.jobs:
+            assert job.duration_s >= 0.0
+
+    def test_pre_existing_jobs_are_preserved(self):
+        from open_idea_sourcing.novelty_evaluator import PipelineJob, RunMetadata
+        meta = RunMetadata(model="gpt-test", input_source="paper.txt")
+        meta.jobs.append(PipelineJob(
+            name="Parse paper", agent="PaperParser",
+            offset_s=0.0, duration_s=0.3,
+            input_summary="paper.txt",
+            output_summary='"My Paper", 500 chars',
+        ))
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        evaluator.evaluate(SAMPLE_PAPER, metadata=meta)
+        # 1 pre-existing + 4 from evaluator = 5
+        assert len(meta.jobs) == 5
+        assert meta.jobs[0].name == "Parse paper"
