@@ -880,3 +880,16 @@ class TestBundledReferencesLoadedByDefault:
         from review_paper import _BUNDLED_REFERENCES
         assert _BUNDLED_REFERENCES.name == "references.json"
         assert _BUNDLED_REFERENCES.exists()
+
+    def test_references_default_is_bundled_file(self):
+        """--references defaults to the bundled baseline corpus path."""
+        from review_paper import _parse_args, _BUNDLED_REFERENCES
+        args = _parse_args(["paper.txt", "--format", "text"])
+        assert args.references == str(_BUNDLED_REFERENCES)
+
+    def test_references_can_be_overridden_on_cli(self, tmp_path):
+        """Passing --references overrides the default bundled path."""
+        from review_paper import _parse_args
+        custom = str(tmp_path / "custom.json")
+        args = _parse_args(["paper.txt", "--references", custom, "--format", "text"])
+        assert args.references == custom

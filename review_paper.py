@@ -303,8 +303,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--references",
         metavar="FILE",
-        default=None,
-        help="Path to a JSON file containing reference papers to compare against.",
+        default=str(_BUNDLED_REFERENCES),
+        help=(
+            "Path to a JSON file containing reference papers to compare against. "
+            "Defaults to the bundled baseline corpus (data/references.json). "
+            "Pass an empty string ('') to disable reference comparison."
+        ),
     )
     parser.add_argument(
         "--save-references",
@@ -431,9 +435,10 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             return _fail("no text could be extracted from the paper.", args.format)
 
         # --- Load reference store ---
-        # Always start with the bundled default references so that every run
-        # benefits from the curated baseline corpus.  Any user-supplied store
-        # (via --references) is merged on top.
+        # By default --references points to the bundled baseline corpus
+        # (data/references.json).  Pass an empty string to skip it.
+        # Any user-supplied store is loaded and merged on top so that the
+        # full combined corpus is available to the similarity search.
         store = ReferenceStore()
         if _BUNDLED_REFERENCES.exists():
             store.load(_BUNDLED_REFERENCES)
@@ -441,7 +446,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 f"Loaded {len(store)} bundled reference(s) from {_BUNDLED_REFERENCES.name}",
                 file=sys.stderr,
             )
-        if args.references:
+        if args.references and args.references != str(_BUNDLED_REFERENCES):
             ref_path = Path(args.references)
             if ref_path.exists():
                 print(f"Loading reference store: {ref_path} ...", file=sys.stderr)
