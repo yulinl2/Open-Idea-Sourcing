@@ -66,14 +66,15 @@ def _ny_tz() -> ZoneInfo:
 def _fmt_datetime_ny(ts: str) -> str:
     """Format an ISO 8601 UTC timestamp as a human-readable New York time string.
 
-    Converts *ts* to America/New_York (EDT or EST, auto-selected by date) and
-    formats the result as ``YYYY-MM-DD HH:MM:SS EDT/EST`` for human readability.
-    Falls back to ``str(ts)`` if it cannot be parsed or if the IANA timezone
-    database is unavailable (e.g. bare Windows without ``tzdata``).
+    Converts *ts* to America/New_York and formats the result as
+    ``YYYY-MM-DD HH:MM:SS -0400 America/New_York`` (with the numeric offset
+    auto-selected by date). Falls back to ``str(ts)`` if it cannot be parsed or
+    if the IANA timezone database is unavailable (e.g. bare Windows without
+    ``tzdata``).
     """
     try:
         dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        return dt.astimezone(_ny_tz()).strftime("%Y-%m-%d %H:%M:%S %Z")
+        return dt.astimezone(_ny_tz()).strftime("%Y-%m-%d %H:%M:%S %z America/New_York")
     except (ValueError, TypeError, ZoneInfoNotFoundError):
         return str(ts)
 
