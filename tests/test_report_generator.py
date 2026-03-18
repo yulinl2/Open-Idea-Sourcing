@@ -187,6 +187,10 @@ class TestRunMetadata:
         assert m.total_runtime_seconds == 0.0
         assert m.stage_runtimes == {}
         assert m.code_version == ""
+        assert m.git_branch == ""
+        assert m.git_commit == ""
+        assert m.git_commit_url == ""
+        assert m.ci_run_url == ""
 
     def test_all_fields_set(self):
         m = _sample_metadata()
@@ -196,6 +200,18 @@ class TestRunMetadata:
         assert m.total_runtime_seconds == pytest.approx(15.3)
         assert m.stage_runtimes["parsing"] == pytest.approx(0.4)
         assert m.code_version == "1.0.0"
+
+    def test_git_fields(self):
+        m = RunMetadata(
+            git_branch="main",
+            git_commit="abc1234",
+            git_commit_url="https://github.com/org/repo/commit/abc1234def",
+            ci_run_url="https://github.com/org/repo/actions/runs/42",
+        )
+        assert m.git_branch == "main"
+        assert m.git_commit == "abc1234"
+        assert "abc1234def" in m.git_commit_url
+        assert "runs/42" in m.ci_run_url
 
 
 class TestSuggestFilename:
@@ -240,9 +256,11 @@ class TestSuggestFilename:
         # No metadata => no date segment
         assert "2024" not in name
 
-    def test_filename_starts_with_novelty_report(self):
+    def test_filename_does_not_have_novelty_report_prefix(self):
         name = suggest_filename(self.report, "markdown")
-        assert name.startswith("novelty_report_")
+        assert not name.startswith("novelty_report_")
+        # Title should be the first component
+        assert name.startswith("A_Test_Paper")
 
     def test_special_characters_sanitised(self):
         self.report.paper_title = "Paper: A & B (2024)!"
@@ -413,3 +431,253 @@ class TestGeneratePdf:
         pytest.importorskip("markdown")
         with pytest.raises(RuntimeError, match="weasyprint"):
             self.gen.generate_pdf(self.report, tmp_path / "report.pdf")
+
+
+# ---------------------------------------------------------------------------
+# PipelineJob dataclass
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import PipelineJob
+
+
+def _sample_jobs() -> list[PipelineJob]:
+    return [
+        PipelineJob(
+            name="Parse paper",
+            agent="PaperParser",
+            offset_s=0.0,
+            duration_s=0.4,
+            input_summary="paper.pdf",
+            output_summary='"A Test Paper", 2000 chars',
+        ),
+        PipelineJob(
+            name="Duplication check",
+            agent="LLM (gpt-4o)",
+            offset_s=0.5,
+            duration_s=5.2,
+            input_summary="paper content + 2 reference paper(s)",
+            output_summary="verdict=HIGH",
+        ),
+        PipelineJob(
+            name="Synthesis",
+            agent="LLM (gpt-4o)",
+            offset_s=16.1,
+            duration_s=4.8,
+            input_summary="3 dimension results",
+            output_summary="verdict=NOT_NOVEL, confidence=HIGH",
+        ),
+    ]
+
+
+def _sample_report_with_jobs(verdict: str = "NOT_NOVEL") -> NoveltyReport:
+    report = _sample_report(verdict)
+    report.metadata = _sample_metadata()
+    report.metadata.jobs = _sample_jobs()
+    return report
+
+
+class TestPipelineJob:
+    def test_fields_stored(self):
+        job = PipelineJob(
+            name="Test", agent="Agent", offset_s=1.5, duration_s=3.0,
+            input_summary="in", output_summary="out",
+        )
+        assert job.name == "Test"
+        assert job.agent == "Agent"
+        assert job.offset_s == 1.5
+        assert job.duration_s == 3.0
+        assert job.input_summary == "in"
+        assert job.output_summary == "out"
+
+
+class TestMetadataOnTop:
+    """Verify that metadata appears BEFORE the main report body in all formats."""
+
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_with_jobs()
+
+    def test_markdown_metadata_before_verdict(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert out.index("## Run Metadata") < out.index("**Overall verdict:**")
+
+    def test_markdown_job_log_before_verdict(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert out.index("## Pipeline Job Log") < out.index("**Overall verdict:**")
+
+    def test_markdown_metadata_before_job_log(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert out.index("## Run Metadata") < out.index("## Pipeline Job Log")
+
+    def test_text_metadata_before_paper_line(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert out.index("RUN METADATA") < out.index("Paper  :")
+
+    def test_text_job_log_before_paper_line(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert out.index("PIPELINE JOB LOG") < out.index("Paper  :")
+
+
+class TestMetadataGitContext:
+    """Verify that git/CI context fields appear in the rendered reports."""
+
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report()
+        self.report.metadata = RunMetadata(
+            model="gpt-4o",
+            input_source="my_paper.pdf",
+            timestamp="2024-06-01T12:00:00Z",
+            total_runtime_seconds=15.3,
+            stage_runtimes={"parsing": 0.4},
+            code_version="1.0.0",
+            git_branch="feat/my-branch",
+            git_commit="abc1234",
+            git_commit_url="https://github.com/org/repo/commit/abc1234def",
+            ci_run_url="https://github.com/org/repo/actions/runs/42",
+        )
+
+    def test_markdown_contains_branch(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "feat/my-branch" in out
+
+    def test_markdown_contains_commit_link(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "abc1234" in out
+        assert "abc1234def" in out
+
+    def test_markdown_commit_is_hyperlink(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "[`abc1234`](https://github.com/org/repo/commit/abc1234def)" in out
+
+    def test_markdown_contains_ci_run_link(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "runs/42" in out
+
+    def test_markdown_ci_run_is_hyperlink(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "Run #42" in out
+        assert "https://github.com/org/repo/actions/runs/42" in out
+
+    def test_text_contains_branch(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "feat/my-branch" in out
+
+    def test_text_contains_commit(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "abc1234" in out
+
+    def test_text_contains_ci_run_url(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "runs/42" in out
+
+    def test_text_grouped_metadata_sections(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "[Run Context]" in out
+        assert "[Configuration]" in out
+        assert "[Performance]" in out
+
+    def test_json_contains_git_fields(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert data["metadata"]["git_branch"] == "feat/my-branch"
+        assert data["metadata"]["git_commit"] == "abc1234"
+        assert "abc1234def" in data["metadata"]["git_commit_url"]
+        assert "runs/42" in data["metadata"]["ci_run_url"]
+
+    def test_markdown_commit_without_url_shows_code_span(self):
+        self.report.metadata.git_commit_url = ""
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "`abc1234`" in out
+
+    def test_markdown_omits_ci_run_when_empty(self):
+        self.report.metadata.ci_run_url = ""
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "CI Run" not in out
+
+
+class TestPipelineJobLogInMarkdown:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_with_jobs()
+
+    def test_markdown_contains_pipeline_log_section(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "## Pipeline Job Log" in out
+
+    def test_markdown_contains_gantt_diagram(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "```mermaid" in out
+        assert "gantt" in out
+
+    def test_gantt_contains_job_names(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "Parse paper" in out
+        assert "Synthesis" in out
+
+    def test_gantt_has_sections_by_agent(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "section PaperParser" in out
+        assert "section LLM (gpt-4o)" in out
+
+    def test_markdown_job_table_contains_agents(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "PaperParser" in out
+        assert "LLM (gpt-4o)" in out
+
+    def test_markdown_no_pipeline_log_without_jobs(self):
+        report = _sample_report()
+        report.metadata = _sample_metadata()
+        out = self.gen.generate(report, fmt="markdown")
+        assert "## Pipeline Job Log" not in out
+        assert "```mermaid" not in out
+
+
+class TestPipelineJobLogInText:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_with_jobs()
+
+    def test_text_contains_pipeline_job_log(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "PIPELINE JOB LOG" in out
+
+    def test_text_contains_job_names(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "Parse paper" in out
+        assert "Synthesis" in out
+
+    def test_text_no_pipeline_log_without_jobs(self):
+        report = _sample_report()
+        report.metadata = _sample_metadata()
+        out = self.gen.generate(report, fmt="text")
+        assert "PIPELINE JOB LOG" not in out
+
+
+class TestPipelineJobsInJSON:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_with_jobs()
+
+    def test_json_metadata_has_jobs_key(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert "jobs" in data["metadata"]
+
+    def test_json_jobs_count(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert len(data["metadata"]["jobs"]) == 3
+
+    def test_json_job_fields(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        job = data["metadata"]["jobs"][0]
+        assert "name" in job
+        assert "agent" in job
+        assert "offset_s" in job
+        assert "duration_s" in job
+        assert "input_summary" in job
+        assert "output_summary" in job
+
+    def test_json_no_jobs_key_when_no_jobs(self):
+        report = _sample_report()
+        report.metadata = _sample_metadata()
+        data = json.loads(self.gen.generate(report, fmt="json"))
+        assert data["metadata"]["jobs"] == []

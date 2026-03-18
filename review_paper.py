@@ -60,7 +60,7 @@ except ImportError:  # pragma: no cover - dependency is declared in requirements
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MiB safety limit for downloads
 
 from open_idea_sourcing import __version__
-from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator, RunMetadata
+from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator, PipelineJob, RunMetadata
 from open_idea_sourcing.paper_parser import PaperParser
 from open_idea_sourcing.reference_store import ReferenceStore
 from open_idea_sourcing.report_generator import ReportGenerator, suggest_filename
@@ -346,7 +346,8 @@ def main(argv: list[str] | None = None) -> int:
             paper = parser.parse_file(paper_path)
         except Exception as exc:
             return _fail(f"could not parse paper: {exc}", args.format)
-        stage_runtimes["parsing"] = round(time.monotonic() - t0, 2)
+        parse_duration = round(time.monotonic() - t0, 2)
+        stage_runtimes["parsing"] = parse_duration
         if not paper.full_text.strip():
             return _fail("no text could be extracted from the paper.", args.format)
 
@@ -366,7 +367,28 @@ def main(argv: list[str] | None = None) -> int:
         t0 = time.monotonic()
         searcher = SimilaritySearch(store)
         similar = searcher.search(paper.key_content(), top_k=args.top_k)
-        stage_runtimes["similarity"] = round(time.monotonic() - t0, 2)
+        sim_duration = round(time.monotonic() - t0, 2)
+        stage_runtimes["similarity"] = sim_duration
+
+        # Build early pipeline job records for pre-LLM stages
+        early_jobs = [
+            PipelineJob(
+                name="Parse paper",
+                agent="PaperParser",
+                offset_s=0.0,
+                duration_s=parse_duration,
+                input_summary=paper_path.name,
+                output_summary=f'"{paper.title}", {len(paper.full_text)} chars',
+            ),
+            PipelineJob(
+                name="Similarity search",
+                agent="SimilaritySearch",
+                offset_s=round(stage_runtimes["parsing"], 3),
+                duration_s=sim_duration,
+                input_summary="paper key content",
+                output_summary=f"top-{len(similar)} match(es)",
+            ),
+        ]
 
         # --- LLM evaluation ---
         try:
@@ -376,22 +398,55 @@ def main(argv: list[str] | None = None) -> int:
         evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
         print("Running novelty evaluation ...", file=sys.stderr)
         t0 = time.monotonic()
+
+        # Collect git/CI context from GitHub Actions environment variables.
+        # These are empty strings when running locally.
+        _gh_server = os.environ.get("GITHUB_SERVER_URL", "").rstrip("/")
+        _gh_repo = os.environ.get("GITHUB_REPOSITORY", "")
+        _gh_sha = os.environ.get("GITHUB_SHA", "")
+        _gh_run_id = os.environ.get("GITHUB_RUN_ID", "")
+        git_commit = _gh_sha[:7] if _gh_sha else ""
+        git_commit_url = (
+            f"{_gh_server}/{_gh_repo}/commit/{_gh_sha}"
+            if (_gh_server and _gh_repo and _gh_sha)
+            else ""
+        )
+        ci_run_url = (
+            f"{_gh_server}/{_gh_repo}/actions/runs/{_gh_run_id}"
+            if (_gh_server and _gh_repo and _gh_run_id)
+            else ""
+        )
+
+        # Pre-build the metadata object so per-job timings can be appended
+        # inside evaluate() as each LLM call completes.
+        run_metadata = RunMetadata(
+            model=args.model,
+            input_source=args.paper,
+            timestamp=timestamp,
+            stage_runtimes=stage_runtimes,
+            code_version=__version__,
+            git_branch=os.environ.get("GITHUB_REF_NAME", ""),
+            git_commit=git_commit,
+            git_commit_url=git_commit_url,
+            ci_run_url=ci_run_url,
+            jobs=early_jobs,
+        )
         try:
-            report = evaluator.evaluate(paper, similar_papers=similar)
+            report = evaluator.evaluate(
+                paper,
+                similar_papers=similar,
+                metadata=run_metadata,
+                _run_start=run_start,
+            )
         except RuntimeError as exc:
             return _fail(f"novelty evaluation failed: {exc}", args.format)
         stage_runtimes["evaluation"] = round(time.monotonic() - t0, 2)
 
         # --- Attach run metadata ---
         total_runtime = round(time.monotonic() - run_start, 2)
-        report.metadata = RunMetadata(
-            model=args.model,
-            input_source=args.paper,
-            timestamp=timestamp,
-            total_runtime_seconds=total_runtime,
-            stage_runtimes=stage_runtimes,
-            code_version=__version__,
-        )
+        run_metadata.total_runtime_seconds = total_runtime
+        run_metadata.stage_runtimes = stage_runtimes
+        report.metadata = run_metadata
 
         # --- Optionally save updated store ---
         if args.save_references:

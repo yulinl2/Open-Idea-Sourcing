@@ -15,6 +15,7 @@ and is straightforward to test without live API calls.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
@@ -24,6 +25,34 @@ from .similarity_search import SimilarityResult
 
 # Type alias for the LLM callable
 LLMCallable = Callable[[str], str]
+
+
+@dataclass
+class PipelineJob:
+    """Record of a single pipeline step execution.
+
+    Attributes
+    ----------
+    name:
+        Human-readable step name, e.g. ``"Duplication check"``.
+    agent:
+        Component that performed the step, e.g. ``"LLM (gpt-4o)"``.
+    offset_s:
+        Seconds elapsed since the start of the run when this job began.
+    duration_s:
+        Wall-clock duration of the job in seconds.
+    input_summary:
+        Brief description of the input, e.g. ``"paper content + 3 refs"``.
+    output_summary:
+        Brief description of the output, e.g. ``"verdict=HIGH"``.
+    """
+
+    name: str
+    agent: str
+    offset_s: float
+    duration_s: float
+    input_summary: str
+    output_summary: str
 
 
 @dataclass
@@ -45,6 +74,17 @@ class RunMetadata:
         ``{"parsing": 0.3, "similarity": 0.1, "evaluation": 12.4}``.
     code_version:
         Package version string for reproducibility tracing.
+    git_branch:
+        Name of the Git branch the run was triggered from.
+    git_commit:
+        Short commit SHA (7 chars) for the code that produced the report.
+    git_commit_url:
+        Full URL to the commit on GitHub (e.g. ``https://github.com/org/repo/commit/<sha>``).
+    ci_run_url:
+        URL to the CI workflow run that produced the report (empty when run locally).
+    jobs:
+        Ordered list of :class:`PipelineJob` entries recorded during
+        evaluation, suitable for rendering a Gantt-style job log.
     """
 
     model: str = ""
@@ -53,6 +93,11 @@ class RunMetadata:
     total_runtime_seconds: float = 0.0
     stage_runtimes: dict[str, float] = field(default_factory=dict)
     code_version: str = ""
+    git_branch: str = ""
+    git_commit: str = ""
+    git_commit_url: str = ""
+    ci_run_url: str = ""
+    jobs: list[PipelineJob] = field(default_factory=list)
 
 
 @dataclass
@@ -121,6 +166,8 @@ class NoveltyEvaluator:
         self,
         paper: ParsedPaper,
         similar_papers: Optional[list[SimilarityResult]] = None,
+        metadata: Optional[RunMetadata] = None,
+        _run_start: Optional[float] = None,
     ) -> NoveltyReport:
         """Run all evaluation passes and return a :class:`NoveltyReport`.
 
@@ -131,6 +178,14 @@ class NoveltyEvaluator:
         similar_papers:
             Pre-computed similarity results.  If *None*, LLM analysis
             proceeds without reference anchoring.
+        metadata:
+            Optional :class:`RunMetadata` to update with per-job timing
+            entries.  When supplied, a :class:`PipelineJob` entry is
+            appended to ``metadata.jobs`` for each LLM call.
+        _run_start:
+            ``time.monotonic()`` value from the very start of the run,
+            used to compute per-job offset timestamps.  If *None*, the
+            start of this call is used as the reference point.
         """
         similar_papers = similar_papers or []
         # Apply threshold and top-k filtering
@@ -140,14 +195,57 @@ class NoveltyEvaluator:
         content = paper.key_content()
         refs_text = self._format_references(similar_papers)
         raw: dict[str, str] = {}
+        refs_summary = f"{len(similar_papers)} reference paper(s)"
+        agent = f"LLM ({metadata.model})" if (metadata and metadata.model) else "LLM"
+        run_start = _run_start if _run_start is not None else time.monotonic()
 
+        t0 = time.monotonic()
         dup = self._check_duplication(content, refs_text, raw)
+        t1 = time.monotonic()
         combo = self._check_combination(content, refs_text, raw)
+        t2 = time.monotonic()
         equiv = self._check_equivalence(content, refs_text, raw)
-
+        t3 = time.monotonic()
         overall, confidence, summary = self._synthesise(
             paper.title, dup, combo, equiv, raw
         )
+        t4 = time.monotonic()
+
+        if metadata is not None:
+            metadata.jobs.extend([
+                PipelineJob(
+                    name="Duplication check",
+                    agent=agent,
+                    offset_s=round(t0 - run_start, 3),
+                    duration_s=round(t1 - t0, 3),
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"verdict={dup.verdict}",
+                ),
+                PipelineJob(
+                    name="Combination check",
+                    agent=agent,
+                    offset_s=round(t1 - run_start, 3),
+                    duration_s=round(t2 - t1, 3),
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"verdict={combo.verdict}",
+                ),
+                PipelineJob(
+                    name="Equivalence check",
+                    agent=agent,
+                    offset_s=round(t2 - run_start, 3),
+                    duration_s=round(t3 - t2, 3),
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"verdict={equiv.verdict}",
+                ),
+                PipelineJob(
+                    name="Synthesis",
+                    agent=agent,
+                    offset_s=round(t3 - run_start, 3),
+                    duration_s=round(t4 - t3, 3),
+                    input_summary="3 dimension results",
+                    output_summary=f"verdict={overall}, confidence={confidence}",
+                ),
+            ])
 
         return NoveltyReport(
             paper_title=paper.title,
