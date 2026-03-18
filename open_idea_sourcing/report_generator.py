@@ -18,9 +18,10 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .novelty_evaluator import NoveltyReport, RunMetadata
 
@@ -56,7 +57,10 @@ pre code { display: block; padding: 10px; }
 """
 
 
-_NY_TZ = ZoneInfo("America/New_York")
+@lru_cache(maxsize=None)
+def _ny_tz() -> ZoneInfo:
+    """Return the America/New_York ZoneInfo, cached after the first load."""
+    return ZoneInfo("America/New_York")
 
 
 def _fmt_datetime_ny(ts: str) -> str:
@@ -64,13 +68,14 @@ def _fmt_datetime_ny(ts: str) -> str:
 
     Converts *ts* to America/New_York (EDT or EST, auto-selected by date) and
     formats the result as ``YYYY-MM-DD HH:MM:SS EDT/EST`` for human readability.
-    Returns *ts* unchanged if it cannot be parsed.
+    Falls back to ``str(ts)`` if it cannot be parsed or if the IANA timezone
+    database is unavailable (e.g. bare Windows without ``tzdata``).
     """
     try:
         dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        return dt.astimezone(_NY_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
-    except ValueError:
-        return ts
+        return dt.astimezone(_ny_tz()).strftime("%Y-%m-%d %H:%M:%S %Z")
+    except (ValueError, TypeError, ZoneInfoNotFoundError):
+        return str(ts)
 
 
 def suggest_filename(report: NoveltyReport, fmt: str = "markdown") -> str:
