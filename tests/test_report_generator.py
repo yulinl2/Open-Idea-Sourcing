@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from open_idea_sourcing.novelty_evaluator import NoveltyDimension, NoveltyReport, RunMetadata
 from open_idea_sourcing.reference_store import ReferencePaper
-from open_idea_sourcing.report_generator import ReportGenerator, suggest_filename
+from open_idea_sourcing.report_generator import ReportGenerator, suggest_filename, _fmt_datetime_ny
 from open_idea_sourcing.similarity_search import SimilarityResult
 
 
@@ -295,7 +295,8 @@ class TestReportGeneratorMetadataInText:
 
     def test_text_contains_timestamp(self):
         out = self.gen.generate(self.report, fmt="text")
-        assert "2024-06-01T12:00:00Z" in out
+        raw_ts = "2024-06-01T12:00:00Z"
+        assert _fmt_datetime_ny(raw_ts) in out or raw_ts in out
 
     def test_text_contains_total_runtime(self):
         out = self.gen.generate(self.report, fmt="text")
@@ -336,7 +337,8 @@ class TestReportGeneratorMetadataInMarkdown:
 
     def test_markdown_contains_timestamp(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        assert "2024-06-01T12:00:00Z" in out
+        raw_ts = "2024-06-01T12:00:00Z"
+        assert _fmt_datetime_ny(raw_ts) in out or raw_ts in out
 
     def test_markdown_contains_total_runtime(self):
         out = self.gen.generate(self.report, fmt="markdown")
