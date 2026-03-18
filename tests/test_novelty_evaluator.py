@@ -3,11 +3,16 @@
 import pytest
 
 from open_idea_sourcing.novelty_evaluator import (
+    DomainReference,
+    IdeaDecomposition,
     NoveltyDimension,
     NoveltyEvaluator,
     NoveltyReport,
     _extract_field,
+    _parse_decomposition_response,
     _parse_dimension_response,
+    _parse_domain_references_response,
+    _parse_numbered_list,
     _parse_synthesis_response,
 )
 from open_idea_sourcing.paper_parser import ParsedPaper
@@ -75,6 +80,21 @@ _SYNTH_RESPONSE = (
     "CONFIDENCE: HIGH\n"
     "SUMMARY: The paper is largely a duplicate of prior attention work."
 )
+_DECOMP_RESPONSE = (
+    "CORE_CONCEPT: A dynamic masking extension of the Transformer attention mechanism.\n"
+    "SUB_IDEAS:\n"
+    "1. Dynamic attention masking\n"
+    "2. Integration with standard Transformer blocks\n"
+    "ASSUMPTIONS:\n"
+    "1. Input sequences are tokenised uniformly\n"
+    "LIMITATIONS:\n"
+    "1. Only evaluated on NLP benchmarks"
+)
+_DOMAIN_REFS_RESPONSE = (
+    "REFERENCES:\n"
+    "1. TITLE: Attention Is All You Need | AUTHORS: Vaswani et al. | YEAR: 2017 | RELEVANCE: Foundational Transformer work\n"
+    "2. TITLE: BERT | AUTHORS: Devlin et al. | YEAR: 2018 | RELEVANCE: Pre-training with masked attention"
+)
 
 
 def _make_full_llm():
@@ -84,6 +104,8 @@ def _make_full_llm():
         _COMBO_RESPONSE,
         _EQUIV_RESPONSE,
         _SYNTH_RESPONSE,
+        _DECOMP_RESPONSE,
+        _DOMAIN_REFS_RESPONSE,
     ]
     call_idx = {"i": 0}
 
@@ -275,7 +297,7 @@ class TestNoveltyEvaluator:
         report = evaluator.evaluate(SAMPLE_PAPER)
         assert report is not None
 
-    def test_llm_called_exactly_four_times(self):
+    def test_llm_called_exactly_six_times(self):
         calls = []
         def counting_llm(prompt: str) -> str:
             calls.append(prompt)
@@ -283,8 +305,8 @@ class TestNoveltyEvaluator:
 
         evaluator = NoveltyEvaluator(llm=counting_llm)
         evaluator.evaluate(SAMPLE_PAPER)
-        # 3 dimension passes + 1 synthesis pass
-        assert len(calls) == 4
+        # 3 dimension passes + 1 synthesis + 1 idea decomposition + 1 domain refs
+        assert len(calls) == 6
 
     def test_duplication_high_leads_to_not_novel(self):
         """When duplication is HIGH, synthesis should reflect that."""
@@ -313,12 +335,13 @@ class TestNoveltyEvaluatorJobLog:
         from open_idea_sourcing.novelty_evaluator import RunMetadata
         return RunMetadata(model="gpt-test", input_source="paper.txt")
 
-    def test_evaluate_with_metadata_appends_four_jobs(self):
+    def test_evaluate_with_metadata_appends_six_jobs(self):
         meta = self._make_metadata()
         evaluator = NoveltyEvaluator(llm=_make_full_llm())
         evaluator.evaluate(SAMPLE_PAPER, metadata=meta)
-        # 4 LLM jobs: duplication, combination, equivalence, synthesis
-        assert len(meta.jobs) == 4
+        # 6 LLM jobs: duplication, combination, equivalence, synthesis,
+        # idea decomposition, domain references
+        assert len(meta.jobs) == 6
 
     def test_evaluate_job_names(self):
         meta = self._make_metadata()
@@ -329,6 +352,8 @@ class TestNoveltyEvaluatorJobLog:
         assert "Combination check" in names
         assert "Equivalence check" in names
         assert "Synthesis" in names
+        assert "Idea decomposition" in names
+        assert "Domain references" in names
 
     def test_evaluate_job_agent_includes_model(self):
         meta = self._make_metadata()
@@ -360,6 +385,257 @@ class TestNoveltyEvaluatorJobLog:
         ))
         evaluator = NoveltyEvaluator(llm=_make_full_llm())
         evaluator.evaluate(SAMPLE_PAPER, metadata=meta)
-        # 1 pre-existing + 4 from evaluator = 5
-        assert len(meta.jobs) == 5
+        # 1 pre-existing + 6 from evaluator = 7
+        assert len(meta.jobs) == 7
         assert meta.jobs[0].name == "Parse paper"
+
+
+# ---------------------------------------------------------------------------
+# IdeaDecomposition dataclass
+# ---------------------------------------------------------------------------
+
+class TestIdeaDecomposition:
+    def test_default_lists_empty(self):
+        d = IdeaDecomposition(core_concept="A new method.")
+        assert d.sub_ideas == []
+        assert d.assumptions == []
+        assert d.limitations == []
+
+    def test_fields_stored(self):
+        d = IdeaDecomposition(
+            core_concept="Core.",
+            sub_ideas=["A", "B"],
+            assumptions=["X"],
+            limitations=["Y"],
+        )
+        assert d.core_concept == "Core."
+        assert d.sub_ideas == ["A", "B"]
+        assert d.assumptions == ["X"]
+        assert d.limitations == ["Y"]
+
+
+# ---------------------------------------------------------------------------
+# DomainReference dataclass
+# ---------------------------------------------------------------------------
+
+class TestDomainReference:
+    def test_defaults(self):
+        ref = DomainReference(title="Some Paper")
+        assert ref.authors == ""
+        assert ref.year == ""
+        assert ref.relevance == ""
+
+    def test_all_fields(self):
+        ref = DomainReference(
+            title="Attention Is All You Need",
+            authors="Vaswani et al.",
+            year="2017",
+            relevance="Foundational Transformer work",
+        )
+        assert ref.title == "Attention Is All You Need"
+        assert ref.authors == "Vaswani et al."
+        assert ref.year == "2017"
+        assert "Transformer" in ref.relevance
+
+
+# ---------------------------------------------------------------------------
+# _parse_numbered_list
+# ---------------------------------------------------------------------------
+
+class TestParseNumberedList:
+    def test_parses_dot_separated(self):
+        text = "1. First item\n2. Second item\n3. Third item"
+        items = _parse_numbered_list(text)
+        assert items == ["First item", "Second item", "Third item"]
+
+    def test_parses_paren_separated(self):
+        text = "1) Alpha\n2) Beta"
+        items = _parse_numbered_list(text)
+        assert items == ["Alpha", "Beta"]
+
+    def test_ignores_non_numbered_lines(self):
+        text = "Header\n1. Item one\nsome text\n2. Item two"
+        items = _parse_numbered_list(text)
+        assert items == ["Item one", "Item two"]
+
+    def test_empty_text(self):
+        assert _parse_numbered_list("") == []
+
+    def test_no_numbered_items(self):
+        assert _parse_numbered_list("just plain text\nwith no numbers") == []
+
+
+# ---------------------------------------------------------------------------
+# _parse_decomposition_response
+# ---------------------------------------------------------------------------
+
+class TestParseDecompositionResponse:
+    def test_parses_full_response(self):
+        d = _parse_decomposition_response(_DECOMP_RESPONSE)
+        assert "dynamic masking" in d.core_concept.lower()
+        assert "Dynamic attention masking" in d.sub_ideas
+        assert "Input sequences are tokenised uniformly" in d.assumptions
+        assert "Only evaluated on NLP benchmarks" in d.limitations
+
+    def test_missing_core_concept_falls_back_to_full_text(self):
+        d = _parse_decomposition_response("Some random text without fields.")
+        assert d.core_concept != ""
+
+    def test_missing_lists_default_to_empty(self):
+        d = _parse_decomposition_response("CORE_CONCEPT: Simple idea.\n")
+        assert d.sub_ideas == []
+        assert d.assumptions == []
+        assert d.limitations == []
+
+    def test_returns_idea_decomposition_instance(self):
+        d = _parse_decomposition_response(_DECOMP_RESPONSE)
+        assert isinstance(d, IdeaDecomposition)
+
+
+# ---------------------------------------------------------------------------
+# _parse_domain_references_response
+# ---------------------------------------------------------------------------
+
+class TestParseDomainReferencesResponse:
+    def test_parses_two_references(self):
+        refs = _parse_domain_references_response(_DOMAIN_REFS_RESPONSE)
+        assert len(refs) == 2
+
+    def test_first_reference_title(self):
+        refs = _parse_domain_references_response(_DOMAIN_REFS_RESPONSE)
+        assert refs[0].title == "Attention Is All You Need"
+
+    def test_first_reference_year(self):
+        refs = _parse_domain_references_response(_DOMAIN_REFS_RESPONSE)
+        assert refs[0].year == "2017"
+
+    def test_first_reference_authors(self):
+        refs = _parse_domain_references_response(_DOMAIN_REFS_RESPONSE)
+        assert "Vaswani" in refs[0].authors
+
+    def test_first_reference_relevance(self):
+        refs = _parse_domain_references_response(_DOMAIN_REFS_RESPONSE)
+        assert "Transformer" in refs[0].relevance
+
+    def test_second_reference_title(self):
+        refs = _parse_domain_references_response(_DOMAIN_REFS_RESPONSE)
+        assert refs[1].title == "BERT"
+
+    def test_returns_list_of_domain_references(self):
+        refs = _parse_domain_references_response(_DOMAIN_REFS_RESPONSE)
+        assert all(isinstance(r, DomainReference) for r in refs)
+
+    def test_empty_response_returns_empty_list(self):
+        refs = _parse_domain_references_response("REFERENCES:\n")
+        assert refs == []
+
+    def test_lines_without_title_are_skipped(self):
+        text = "REFERENCES:\n1. AUTHORS: Nobody | YEAR: 2020 | RELEVANCE: Unclear\n"
+        refs = _parse_domain_references_response(text)
+        assert refs == []
+
+
+# ---------------------------------------------------------------------------
+# NoveltyEvaluator — enriched fields
+# ---------------------------------------------------------------------------
+
+class TestNoveltyEvaluatorEnrichedReport:
+    def test_evaluate_returns_idea_decomposition(self):
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        report = evaluator.evaluate(SAMPLE_PAPER)
+        assert report.idea_decomposition is not None
+        assert isinstance(report.idea_decomposition, IdeaDecomposition)
+
+    def test_evaluate_returns_domain_references(self):
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        report = evaluator.evaluate(SAMPLE_PAPER)
+        assert isinstance(report.domain_references, list)
+
+    def test_idea_decomposition_has_core_concept(self):
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        report = evaluator.evaluate(SAMPLE_PAPER)
+        assert report.idea_decomposition.core_concept != ""
+
+    def test_domain_references_has_entries(self):
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        report = evaluator.evaluate(SAMPLE_PAPER)
+        assert len(report.domain_references) == 2
+
+    def test_raw_llm_responses_include_decomposition(self):
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        report = evaluator.evaluate(SAMPLE_PAPER)
+        assert "idea_decomposition" in report.raw_llm_responses
+
+    def test_raw_llm_responses_include_domain_references(self):
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        report = evaluator.evaluate(SAMPLE_PAPER)
+        assert "domain_references" in report.raw_llm_responses
+
+
+# ---------------------------------------------------------------------------
+# NoveltyEvaluator._decompose_idea / _find_domain_references (isolated)
+# ---------------------------------------------------------------------------
+
+class TestDecomposeIdeaMethod:
+    def test_calls_llm_once(self):
+        calls = []
+        def llm(prompt: str) -> str:
+            calls.append(prompt)
+            return _DECOMP_RESPONSE
+        evaluator = NoveltyEvaluator(llm=llm)
+        raw: dict = {}
+        result = evaluator._decompose_idea("some content", raw)
+        assert len(calls) == 1
+
+    def test_prompt_contains_paper_content(self):
+        received = []
+        def llm(prompt: str) -> str:
+            received.append(prompt)
+            return _DECOMP_RESPONSE
+        evaluator = NoveltyEvaluator(llm=llm)
+        evaluator._decompose_idea("unique content string xyz", {})
+        assert "unique content string xyz" in received[0]
+
+    def test_response_stored_in_raw(self):
+        evaluator = NoveltyEvaluator(llm=lambda _: _DECOMP_RESPONSE)
+        raw: dict = {}
+        evaluator._decompose_idea("content", raw)
+        assert raw.get("idea_decomposition") == _DECOMP_RESPONSE
+
+    def test_returns_idea_decomposition(self):
+        evaluator = NoveltyEvaluator(llm=lambda _: _DECOMP_RESPONSE)
+        result = evaluator._decompose_idea("content", {})
+        assert isinstance(result, IdeaDecomposition)
+        assert result.core_concept != ""
+
+
+class TestFindDomainReferencesMethod:
+    def test_calls_llm_once(self):
+        calls = []
+        def llm(prompt: str) -> str:
+            calls.append(prompt)
+            return _DOMAIN_REFS_RESPONSE
+        evaluator = NoveltyEvaluator(llm=llm)
+        evaluator._find_domain_references("content", "No references.", {})
+        assert len(calls) == 1
+
+    def test_prompt_contains_paper_content(self):
+        received = []
+        def llm(prompt: str) -> str:
+            received.append(prompt)
+            return _DOMAIN_REFS_RESPONSE
+        evaluator = NoveltyEvaluator(llm=llm)
+        evaluator._find_domain_references("special content abc", "refs", {})
+        assert "special content abc" in received[0]
+
+    def test_response_stored_in_raw(self):
+        evaluator = NoveltyEvaluator(llm=lambda _: _DOMAIN_REFS_RESPONSE)
+        raw: dict = {}
+        evaluator._find_domain_references("content", "refs", raw)
+        assert raw.get("domain_references") == _DOMAIN_REFS_RESPONSE
+
+    def test_returns_list_of_domain_references(self):
+        evaluator = NoveltyEvaluator(llm=lambda _: _DOMAIN_REFS_RESPONSE)
+        result = evaluator._find_domain_references("content", "refs", {})
+        assert isinstance(result, list)
+        assert all(isinstance(r, DomainReference) for r in result)

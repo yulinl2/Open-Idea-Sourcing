@@ -23,7 +23,12 @@ from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .novelty_evaluator import NoveltyReport, RunMetadata
+from .novelty_evaluator import (
+    IdeaDecomposition,
+    DomainReference,
+    NoveltyReport,
+    RunMetadata,
+)
 
 OutputFormat = Literal["text", "markdown", "json", "pdf"]
 
@@ -265,6 +270,34 @@ class ReportGenerator:
                 lines.append(f"  [{res.score:.2f}] {p.title}{year}")
             lines.append("")
 
+        if r.idea_decomposition:
+            d = r.idea_decomposition
+            lines += ["IDEA DECOMPOSITION", "-" * 70]
+            lines.append(f"  Core concept: {d.core_concept}")
+            if d.sub_ideas:
+                lines.append("  Sub-ideas:")
+                for i, item in enumerate(d.sub_ideas, 1):
+                    lines.append(f"    {i}. {item}")
+            if d.assumptions:
+                lines.append("  Assumptions:")
+                for i, item in enumerate(d.assumptions, 1):
+                    lines.append(f"    {i}. {item}")
+            if d.limitations:
+                lines.append("  Limitations:")
+                for i, item in enumerate(d.limitations, 1):
+                    lines.append(f"    {i}. {item}")
+            lines.append("")
+
+        if r.domain_references:
+            lines += ["MAIN DOMAIN REFERENCES", "-" * 70]
+            for i, ref in enumerate(r.domain_references, 1):
+                year_str = f" ({ref.year})" if ref.year else ""
+                authors_str = f" — {ref.authors}" if ref.authors else ""
+                lines.append(f"  {i}. {ref.title}{year_str}{authors_str}")
+                if ref.relevance:
+                    lines.append(f"     Relevance: {ref.relevance}")
+            lines.append("")
+
         lines.append("=" * 70)
         return "\n".join(lines)
 
@@ -428,6 +461,55 @@ class ReportGenerator:
                 lines.append(f"| {res.score:.2f} | {title} | {year} |")
             lines.append("")
 
+        if r.idea_decomposition:
+            d = r.idea_decomposition
+            lines += [
+                "## Idea Decomposition",
+                "",
+                f"**Core concept:** {d.core_concept}",
+                "",
+            ]
+            if d.sub_ideas:
+                lines.append("**Sub-ideas:**")
+                lines.append("")
+                for item in d.sub_ideas:
+                    lines.append(f"- {item}")
+                lines.append("")
+            if d.assumptions:
+                lines.append("**Assumptions:**")
+                lines.append("")
+                for item in d.assumptions:
+                    lines.append(f"- {item}")
+                lines.append("")
+            if d.limitations:
+                lines.append("**Limitations:**")
+                lines.append("")
+                for item in d.limitations:
+                    lines.append(f"- {item}")
+                lines.append("")
+            lines += [
+                "### Idea Mind Map",
+                "",
+                _build_mindmap(d, r.paper_title),
+                "",
+            ]
+
+        if r.domain_references:
+            lines += [
+                "## Main Domain References",
+                "",
+                "| Title | Authors | Year | Relevance |",
+                "|-------|---------|------|-----------|",
+            ]
+            for ref in r.domain_references:
+                title = ref.title.replace("|", "\\|")
+                authors = ref.authors.replace("|", "\\|")
+                relevance = ref.relevance.replace("|", "\\|")
+                lines.append(
+                    f"| {title} | {authors} | {ref.year or '—'} | {relevance} |"
+                )
+            lines.append("")
+
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
@@ -486,6 +568,24 @@ class ReportGenerator:
                     for j in m.jobs
                 ],
             }
+        if r.idea_decomposition:
+            d = r.idea_decomposition
+            data["idea_decomposition"] = {
+                "core_concept": d.core_concept,
+                "sub_ideas": d.sub_ideas,
+                "assumptions": d.assumptions,
+                "limitations": d.limitations,
+            }
+        if r.domain_references:
+            data["domain_references"] = [
+                {
+                    "title": ref.title,
+                    "authors": ref.authors,
+                    "year": ref.year,
+                    "relevance": ref.relevance,
+                }
+                for ref in r.domain_references
+            ]
         return json.dumps(data, indent=2)
 
 
@@ -518,6 +618,52 @@ def _build_gantt(metadata: RunMetadata, paper_title: str = "") -> str:
         dur_ms = max(1, int(job.duration_s * 1000))
         safe_name = job.name.replace(":", " -")
         lines.append(f"    {safe_name} :done, {start_ms}, {dur_ms}ms")
+
+    lines.append("```")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Idea mind map (Mermaid)
+# ---------------------------------------------------------------------------
+
+def _build_mindmap(decomp: IdeaDecomposition, paper_title: str = "") -> str:
+    """Return a Mermaid ``mindmap`` diagram for *decomp*.
+
+    The mind map places the core concept at the root and branches out to
+    sub-ideas, assumptions, and limitations.
+    """
+    root_label = paper_title or decomp.core_concept
+
+    def _safe(text: str) -> str:
+        """Replace characters that would break Mermaid node labels.
+
+        Backticks are replaced with single quotes; parentheses are replaced
+        with square brackets to prevent them from being interpreted as Mermaid
+        node shape syntax.
+        """
+        return text.replace("`", "'").replace("(", "[").replace(")", "]")
+
+    lines = [
+        "```mermaid",
+        "mindmap",
+        f"  root(({_safe(root_label)}))",
+    ]
+
+    if decomp.sub_ideas:
+        lines.append("    Sub-ideas")
+        for item in decomp.sub_ideas:
+            lines.append(f"      {_safe(item)}")
+
+    if decomp.assumptions:
+        lines.append("    Assumptions")
+        for item in decomp.assumptions:
+            lines.append(f"      {_safe(item)}")
+
+    if decomp.limitations:
+        lines.append("    Limitations")
+        for item in decomp.limitations:
+            lines.append(f"      {_safe(item)}")
 
     lines.append("```")
     return "\n".join(lines)

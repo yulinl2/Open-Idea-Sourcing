@@ -115,6 +115,50 @@ class NoveltyDimension:
 
 
 @dataclass
+class IdeaDecomposition:
+    """Structured decomposition of the paper's core idea.
+
+    Attributes
+    ----------
+    core_concept:
+        One-sentence description of the central contribution.
+    sub_ideas:
+        Key component ideas or sub-contributions.
+    assumptions:
+        Underlying assumptions the work makes.
+    limitations:
+        Acknowledged or implicit limitations of the approach.
+    """
+
+    core_concept: str
+    sub_ideas: list[str] = field(default_factory=list)
+    assumptions: list[str] = field(default_factory=list)
+    limitations: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DomainReference:
+    """A key reference paper in the domain identified by LLM analysis.
+
+    Attributes
+    ----------
+    title:
+        Title of the reference paper.
+    authors:
+        Author(s) of the reference paper.
+    year:
+        Publication year (as a string; may be approximate or empty).
+    relevance:
+        Brief explanation of why this reference is important.
+    """
+
+    title: str
+    authors: str = ""
+    year: str = ""
+    relevance: str = ""
+
+
+@dataclass
 class NoveltyReport:
     """Aggregated novelty evaluation for a single paper."""
 
@@ -126,6 +170,8 @@ class NoveltyReport:
     similar_papers: list[SimilarityResult] = field(default_factory=list)
     raw_llm_responses: dict[str, str] = field(default_factory=dict)
     metadata: RunMetadata | None = None
+    idea_decomposition: IdeaDecomposition | None = None
+    domain_references: list[DomainReference] = field(default_factory=list)
 
 
 class NoveltyEvaluator:
@@ -214,6 +260,10 @@ class NoveltyEvaluator:
             paper.title, dup, combo, equiv, raw
         )
         t4 = time.monotonic()
+        idea_decomp = self._decompose_idea(content, raw)
+        t5 = time.monotonic()
+        domain_refs = self._find_domain_references(content, refs_text, raw)
+        t6 = time.monotonic()
 
         if metadata is not None:
             metadata.jobs.extend([
@@ -249,6 +299,22 @@ class NoveltyEvaluator:
                     input_summary="3 dimension results",
                     output_summary=f"verdict={overall}, confidence={confidence}",
                 ),
+                PipelineJob(
+                    name="Idea decomposition",
+                    agent=agent,
+                    offset_s=round(t4 - run_start, 3),
+                    duration_s=round(t5 - t4, 3),
+                    input_summary="paper content",
+                    output_summary=f"{len(idea_decomp.sub_ideas)} sub-idea(s)",
+                ),
+                PipelineJob(
+                    name="Domain references",
+                    agent=agent,
+                    offset_s=round(t5 - run_start, 3),
+                    duration_s=round(t6 - t5, 3),
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"{len(domain_refs)} domain reference(s)",
+                ),
             ])
 
         return NoveltyReport(
@@ -259,6 +325,8 @@ class NoveltyEvaluator:
             dimensions=[dup, combo, equiv],
             similar_papers=similar_papers,
             raw_llm_responses=raw,
+            idea_decomposition=idea_decomp,
+            domain_references=domain_refs,
         )
 
     # ------------------------------------------------------------------
@@ -315,6 +383,26 @@ class NoveltyEvaluator:
             explanation=explanation,
             references=refs,
         )
+
+    def _decompose_idea(
+        self, content: str, raw: dict[str, str]
+    ) -> IdeaDecomposition:
+        """Ask the LLM to decompose the paper's core idea into components."""
+        prompt = _IDEA_DECOMPOSITION_PROMPT.format(paper_content=content)
+        response = self._llm(prompt)
+        raw["idea_decomposition"] = response
+        return _parse_decomposition_response(response)
+
+    def _find_domain_references(
+        self, content: str, refs_text: str, raw: dict[str, str]
+    ) -> list[DomainReference]:
+        """Ask the LLM to identify key domain references for this paper."""
+        prompt = _DOMAIN_REFERENCES_PROMPT.format(
+            paper_content=content, reference_papers=refs_text
+        )
+        response = self._llm(prompt)
+        raw["domain_references"] = response
+        return _parse_domain_references_response(response)
 
     def _synthesise(
         self,
@@ -443,6 +531,53 @@ SUMMARY: two to four sentences explaining the overall conclusion and the
 main reasons behind it.
 """
 
+_IDEA_DECOMPOSITION_PROMPT = """You are an expert research analyst.
+
+TASK: Decompose the following paper's core idea into its fundamental components.
+
+SUBMITTED PAPER:
+{paper_content}
+
+INSTRUCTIONS:
+Respond with the following structured fields.
+
+CORE_CONCEPT: One sentence describing the central contribution or idea.
+
+SUB_IDEAS:
+1. <first key component or sub-contribution>
+2. <second key component or sub-contribution>
+3. <additional components as needed>
+
+ASSUMPTIONS:
+1. <first underlying assumption the work makes>
+2. <additional assumptions as needed>
+
+LIMITATIONS:
+1. <first acknowledged or implicit limitation>
+2. <additional limitations as needed>
+"""
+
+_DOMAIN_REFERENCES_PROMPT = """You are an expert research librarian.
+
+TASK: Identify the most important foundational and closely related works
+in the domain of the following paper. Focus on seminal papers that a
+reader would need to understand the context of this contribution.
+
+SUBMITTED PAPER:
+{paper_content}
+
+ALREADY IDENTIFIED SIMILAR PAPERS (from text similarity search):
+{reference_papers}
+
+INSTRUCTIONS:
+List 3 to 6 key domain references in the format below.
+Each entry must appear on its own line starting with a number.
+
+REFERENCES:
+1. TITLE: <paper title> | AUTHORS: <author(s)> | YEAR: <year> | RELEVANCE: <why this reference matters>
+2. TITLE: <paper title> | AUTHORS: <author(s)> | YEAR: <year> | RELEVANCE: <why this reference matters>
+"""
+
 
 # ---------------------------------------------------------------------------
 # Response parsers
@@ -497,3 +632,72 @@ def _extract_field(text: str, field_name: str, default: str = "") -> str:
         value = m.group(1).strip()
         return value if value else default
     return default
+
+
+def _parse_numbered_list(text: str) -> list[str]:
+    """Extract items from a numbered list (``1. item``, ``2. item``, …)."""
+    items = []
+    for line in text.splitlines():
+        line = line.strip()
+        m = _re.match(r"^\d+[.)]\s+(.+)", line)
+        if m:
+            items.append(m.group(1).strip())
+    return items
+
+
+def _parse_decomposition_response(text: str) -> "IdeaDecomposition":
+    """Extract an :class:`IdeaDecomposition` from an LLM response.
+
+    Falls back gracefully: if ``CORE_CONCEPT`` is missing the full
+    response text is used; if a list section is missing it defaults to
+    an empty list.
+    """
+    core_concept = _extract_field(text, "CORE_CONCEPT", default=text.strip())
+    sub_ideas_raw = _extract_field(text, "SUB_IDEAS", default="")
+    assumptions_raw = _extract_field(text, "ASSUMPTIONS", default="")
+    limitations_raw = _extract_field(text, "LIMITATIONS", default="")
+    return IdeaDecomposition(
+        core_concept=core_concept,
+        sub_ideas=_parse_numbered_list(sub_ideas_raw),
+        assumptions=_parse_numbered_list(assumptions_raw),
+        limitations=_parse_numbered_list(limitations_raw),
+    )
+
+
+def _parse_domain_references_response(text: str) -> "list[DomainReference]":
+    """Extract a list of :class:`DomainReference` objects from an LLM response.
+
+    Each entry is expected on its own numbered line in the format::
+
+        1. TITLE: <title> | AUTHORS: <authors> | YEAR: <year> | RELEVANCE: <relevance>
+
+    Fields are parsed case-insensitively and any missing field is left as
+    an empty string.  Lines that cannot be parsed are silently skipped.
+    """
+    refs_block = _extract_field(text, "REFERENCES", default=text.strip())
+    results: list[DomainReference] = []
+    for line in refs_block.splitlines():
+        line = line.strip()
+        # Strip optional leading number and dot/paren, e.g. "1. " or "1) "
+        line = _re.sub(r"^\d+[.)]\s*", "", line).strip()
+        if not line:
+            continue
+        # Split on " | " separators (case-insensitive field labels)
+        parts = _re.split(r"\s*\|\s*", line)
+        fields: dict[str, str] = {}
+        for part in parts:
+            m = _re.match(r"^([A-Za-z]+):\s*(.*)", part.strip(), _re.DOTALL)
+            if m:
+                fields[m.group(1).upper()] = m.group(2).strip()
+        title = fields.get("TITLE", "")
+        if not title:
+            continue
+        results.append(
+            DomainReference(
+                title=title,
+                authors=fields.get("AUTHORS", ""),
+                year=fields.get("YEAR", ""),
+                relevance=fields.get("RELEVANCE", ""),
+            )
+        )
+    return results
