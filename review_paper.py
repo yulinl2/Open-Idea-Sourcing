@@ -457,11 +457,30 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 )
 
         # --- Similarity search ---
+        query = paper.key_content()
         t0 = time.monotonic()
         searcher = SimilaritySearch(store)
-        similar = searcher.search(paper.key_content(), top_k=args.top_k)
+        similar = searcher.search(query, top_k=args.top_k)
         sim_duration = round(time.monotonic() - t0, 2)
         stage_runtimes["similarity"] = sim_duration
+
+        # Build descriptive output summary: list top matched titles with scores.
+        if similar:
+            matched_items = [
+                f"{r.score:.2f}×{r.paper.title[:35]}{'…' if len(r.paper.title) > 35 else ''}"
+                for r in similar[:3]
+            ]
+            sim_output = f"top-{len(similar)}: {'; '.join(matched_items)}"
+            if len(similar) > 3:
+                sim_output += f"; +{len(similar) - 3} more"
+        else:
+            sim_output = "no matches"
+
+        # First 15 words of key content as a readable query preview.
+        query_words = query.split()
+        query_preview = " ".join(query_words[:15])
+        if len(query_words) > 15:
+            query_preview += "…"
 
         # Build early pipeline job records for pre-LLM stages
         early_jobs = [
@@ -478,8 +497,11 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 agent="SimilaritySearch",
                 offset_s=round(stage_runtimes["parsing"], 3),
                 duration_s=sim_duration,
-                input_summary="paper key content",
-                output_summary=f"top-{len(similar)} match(es)",
+                input_summary=(
+                    f"TF-IDF cosine on {len(store)} ref(s); "
+                    f"query: «{query_preview}»"
+                ),
+                output_summary=sim_output,
             ),
         ]
 

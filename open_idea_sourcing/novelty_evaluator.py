@@ -159,6 +159,30 @@ class DomainReference:
 
 
 @dataclass
+class SimilarityAnnotation:
+    """LLM-generated comparative annotation for one similar reference paper.
+
+    Attributes
+    ----------
+    paper_id:
+        ID of the similar reference paper being annotated.
+    overlap:
+        Aspects shared between the submitted paper and this reference
+        (methods, concepts, results).
+    differences:
+        Ways the submitted paper differs from or goes beyond this reference.
+    derivation:
+        Specific elements of the submitted paper that appear derived from
+        or inspired by this reference.
+    """
+
+    paper_id: str
+    overlap: str = ""
+    differences: str = ""
+    derivation: str = ""
+
+
+@dataclass
 class NoveltyReport:
     """Aggregated novelty evaluation for a single paper."""
 
@@ -172,6 +196,7 @@ class NoveltyReport:
     metadata: RunMetadata | None = None
     idea_decomposition: IdeaDecomposition | None = None
     domain_references: list[DomainReference] = field(default_factory=list)
+    similar_paper_annotations: list[SimilarityAnnotation] = field(default_factory=list)
 
 
 class NoveltyEvaluator:
@@ -265,8 +290,16 @@ class NoveltyEvaluator:
         domain_refs = self._find_domain_references(content, refs_text, raw)
         t6 = time.monotonic()
 
+        # Annotate each similar paper with overlap/differences/derivation.
+        # Only runs when similar papers exist (avoids an unnecessary LLM call).
+        annotations: list[SimilarityAnnotation] = []
+        t7 = t6
+        if similar_papers:
+            annotations = self._annotate_similar_papers(content, similar_papers, raw)
+            t7 = time.monotonic()
+
         if metadata is not None:
-            metadata.jobs.extend([
+            jobs: list[PipelineJob] = [
                 PipelineJob(
                     name="Duplication check",
                     agent=agent,
@@ -315,7 +348,17 @@ class NoveltyEvaluator:
                     input_summary=f"paper content + {refs_summary}",
                     output_summary=f"{len(domain_refs)} domain reference(s)",
                 ),
-            ])
+            ]
+            if similar_papers:
+                jobs.append(PipelineJob(
+                    name="Reference annotation",
+                    agent=agent,
+                    offset_s=round(t6 - run_start, 3),
+                    duration_s=round(t7 - t6, 3),
+                    input_summary=f"paper + {len(similar_papers)} similar paper(s)",
+                    output_summary=f"{len(annotations)} annotation(s)",
+                ))
+            metadata.jobs.extend(jobs)
 
         return NoveltyReport(
             paper_title=paper.title,
@@ -327,6 +370,7 @@ class NoveltyEvaluator:
             raw_llm_responses=raw,
             idea_decomposition=idea_decomp,
             domain_references=domain_refs,
+            similar_paper_annotations=annotations,
         )
 
     # ------------------------------------------------------------------
@@ -403,6 +447,22 @@ class NoveltyEvaluator:
         response = self._llm(prompt)
         raw["domain_references"] = response
         return _parse_domain_references_response(response)
+
+    def _annotate_similar_papers(
+        self, content: str, similar: list[SimilarityResult], raw: dict[str, str]
+    ) -> list[SimilarityAnnotation]:
+        """Ask the LLM to annotate each similar paper with comparative analysis.
+
+        Generates per-paper overlap, differences, and derivation annotations
+        comparing the submitted paper against each pre-matched reference.
+        """
+        prompt = _SIMILAR_PAPERS_ANNOTATION_PROMPT.format(
+            paper_content=content,
+            reference_papers=self._format_references(similar),
+        )
+        response = self._llm(prompt)
+        raw["similar_paper_annotations"] = response
+        return _parse_similar_paper_annotations_response(response)
 
     def _synthesise(
         self,
@@ -578,6 +638,29 @@ REFERENCES:
 2. TITLE: <paper title> | AUTHORS: <author(s)> | YEAR: <year> | RELEVANCE: <why this reference matters>
 """
 
+_SIMILAR_PAPERS_ANNOTATION_PROMPT = """You are an expert research analyst.
+
+TASK: For each similar reference paper listed below, write a concise comparative
+annotation against the submitted paper. Describe shared aspects, key differences,
+and any elements in the submitted paper that appear derived from or inspired by
+that reference. Every claim should be grounded in the paper content provided.
+
+SUBMITTED PAPER:
+{paper_content}
+
+SIMILAR REFERENCE PAPERS (ranked by TF-IDF cosine similarity score):
+{reference_papers}
+
+INSTRUCTIONS:
+Respond with one block per reference paper, in the order listed.
+Use the paper ID exactly as shown in brackets.
+
+PAPER [<id>]:
+OVERLAP: <1–2 sentences on shared methods, concepts, or results between the submitted paper and this reference>
+DIFFERENCES: <1–2 sentences on what distinguishes the submitted paper from this reference>
+DERIVATION: <1 sentence on what in the submitted paper appears derived from or inspired by this reference, or "None identified">
+"""
+
 
 # ---------------------------------------------------------------------------
 # Response parsers
@@ -700,4 +783,41 @@ def _parse_domain_references_response(text: str) -> "list[DomainReference]":
                 relevance=fields.get("RELEVANCE", ""),
             )
         )
+    return results
+
+
+def _parse_similar_paper_annotations_response(
+    text: str,
+) -> "list[SimilarityAnnotation]":
+    """Extract per-paper comparative annotations from an LLM response.
+
+    Expected format (one block per paper)::
+
+        PAPER [<id>]:
+        OVERLAP: <shared aspects>
+        DIFFERENCES: <distinguishing aspects>
+        DERIVATION: <derived elements>
+
+    Blocks that cannot be parsed are silently skipped; the result list
+    may therefore be shorter than the number of similar papers.
+    """
+    results: list[SimilarityAnnotation] = []
+    # Split on "PAPER [id]:" markers (case-insensitive, allowing whitespace)
+    blocks = _re.split(r"(?mi)^PAPER\s*\[([^\]]+)\]\s*:", text)
+    # blocks[0] is preamble; blocks[1::2] are IDs; blocks[2::2] are content
+    ids = blocks[1::2]
+    contents = blocks[2::2]
+    for paper_id, content_block in zip(ids, contents):
+        paper_id = paper_id.strip()
+        if not paper_id:
+            continue
+        overlap = _extract_field(content_block, "OVERLAP", default="")
+        differences = _extract_field(content_block, "DIFFERENCES", default="")
+        derivation = _extract_field(content_block, "DERIVATION", default="")
+        results.append(SimilarityAnnotation(
+            paper_id=paper_id,
+            overlap=overlap,
+            differences=differences,
+            derivation=derivation,
+        ))
     return results

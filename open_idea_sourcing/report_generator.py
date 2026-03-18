@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .novelty_evaluator import (
     IdeaDecomposition,
     DomainReference,
+    SimilarityAnnotation,
     NoveltyReport,
     RunMetadata,
 )
@@ -264,10 +265,25 @@ class ReportGenerator:
 
         if r.similar_papers:
             lines += ["MOST SIMILAR REFERENCE PAPERS", "-" * 70]
+            lines.append(
+                "  (Scores are TF-IDF cosine similarity, 0–1; "
+                "higher = more textual overlap)"
+            )
+            annotations_by_id = {a.paper_id: a for a in r.similar_paper_annotations}
             for res in r.similar_papers:
                 p = res.paper
                 year = f" ({p.year})" if p.year else ""
                 lines.append(f"  [{res.score:.2f}] {p.title}{year}")
+                if p.url:
+                    lines.append(f"    URL: {p.url}")
+                ann = annotations_by_id.get(p.id)
+                if ann:
+                    if ann.overlap:
+                        lines.append(f"    Overlap    : {ann.overlap}")
+                    if ann.differences:
+                        lines.append(f"    Differences: {ann.differences}")
+                    if ann.derivation:
+                        lines.append(f"    Derivation : {ann.derivation}")
             lines.append("")
 
         if r.idea_decomposition:
@@ -435,7 +451,8 @@ class ReportGenerator:
             lines += [
                 f"### {dim.name}",
                 "",
-                f"**Risk level:** {icon} {dim.verdict}",
+                "<details>",
+                f"<summary><strong>Risk level:</strong> {icon} {dim.verdict}</summary>",
                 "",
                 dim.explanation,
                 "",
@@ -446,10 +463,15 @@ class ReportGenerator:
                     + ", ".join(f"`{ref}`" for ref in dim.references),
                     "",
                 ]
+            lines += ["</details>", ""]
 
         if r.similar_papers:
             lines += [
                 "## Most Similar Reference Papers",
+                "",
+                "> **Scoring method:** TF-IDF cosine similarity (0–1). "
+                "Higher scores indicate greater textual overlap between "
+                "the paper's key content and the reference.",
                 "",
                 "| Score | Title | Year |",
                 "|-------|-------|------|",
@@ -457,9 +479,41 @@ class ReportGenerator:
             for res in r.similar_papers:
                 p = res.paper
                 year = str(p.year) if p.year else "—"
-                title = p.title.replace("|", "\\|")
-                lines.append(f"| {res.score:.2f} | {title} | {year} |")
+                title_text = p.title.replace("|", "\\|")
+                title_cell = f"[{title_text}]({p.url})" if p.url else title_text
+                lines.append(f"| {res.score:.2f} | {title_cell} | {year} |")
             lines.append("")
+
+            # Per-paper comparative annotations
+            if r.similar_paper_annotations:
+                annotations_by_id = {
+                    a.paper_id: a for a in r.similar_paper_annotations
+                }
+                lines += ["### Reference Annotations", ""]
+                for res in r.similar_papers:
+                    p = res.paper
+                    year_str = f" ({p.year})" if p.year else ""
+                    title_link = (
+                        f"[{p.title}]({p.url})" if p.url else p.title
+                    )
+                    lines += [
+                        f"**[{res.score:.2f}] {title_link}{year_str}**",
+                        "",
+                        "<details>",
+                        "<summary>Comparative annotation</summary>",
+                        "",
+                    ]
+                    ann = annotations_by_id.get(p.id)
+                    if ann and (ann.overlap or ann.differences or ann.derivation):
+                        if ann.overlap:
+                            lines += [f"**Overlap:** {ann.overlap}", ""]
+                        if ann.differences:
+                            lines += [f"**Differences:** {ann.differences}", ""]
+                        if ann.derivation:
+                            lines += [f"**Derivation:** {ann.derivation}", ""]
+                    else:
+                        lines += ["No annotation available.", ""]
+                    lines += ["</details>", ""]
 
         if r.idea_decomposition:
             d = r.idea_decomposition
@@ -532,16 +586,29 @@ class ReportGenerator:
                 }
                 for d in r.dimensions
             ],
-            "similar_papers": [
-                {
-                    "score": res.score,
-                    "id": res.paper.id,
-                    "title": res.paper.title,
-                    "year": res.paper.year,
-                }
-                for res in r.similar_papers
-            ],
         }
+        annotations_by_id = {
+            a.paper_id: a for a in r.similar_paper_annotations
+        }
+        data["similar_papers"] = [
+            {
+                "score": res.score,
+                "id": res.paper.id,
+                "title": res.paper.title,
+                "year": res.paper.year,
+                "url": res.paper.url,
+                **(
+                    {
+                        "overlap": ann.overlap,
+                        "differences": ann.differences,
+                        "derivation": ann.derivation,
+                    }
+                    if (ann := annotations_by_id.get(res.paper.id)) is not None
+                    else {}
+                ),
+            }
+            for res in r.similar_papers
+        ]
         if r.metadata:
             m = r.metadata
             data["metadata"] = {
