@@ -563,3 +563,205 @@ class TestMainReportsDir:
         import review_paper as rp
         ns = rp._parse_args(["dummy_paper.pdf"])
         assert ns.reports_dir == "reports"
+
+
+# ---------------------------------------------------------------------------
+# _read_papers_file
+# ---------------------------------------------------------------------------
+
+
+class TestReadPapersFile:
+    """Tests for the NDJSON batch-input reader."""
+
+    def _write(self, path: Path, content: str) -> None:
+        path.write_text(content, encoding="utf-8")
+
+    def test_reads_url_entries(self, tmp_path):
+        from review_paper import _read_papers_file
+        f = tmp_path / "p.ndjson"
+        self._write(f, '{"url": "https://arxiv.org/abs/2006.06138"}\n{"url": "https://arxiv.org/pdf/2602.04770"}\n')
+        result = _read_papers_file(f)
+        assert result == [
+            "https://arxiv.org/abs/2006.06138",
+            "https://arxiv.org/pdf/2602.04770",
+        ]
+
+    def test_reads_path_entries(self, tmp_path):
+        from review_paper import _read_papers_file
+        f = tmp_path / "p.ndjson"
+        self._write(f, '{"path": "/some/paper.pdf"}\n{"path": "/other/paper.txt"}\n')
+        result = _read_papers_file(f)
+        assert result == ["/some/paper.pdf", "/other/paper.txt"]
+
+    def test_skips_blank_lines(self, tmp_path):
+        from review_paper import _read_papers_file
+        f = tmp_path / "p.ndjson"
+        self._write(f, '\n{"url": "https://example.com/p.pdf"}\n\n')
+        assert len(_read_papers_file(f)) == 1
+
+    def test_skips_comment_lines(self, tmp_path):
+        from review_paper import _read_papers_file
+        f = tmp_path / "p.ndjson"
+        self._write(f, '# a comment\n{"url": "https://example.com/p.pdf"}\n')
+        assert len(_read_papers_file(f)) == 1
+
+    def test_invalid_json_raises_exit(self, tmp_path):
+        from review_paper import _read_papers_file
+        f = tmp_path / "p.ndjson"
+        self._write(f, "not valid json\n")
+        with pytest.raises(SystemExit, match="invalid JSON"):
+            _read_papers_file(f)
+
+    def test_missing_url_or_path_key_raises_exit(self, tmp_path):
+        from review_paper import _read_papers_file
+        f = tmp_path / "p.ndjson"
+        self._write(f, '{"title": "some paper"}\n')
+        with pytest.raises(SystemExit, match="'url' or 'path'"):
+            _read_papers_file(f)
+
+    def test_empty_file_raises_exit(self, tmp_path):
+        from review_paper import _read_papers_file
+        f = tmp_path / "p.ndjson"
+        self._write(f, "")
+        with pytest.raises(SystemExit, match="no papers"):
+            _read_papers_file(f)
+
+    def test_missing_file_raises_exit(self, tmp_path):
+        from review_paper import _read_papers_file
+        with pytest.raises(SystemExit, match="could not read"):
+            _read_papers_file(tmp_path / "nonexistent.ndjson")
+
+
+# ---------------------------------------------------------------------------
+# Argument parsing — batch mode
+# ---------------------------------------------------------------------------
+
+
+class TestPaperArgOptional:
+    """Verify that the paper positional arg is optional when --papers-file is given."""
+
+    def test_paper_defaults_to_none(self):
+        import review_paper as rp
+        ns = rp._parse_args(["--papers-file", "batch.ndjson"])
+        assert ns.paper is None
+        assert ns.papers_file == "batch.ndjson"
+
+    def test_paper_still_works_positionally(self):
+        import review_paper as rp
+        ns = rp._parse_args(["my_paper.pdf"])
+        assert ns.paper == "my_paper.pdf"
+        assert ns.papers_file is None
+
+    def test_papers_file_default_is_none(self):
+        import review_paper as rp
+        ns = rp._parse_args(["my_paper.pdf"])
+        assert ns.papers_file is None
+
+
+# ---------------------------------------------------------------------------
+# main() — batch mode integration
+# ---------------------------------------------------------------------------
+
+
+class TestMainBatchMode:
+    """Verify batch review behaviour via --papers-file."""
+
+    _SAMPLE_TEXT = (
+        "Attention Is All You Need\n\n"
+        "Abstract\nWe propose the Transformer.\n\n"
+        "1. Introduction\nNeural networks are great.\n"
+    )
+
+    def _write_ndjson(self, path: Path, entries: list) -> None:
+        import json
+        path.write_text(
+            "\n".join(json.dumps(e) for e in entries), encoding="utf-8"
+        )
+
+    def test_batch_reviews_multiple_papers(self, tmp_path):
+        paper1 = tmp_path / "paper1.txt"
+        paper2 = tmp_path / "paper2.txt"
+        paper1.write_text(
+            "Attention Is All You Need\n\n"
+            "Abstract\nWe propose the Transformer.\n\n"
+            "1. Introduction\nNeural networks are great.\n",
+            encoding="utf-8",
+        )
+        paper2.write_text(
+            "BERT: Pre-training Deep Bidirectional Transformers\n\n"
+            "Abstract\nWe introduce BERT for language representation.\n\n"
+            "1. Introduction\nBidirectional training matters.\n",
+            encoding="utf-8",
+        )
+
+        batch_file = tmp_path / "batch.ndjson"
+        self._write_ndjson(batch_file, [
+            {"path": str(paper1)},
+            {"path": str(paper2)},
+        ])
+
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        reports_dir = tmp_path / "reports"
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([
+                "--papers-file", str(batch_file),
+                "--format", "text",
+                "--reports-dir", str(reports_dir),
+            ])
+
+        assert rc == 0
+        assert len(list(reports_dir.glob("*.txt"))) == 2
+
+    def test_batch_partial_failure_returns_nonzero(self, tmp_path):
+        paper_good = tmp_path / "paper1.txt"
+        paper_good.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+
+        batch_file = tmp_path / "batch.ndjson"
+        self._write_ndjson(batch_file, [
+            {"path": str(paper_good)},
+            {"path": str(tmp_path / "missing.txt")},  # does not exist
+        ])
+
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([
+                "--papers-file", str(batch_file),
+                "--format", "text",
+                "--reports-dir", str(tmp_path / "reports"),
+            ])
+
+        assert rc == 1
+
+    def test_no_paper_and_no_file_returns_error(self, capsys):
+        rc = main([])
+        assert rc == 1
+        assert "papers-file" in capsys.readouterr().err
+
+    def test_both_paper_and_file_returns_error(self, tmp_path, capsys):
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        batch_file = tmp_path / "batch.ndjson"
+        batch_file.write_text('{"path": "x.txt"}', encoding="utf-8")
+
+        rc = main([str(paper), "--papers-file", str(batch_file)])
+        assert rc == 1
+        assert "not both" in capsys.readouterr().err
+
+    def test_output_with_batch_returns_error(self, tmp_path, capsys):
+        batch_file = tmp_path / "batch.ndjson"
+        batch_file.write_text('{"path": "x.txt"}', encoding="utf-8")
+
+        rc = main([
+            "--papers-file", str(batch_file),
+            "--output", str(tmp_path / "out.txt"),
+        ])
+        assert rc == 1
+        assert "--output" in capsys.readouterr().err
+
+    def test_batch_file_not_found_returns_error(self, tmp_path, capsys):
+        rc = main(["--papers-file", str(tmp_path / "nonexistent.ndjson")])
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "could not read" in err.lower() or "nonexistent" in err

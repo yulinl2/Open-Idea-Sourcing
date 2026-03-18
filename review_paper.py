@@ -7,6 +7,7 @@ Usage
     python review_paper.py paper.txt [options]
     python review_paper.py https://arxiv.org/abs/2006.06138 [options]
     python review_paper.py https://arxiv.org/pdf/2006.06138 [options]
+    python review_paper.py --papers-file data/test_papers.ndjson [options]
 
 Environment variables
 ---------------------
@@ -34,6 +35,13 @@ Examples
 
     # Use a custom report store directory:
     python review_paper.py my_paper.pdf --reports-dir /path/to/my_reports
+
+    # Review a batch of papers from an NDJSON file (one JSON object per line,
+    # each with a "url" or "path" key):
+    python review_paper.py --papers-file data/test_papers.ndjson
+
+    # Batch review with a specific output format:
+    python review_paper.py --papers-file data/test_papers.ndjson --format markdown
 """
 
 from __future__ import annotations
@@ -229,6 +237,51 @@ def _build_llm(model: str):
     return call_llm
 
 
+def _read_papers_file(path: Path) -> list[str]:
+    """Read an NDJSON file and return a list of paper sources (URLs or paths).
+
+    Each non-empty, non-comment line must be a JSON object with a ``"url"``
+    key (for remote papers) or a ``"path"`` key (for local file paths).
+
+    Raises :class:`SystemExit` with a descriptive message on any error so
+    that callers can surface the problem without a traceback.
+    """
+    import json as _json
+
+    try:
+        fh = path.open(encoding="utf-8")
+    except (FileNotFoundError, PermissionError) as exc:
+        raise SystemExit(
+            f"Error: could not read papers file {path}: {exc}"
+        ) from exc
+
+    sources: list[str] = []
+    with fh:
+        for line_no, raw_line in enumerate(fh, 1):
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                entry = _json.loads(line)
+            except _json.JSONDecodeError as exc:
+                raise SystemExit(
+                    f"Error: invalid JSON in {path} at line {line_no}: {exc}"
+                ) from exc
+            if "url" in entry:
+                sources.append(entry["url"])
+            elif "path" in entry:
+                sources.append(entry["path"])
+            else:
+                raise SystemExit(
+                    f"Error: entry at {path}:{line_no} must have a 'url' or "
+                    f"'path' key; got: {list(entry.keys())}"
+                )
+
+    if not sources:
+        raise SystemExit(f"Error: no papers found in {path}")
+    return sources
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="review_paper",
@@ -236,9 +289,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "paper",
+        nargs="?",
+        default=None,
         help=(
             "Path to the paper file (.pdf or .txt), "
-            "or a URL (e.g. https://arxiv.org/abs/2006.06138)."
+            "or a URL (e.g. https://arxiv.org/abs/2006.06138). "
+            "Mutually exclusive with --papers-file."
         ),
     )
     parser.add_argument(
@@ -291,6 +347,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=5,
         help="Number of similar reference papers to surface (default: 5).",
     )
+    parser.add_argument(
+        "--papers-file",
+        metavar="FILE",
+        default=None,
+        help=(
+            "Path to an NDJSON file listing papers to review in batch. "
+            "Each line must be a JSON object with a 'url' or 'path' key. "
+            "Mutually exclusive with the positional paper argument."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -313,11 +379,21 @@ def _fail(message: str, fmt: str = "markdown") -> int:
     return 1
 
 
-def main(argv: list[str] | None = None) -> int:
-    _load_environment()
+def _review_one(paper_source: str, args: argparse.Namespace) -> int:
+    """Evaluate a single paper and write its report.
 
-    args = _parse_args(argv)
+    Parameters
+    ----------
+    paper_source:
+        A local file path or a URL.
+    args:
+        Parsed CLI arguments (format, model, references, reports_dir, etc.).
 
+    Returns
+    -------
+    int
+        0 on success, 1 on failure.
+    """
     run_start = time.monotonic()
     timestamp = datetime.datetime.now(datetime.timezone.utc).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
@@ -327,14 +403,14 @@ def main(argv: list[str] | None = None) -> int:
     # --- Resolve paper source (file path or URL) ---
     tmp_dir: str | None = None
     try:
-        if args.paper.startswith(("http://", "https://")):
+        if paper_source.startswith(("http://", "https://")):
             tmp_dir = tempfile.mkdtemp()
             try:
-                paper_path = _download_paper(args.paper, tmp_dir)
+                paper_path = _download_paper(paper_source, tmp_dir)
             except SystemExit as exc:
                 return _fail(str(exc.code), args.format)
         else:
-            paper_path = Path(args.paper)
+            paper_path = Path(paper_source)
             if not paper_path.exists():
                 return _fail(f"file not found: {paper_path}", args.format)
 
@@ -430,7 +506,7 @@ def main(argv: list[str] | None = None) -> int:
         # inside evaluate() as each LLM call completes.
         run_metadata = RunMetadata(
             model=args.model,
-            input_source=args.paper,
+            input_source=paper_source,
             timestamp=timestamp,
             stage_runtimes=stage_runtimes,
             code_version=__version__,
@@ -506,6 +582,53 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         if tmp_dir:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def main(argv: list[str] | None = None) -> int:
+    _load_environment()
+
+    args = _parse_args(argv)
+
+    # --- Validate mutual exclusivity of paper and --papers-file ---
+    if args.paper is None and args.papers_file is None:
+        print(
+            "Error: provide a paper path/URL as a positional argument, "
+            "or use --papers-file for batch mode.",
+            file=sys.stderr,
+        )
+        return 1
+    if args.paper is not None and args.papers_file is not None:
+        print(
+            "Error: provide either a paper path/URL or --papers-file, not both.",
+            file=sys.stderr,
+        )
+        return 1
+    if args.papers_file is not None and args.output:
+        print(
+            "Error: --output cannot be used with --papers-file; "
+            "use --reports-dir instead.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # --- Batch mode ---
+    if args.papers_file is not None:
+        try:
+            sources = _read_papers_file(Path(args.papers_file))
+        except SystemExit as exc:
+            print(str(exc.code), file=sys.stderr)
+            return 1
+        failed = 0
+        for source in sources:
+            print(f"\n--- Reviewing: {source} ---", file=sys.stderr)
+            rc = _review_one(source, args)
+            if rc != 0:
+                failed += 1
+                print(f"Warning: review failed for: {source}", file=sys.stderr)
+        return 0 if failed == 0 else 1
+
+    # --- Single paper mode ---
+    return _review_one(args.paper, args)
 
 
 if __name__ == "__main__":
