@@ -68,6 +68,7 @@ except ImportError:  # pragma: no cover - dependency is declared in requirements
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MiB safety limit for downloads
 
 from open_idea_sourcing import __version__
+from open_idea_sourcing.idea_decomposer import IdeaDecomposer
 from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator, PipelineJob, RunMetadata
 from open_idea_sourcing.paper_parser import PaperParser
 from open_idea_sourcing.reference_store import ReferenceStore
@@ -357,6 +358,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Mutually exclusive with the positional paper argument."
         ),
     )
+    parser.add_argument(
+        "--no-iterative-search",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable iterative idea decomposition and per-idea similarity "
+            "search.  When set, a single whole-paper similarity query is used "
+            "instead (the pre-1.2 behaviour)."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -439,15 +450,11 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                     f"Warning: reference file not found: {ref_path}", file=sys.stderr
                 )
 
-        # --- Similarity search ---
+        # --- Similarity search (iterative or single-pass) ---
         t0 = time.monotonic()
         searcher = SimilaritySearch(store)
-        similar = searcher.search(paper.key_content(), top_k=args.top_k)
-        sim_duration = round(time.monotonic() - t0, 2)
-        stage_runtimes["similarity"] = sim_duration
-
-        # Build early pipeline job records for pre-LLM stages
-        early_jobs = [
+        iterative_search = not args.no_iterative_search
+        early_jobs: list[PipelineJob] = [
             PipelineJob(
                 name="Parse paper",
                 agent="PaperParser",
@@ -456,21 +463,66 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 input_summary=paper_path.name,
                 output_summary=f'"{paper.title}", {len(paper.full_text)} chars',
             ),
-            PipelineJob(
-                name="Similarity search",
-                agent="SimilaritySearch",
-                offset_s=round(stage_runtimes["parsing"], 3),
-                duration_s=sim_duration,
-                input_summary="paper key content",
-                output_summary=f"top-{len(similar)} match(es)",
-            ),
         ]
 
+        if iterative_search:
+            # Idea decomposition requires the LLM, so we build it early.
+            try:
+                llm = _build_llm(args.model)
+            except SystemExit as exc:
+                return _fail(str(exc.code), args.format)
+
+            print("Decomposing paper into ideas ...", file=sys.stderr)
+            decomposer = IdeaDecomposer(
+                llm=llm,
+                top_k_per_idea=args.top_k,
+            )
+            try:
+                ideas, decomposed_ideas, similar = decomposer.run(paper, searcher)
+            except RuntimeError as exc:
+                return _fail(f"idea decomposition failed: {exc}", args.format)
+            sim_duration = round(time.monotonic() - t0, 2)
+            stage_runtimes["similarity"] = sim_duration
+
+            # One pipeline job for decomposition + one per-idea search job
+            idea_count = len(ideas)
+            total_refs = len(similar)
+            early_jobs.append(
+                PipelineJob(
+                    name="Idea decomposition",
+                    agent=f"LLM ({args.model})",
+                    offset_s=round(parse_duration, 3),
+                    duration_s=sim_duration,
+                    input_summary="paper key content",
+                    output_summary=(
+                        f"{idea_count} idea(s) → {total_refs} unique ref(s)"
+                    ),
+                )
+            )
+        else:
+            similar = searcher.search(paper.key_content(), top_k=args.top_k)
+            sim_duration = round(time.monotonic() - t0, 2)
+            stage_runtimes["similarity"] = sim_duration
+
+            early_jobs.append(
+                PipelineJob(
+                    name="Similarity search",
+                    agent="SimilaritySearch",
+                    offset_s=round(stage_runtimes["parsing"], 3),
+                    duration_s=sim_duration,
+                    input_summary="paper key content",
+                    output_summary=f"top-{len(similar)} match(es)",
+                )
+            )
+
         # --- LLM evaluation ---
-        try:
-            llm = _build_llm(args.model)
-        except SystemExit as exc:
-            return _fail(str(exc.code), args.format)
+        # In the iterative path the LLM was already built for idea decomposition;
+        # in the single-pass path we build it here.
+        if not iterative_search:
+            try:
+                llm = _build_llm(args.model)
+            except SystemExit as exc:
+                return _fail(str(exc.code), args.format)
         evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
         print("Running novelty evaluation ...", file=sys.stderr)
         t0 = time.monotonic()
