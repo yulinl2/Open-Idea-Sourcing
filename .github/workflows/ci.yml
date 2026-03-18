@@ -11,22 +11,14 @@ on:
         description: "URL of the paper to review (e.g. https://arxiv.org/abs/2006.06138)"
         required: false
         default: ""
-      paper_path:
-        description: "Relative path to the paper file inside the repo (e.g. papers/my_paper.pdf) — used only when paper_url is empty"
-        required: false
-        default: ""
-      references_path:
-        description: "Relative path to a references JSON file (optional)"
-        required: false
-        default: ""
-      output_format:
-        description: "Report format: text | markdown | json | pdf (default: pdf)"
-        required: false
-        default: "pdf"
       papers_file:
-        description: "Relative path to an NDJSON batch file listing papers to review (default: data/test_papers.ndjson) — used only when paper_url and paper_path are both empty"
+        description: "NDJSON batch file name inside data/ listing papers to review (default: test_papers.ndjson) — used only when paper_url is empty"
         required: false
-        default: "data/test_papers.ndjson"
+        default: "test_papers.ndjson"
+      output_format:
+        description: "Report format: text | markdown | json | pdf (default: markdown)"
+        required: false
+        default: "markdown"
 
 jobs:
   test:
@@ -61,10 +53,8 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PAPER_URL: ${{ inputs.paper_url }}
-          PAPER_PATH: ${{ inputs.paper_path }}
           PAPERS_FILE: ${{ inputs.papers_file }}
           GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
-          GH_PAPER_PATH: ${{ github.event.inputs.paper_path }}
           GH_PAPERS_FILE: ${{ github.event.inputs.papers_file }}
         run: |
           # Push-triggered runs always use the default batch file — no inputs to validate.
@@ -73,10 +63,9 @@ jobs:
             exit 0
           fi
           PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"
-          PAPER_PATH="${PAPER_PATH:-$GH_PAPER_PATH}"
           PAPERS_FILE="${PAPERS_FILE:-$GH_PAPERS_FILE}"
-          if [ -z "$PAPER_URL" ] && [ -z "$PAPER_PATH" ] && [ -z "$PAPERS_FILE" ]; then
-            echo "::error::Please provide paper_url, paper_path, or papers_file when triggering this workflow. All three are currently empty."
+          if [ -z "$PAPER_URL" ] && [ -z "$PAPERS_FILE" ]; then
+            echo "::error::Please provide paper_url or papers_file when triggering this workflow. Both are currently empty."
             exit 1
           fi
 
@@ -97,50 +86,30 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PAPER_URL: ${{ inputs.paper_url }}
-          PAPER_PATH: ${{ inputs.paper_path }}
           PAPERS_FILE: ${{ inputs.papers_file }}
-          REFS_PATH: ${{ inputs.references_path }}
           OUTPUT_FORMAT: ${{ inputs.output_format }}
           GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
-          GH_PAPER_PATH: ${{ github.event.inputs.paper_path }}
           GH_PAPERS_FILE: ${{ github.event.inputs.papers_file }}
-          GH_REFS_PATH: ${{ github.event.inputs.references_path }}
           GH_OUTPUT_FORMAT: ${{ github.event.inputs.output_format }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           # Fall back to github.event.inputs for re-run compatibility
           PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"
-          PAPER_PATH="${PAPER_PATH:-$GH_PAPER_PATH}"
           PAPERS_FILE="${PAPERS_FILE:-$GH_PAPERS_FILE}"
-          REFS_PATH="${REFS_PATH:-$GH_REFS_PATH}"
           OUTPUT_FORMAT="${OUTPUT_FORMAT:-$GH_OUTPUT_FORMAT}"
 
           mkdir -p reports
 
-          # Build the optional --references flag
-          REFS_FLAG=""
-          if [ -n "$REFS_PATH" ]; then
-            REFS_FLAG="--references $REFS_PATH"
-          fi
-
-          # URL/path takes precedence over batch file
+          # URL takes precedence over batch file; batch file is relative to data/
           if [ -n "$PAPER_URL" ]; then
             python review_paper.py "$PAPER_URL" \
-              --format "${OUTPUT_FORMAT:-pdf}" \
-              --reports-dir reports \
-              $REFS_FLAG
-          elif [ -n "$PAPER_PATH" ]; then
-            python review_paper.py "$PAPER_PATH" \
-              --format "${OUTPUT_FORMAT:-pdf}" \
-              --reports-dir reports \
-              $REFS_FLAG
+              --format "${OUTPUT_FORMAT:-markdown}" \
+              --reports-dir reports
           else
-            # Batch mode — use the papers file (default: data/test_papers.ndjson)
             python review_paper.py \
-              --papers-file "${PAPERS_FILE:-data/test_papers.ndjson}" \
-              --format "${OUTPUT_FORMAT:-pdf}" \
-              --reports-dir reports \
-              $REFS_FLAG
+              --papers-file "data/${PAPERS_FILE:-test_papers.ndjson}" \
+              --format "${OUTPUT_FORMAT:-markdown}" \
+              --reports-dir reports
           fi
 
       - name: Upload reports as artifact
