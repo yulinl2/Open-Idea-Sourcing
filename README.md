@@ -5,12 +5,13 @@ An AI system that reviews academic papers for **genuine novelty**. The system go
 ## Features
 
 | Capability | What it does |
-|------------------------------------|------------------------------------|
+|--------------------------------------------|-------------------------------------|
 | **Direct duplication detection** | Identifies whether the paper's core ideas are essentially the same as prior work, even when wording differs |
 | **Combination analysis** | Detects papers that are simple assemblies of existing components and traces each piece to its source |
 | **Methodological equivalence** | Surfaces re-derivations of established methods under different names, notation, or application domains |
-| **Reference anchoring** | Compares the submission against a user-managed corpus of reference papers via TF-IDF similarity search |
-| **Structured reports** | Outputs detailed reports in plain text, Markdown, or JSON |
+| **Automatic online reference search** | Queries the [Semantic Scholar](https://www.semanticscholar.org/) public API to discover related papers automatically — no local reference corpus needed |
+| **Reference anchoring** | Compares the submission against discovered (and optionally user-supplied) reference papers via TF-IDF similarity search |
+| **Structured reports** | Outputs detailed reports in plain text, Markdown, JSON, or PDF |
 
 ## Quick Start
 
@@ -97,15 +98,35 @@ Create a `refs.json` file if you want to compare the paper against your own refe
 ]
 ```
 
+### Online Reference Search
+
+By default, `review_paper.py` automatically queries the **Semantic Scholar** public API to find related papers before the LLM evaluation stages.  No API key or local corpus is required.
+
+The search strategy is:
+
+1. Query Semantic Scholar with the paper **title** (high-precision).
+2. If too few results are returned, a second query is issued using the opening terms of the **abstract** (higher recall).
+3. Duplicate results (same paper ID) are removed.
+4. The fetched papers are added to the reference store and ranked by TF-IDF similarity against the submitted paper's content, so only the most relevant papers are surfaced to the LLM.
+
+To disable online search (e.g., when working offline):
+
+``` bash
+python review_paper.py paper.pdf --no-online-search
+```
+
+The `--references` flag and online search can be used together; papers from both sources are merged in the reference store before similarity ranking.
+
 ## Architecture
 
 ```text
 open_idea_sourcing/
 ├── paper_parser.py       Parse PDF/text → structured title, abstract, sections
 ├── reference_store.py    Manage a local corpus of reference papers (JSON)
+├── online_search.py      Fetch related papers from the Semantic Scholar API
 ├── similarity_search.py  TF-IDF cosine similarity to find related references
 ├── novelty_evaluator.py  LLM-powered 3-pass novelty analysis + synthesis
-└── report_generator.py   Render NoveltyReport as text / Markdown / JSON
+└── report_generator.py   Render NoveltyReport as text / Markdown / JSON / PDF
 
 review_paper.py           CLI entry point
 ```

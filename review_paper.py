@@ -69,6 +69,7 @@ MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MiB safety limit for downloads
 
 from open_idea_sourcing import __version__
 from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator, PipelineJob, RunMetadata
+from open_idea_sourcing.online_search import OnlineReferenceSearch
 from open_idea_sourcing.paper_parser import PaperParser
 from open_idea_sourcing.reference_store import ReferenceStore
 from open_idea_sourcing.report_generator import ReportGenerator, suggest_filename
@@ -357,6 +358,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Mutually exclusive with the positional paper argument."
         ),
     )
+    parser.add_argument(
+        "--no-online-search",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable automatic online reference search via the Semantic "
+            "Scholar API (enabled by default).  Use this flag when working "
+            "offline or when you want to rely solely on a local --references "
+            "file."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -439,6 +451,27 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                     f"Warning: reference file not found: {ref_path}", file=sys.stderr
                 )
 
+        # --- Online reference search ---
+        online_papers_count = 0
+        online_duration = 0.0
+        if not args.no_online_search:
+            print(
+                "Searching for related papers online (Semantic Scholar) ...",
+                file=sys.stderr,
+            )
+            t0 = time.monotonic()
+            online_searcher = OnlineReferenceSearch(max_results=args.top_k * 2)
+            online_papers = online_searcher.search(paper.title, paper.abstract)
+            for ref_paper in online_papers:
+                store.add(ref_paper)
+            online_papers_count = len(online_papers)
+            online_duration = round(time.monotonic() - t0, 2)
+            stage_runtimes["online_search"] = online_duration
+            print(
+                f"  Found {online_papers_count} related paper(s) online.",
+                file=sys.stderr,
+            )
+
         # --- Similarity search ---
         t0 = time.monotonic()
         searcher = SimilaritySearch(store)
@@ -447,7 +480,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         stage_runtimes["similarity"] = sim_duration
 
         # Build early pipeline job records for pre-LLM stages
-        early_jobs = [
+        early_jobs: list[PipelineJob] = [
             PipelineJob(
                 name="Parse paper",
                 agent="PaperParser",
@@ -456,15 +489,32 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 input_summary=paper_path.name,
                 output_summary=f'"{paper.title}", {len(paper.full_text)} chars',
             ),
+        ]
+        if not args.no_online_search:
+            early_jobs.append(
+                PipelineJob(
+                    name="Online reference search",
+                    agent="SemanticScholar API",
+                    offset_s=round(stage_runtimes["parsing"], 3),
+                    duration_s=online_duration,
+                    input_summary=f'title="{paper.title}"',
+                    output_summary=f"{online_papers_count} paper(s) fetched",
+                )
+            )
+        sim_offset = round(
+            stage_runtimes["parsing"] + stage_runtimes.get("online_search", 0.0),
+            3,
+        )
+        early_jobs.append(
             PipelineJob(
                 name="Similarity search",
                 agent="SimilaritySearch",
-                offset_s=round(stage_runtimes["parsing"], 3),
+                offset_s=sim_offset,
                 duration_s=sim_duration,
                 input_summary="paper key content",
                 output_summary=f"top-{len(similar)} match(es)",
-            ),
-        ]
+            )
+        )
 
         # --- LLM evaluation ---
         try:

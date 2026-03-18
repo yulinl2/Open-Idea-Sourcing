@@ -765,3 +765,161 @@ class TestMainBatchMode:
         assert rc == 1
         err = capsys.readouterr().err
         assert "could not read" in err.lower() or "nonexistent" in err
+
+
+# ---------------------------------------------------------------------------
+# Online reference search integration
+# ---------------------------------------------------------------------------
+
+
+class TestOnlineSearchIntegration:
+    """Verify that online reference search is invoked by default and can be
+    disabled via --no-online-search."""
+
+    _SAMPLE_TEXT = (
+        "Attention Is All You Need\n\n"
+        "Abstract\nWe propose the Transformer.\n\n"
+        "1. Introduction\nNeural networks are great.\n"
+    )
+
+    def test_online_search_called_by_default(self, tmp_path):
+        """OnlineReferenceSearch.search must be called when the flag is absent."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        call_count = {"n": 0}
+
+        def tracking_search(self_obj, title, abstract=""):
+            call_count["n"] += 1
+            return []  # empty so the rest of the pipeline is unaffected
+
+        with (
+            patch("review_paper._build_llm", return_value=fake_llm),
+            patch(
+                "open_idea_sourcing.online_search.OnlineReferenceSearch.search",
+                side_effect=tracking_search,
+            ),
+        ):
+            rc = main([str(paper), "--format", "text", "--reports-dir", str(tmp_path)])
+
+        assert rc == 0
+        assert call_count["n"] >= 1
+
+    def test_no_online_search_flag_skips_call(self, tmp_path):
+        """When --no-online-search is passed, OnlineReferenceSearch must not be called."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        call_count = {"n": 0}
+
+        def tracking_search(self_obj, title, abstract=""):
+            call_count["n"] += 1
+            return []
+
+        with (
+            patch("review_paper._build_llm", return_value=fake_llm),
+            patch(
+                "open_idea_sourcing.online_search.OnlineReferenceSearch.search",
+                side_effect=tracking_search,
+            ),
+        ):
+            rc = main([
+                str(paper), "--format", "text",
+                "--no-online-search", "--reports-dir", str(tmp_path),
+            ])
+
+        assert rc == 0
+        assert call_count["n"] == 0
+
+    def test_online_search_stage_in_metadata(self, tmp_path, capsys):
+        """When online search runs, 'online_search' must appear in stage_runtimes."""
+        import json as _json
+
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with (
+            patch("review_paper._build_llm", return_value=fake_llm),
+            patch(
+                "open_idea_sourcing.online_search.OnlineReferenceSearch.search",
+                return_value=[],
+            ),
+        ):
+            rc = main([str(paper), "--format", "json", "--reports-dir", str(tmp_path)])
+
+        assert rc == 0
+        data = _json.loads(capsys.readouterr().out)
+        assert "online_search" in data["metadata"]["stage_runtimes"]
+
+    def test_no_online_search_stage_when_disabled(self, tmp_path, capsys):
+        """When --no-online-search is used, 'online_search' must not appear
+        in stage_runtimes."""
+        import json as _json
+
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([
+                str(paper), "--format", "json",
+                "--no-online-search", "--reports-dir", str(tmp_path),
+            ])
+
+        assert rc == 0
+        data = _json.loads(capsys.readouterr().out)
+        assert "online_search" not in data["metadata"]["stage_runtimes"]
+
+    def test_online_search_job_in_pipeline_log(self, tmp_path, capsys):
+        """The pipeline job log must include an 'Online reference search' entry."""
+        import json as _json
+
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with (
+            patch("review_paper._build_llm", return_value=fake_llm),
+            patch(
+                "open_idea_sourcing.online_search.OnlineReferenceSearch.search",
+                return_value=[],
+            ),
+        ):
+            rc = main([str(paper), "--format", "json", "--reports-dir", str(tmp_path)])
+
+        assert rc == 0
+        data = _json.loads(capsys.readouterr().out)
+        job_names = [j["name"] for j in data["metadata"]["jobs"]]
+        assert "Online reference search" in job_names
+
+    def test_no_online_search_job_when_disabled(self, tmp_path, capsys):
+        """When --no-online-search is used, no 'Online reference search' job."""
+        import json as _json
+
+        paper = tmp_path / "paper.txt"
+        paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([
+                str(paper), "--format", "json",
+                "--no-online-search", "--reports-dir", str(tmp_path),
+            ])
+
+        assert rc == 0
+        data = _json.loads(capsys.readouterr().out)
+        job_names = [j["name"] for j in data["metadata"]["jobs"]]
+        assert "Online reference search" not in job_names
+
+    def test_no_online_search_flag_parsed(self):
+        """--no-online-search must be recognised as a CLI flag."""
+        import review_paper as rp
+        ns = rp._parse_args(["dummy.pdf", "--no-online-search"])
+        assert ns.no_online_search is True
+
+    def test_online_search_enabled_by_default_in_args(self):
+        """Without --no-online-search, no_online_search must be False."""
+        import review_paper as rp
+        ns = rp._parse_args(["dummy.pdf"])
+        assert ns.no_online_search is False
