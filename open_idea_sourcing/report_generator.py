@@ -286,7 +286,12 @@ class ReportGenerator:
             # --- Run context group ---
             context_rows = []
             if m.timestamp:
-                context_rows.append(("Timestamp", _fmt_datetime_ny(m.timestamp)))
+                # Show timestamp in America/New_York and explicitly include timezone/UTC.
+                ny_str = _fmt_datetime_ny(m.timestamp)
+                utc_str = m.timestamp.astimezone(timezone.utc).isoformat(timespec="seconds")
+                context_rows.append(
+                    ("Timestamp (America/New_York)", f"{ny_str} (UTC: {utc_str})")
+                )
             if m.git_branch:
                 context_rows.append(("Branch", m.git_branch))
             if m.git_commit:
