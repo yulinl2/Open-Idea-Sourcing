@@ -210,10 +210,12 @@ class NoveltyEvaluator:
         t2 = time.monotonic()
         equiv = self._check_equivalence(content, refs_text, raw)
         t3 = time.monotonic()
-        overall, confidence, summary = self._synthesise(
-            paper.title, dup, combo, equiv, raw
-        )
+        recon = self._check_reconstruction(content, refs_text, raw)
         t4 = time.monotonic()
+        overall, confidence, summary = self._synthesise(
+            paper.title, dup, combo, equiv, recon, raw
+        )
+        t5 = time.monotonic()
 
         if metadata is not None:
             metadata.jobs.extend([
@@ -242,11 +244,19 @@ class NoveltyEvaluator:
                     output_summary=f"verdict={equiv.verdict}",
                 ),
                 PipelineJob(
-                    name="Synthesis",
+                    name="Reconstruction check",
                     agent=agent,
                     offset_s=round(t3 - run_start, 3),
                     duration_s=round(t4 - t3, 3),
-                    input_summary="3 dimension results",
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"verdict={recon.verdict}",
+                ),
+                PipelineJob(
+                    name="Synthesis",
+                    agent=agent,
+                    offset_s=round(t4 - run_start, 3),
+                    duration_s=round(t5 - t4, 3),
+                    input_summary="4 dimension results",
                     output_summary=f"verdict={overall}, confidence={confidence}",
                 ),
             ])
@@ -256,7 +266,7 @@ class NoveltyEvaluator:
             overall_verdict=overall,
             confidence=confidence,
             summary=summary,
-            dimensions=[dup, combo, equiv],
+            dimensions=[dup, combo, equiv, recon],
             similar_papers=similar_papers,
             raw_llm_responses=raw,
         )
@@ -299,6 +309,33 @@ class NoveltyEvaluator:
             references=refs,
         )
 
+    def _check_reconstruction(
+        self, content: str, refs_text: str, raw: dict[str, str]
+    ) -> NoveltyDimension:
+        """Apply the min-hint max-recovery reconstruction test.
+
+        The test asks: if an expert researcher were given only the minimal
+        context (the problem being addressed, without the proposed solution),
+        could they independently reconstruct the paper's key contribution?
+
+        A HIGH verdict means the contribution is easily derivable from the
+        problem setup alone — it is the obvious or expected next step, which
+        reduces intellectual novelty.  A LOW verdict means the contribution
+        would be hard to reconstruct, indicating a genuine non-obvious insight.
+        """
+        prompt = _RECONSTRUCTION_PROMPT.format(
+            paper_content=content, reference_papers=refs_text
+        )
+        response = self._llm(prompt)
+        raw["reconstruction"] = response
+        verdict, explanation, refs = _parse_dimension_response(response)
+        return NoveltyDimension(
+            name="Intellectual Contribution (Reconstruction Test)",
+            verdict=verdict,
+            explanation=explanation,
+            references=refs,
+        )
+
     def _check_equivalence(
         self, content: str, refs_text: str, raw: dict[str, str]
     ) -> NoveltyDimension:
@@ -322,14 +359,16 @@ class NoveltyEvaluator:
         dup: NoveltyDimension,
         combo: NoveltyDimension,
         equiv: NoveltyDimension,
+        recon: NoveltyDimension,
         raw: dict[str, str],
     ) -> tuple[str, str, str]:
-        """Ask the LLM to synthesise the three dimension results."""
+        """Ask the LLM to synthesise the four dimension results."""
         prompt = _SYNTHESIS_PROMPT.format(
             paper_title=title,
             duplication_result=f"Verdict: {dup.verdict}\n{dup.explanation}",
             combination_result=f"Verdict: {combo.verdict}\n{combo.explanation}",
             equivalence_result=f"Verdict: {equiv.verdict}\n{equiv.explanation}",
+            reconstruction_result=f"Verdict: {recon.verdict}\n{recon.explanation}",
         )
         response = self._llm(prompt)
         raw["synthesis"] = response
@@ -377,6 +416,45 @@ INSTRUCTIONS:
 - Then write EXPLANATION: one or two paragraphs.
 - Then write REFERENCES: comma-separated IDs of papers that are duplicated
   (or "none").
+"""
+
+_RECONSTRUCTION_PROMPT = """You are a rigorous academic novelty reviewer applying the
+min-hint max-recovery reconstruction test.
+
+TASK: Evaluate the intellectual contribution of the submitted paper using
+the following thought experiment:
+
+  Suppose an expert researcher is given ONLY the minimal context — the
+  research problem, the gap in the literature, and the high-level goals —
+  but NOT the proposed solution or contribution.  Could that expert
+  independently reconstruct or derive the paper's key intellectual
+  contribution?
+
+A HIGH verdict means the contribution is the obvious or expected next step
+and would be readily reconstructed from the problem setup alone.  This
+indicates low genuine intellectual novelty.
+
+A LOW verdict means the contribution contains a genuine non-obvious insight,
+creative leap, or surprising element that would be hard to anticipate even
+with full knowledge of the problem context.
+
+SUBMITTED PAPER:
+{paper_content}
+
+REFERENCE PAPERS (most similar by text):
+{reference_papers}
+
+INSTRUCTIONS:
+- Respond with a structured analysis.
+- Start with VERDICT: <HIGH|MEDIUM|LOW>
+  (HIGH = easily reconstructable / obvious,
+   LOW  = non-obvious / hard to reconstruct).
+- Then write EXPLANATION: two to four sentences describing whether the
+  contribution is a predictable derivation from the problem context, or
+  whether it represents a genuine creative leap that an expert would be
+  unlikely to arrive at independently.
+- Then write REFERENCES: comma-separated IDs of papers from which the
+  contribution could be directly extrapolated (or "none").
 """
 
 _COMBINATION_PROMPT = """You are a rigorous academic novelty reviewer.
@@ -434,6 +512,9 @@ COMBINATION ANALYSIS:
 
 EQUIVALENCE ANALYSIS:
 {equivalence_result}
+
+RECONSTRUCTION ANALYSIS (min-hint max-recovery test):
+{reconstruction_result}
 
 INSTRUCTIONS:
 Respond with:

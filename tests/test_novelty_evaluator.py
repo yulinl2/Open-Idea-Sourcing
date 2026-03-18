@@ -70,6 +70,12 @@ _EQUIV_RESPONSE = (
     "EXPLANATION: No direct methodological equivalence found.\n"
     "REFERENCES: none"
 )
+_RECON_RESPONSE = (
+    "VERDICT: HIGH\n"
+    "EXPLANATION: The contribution is the expected next step from the problem "
+    "setup; an expert would readily reconstruct it from existing literature.\n"
+    "REFERENCES: att2017"
+)
 _SYNTH_RESPONSE = (
     "OVERALL_VERDICT: NOT_NOVEL\n"
     "CONFIDENCE: HIGH\n"
@@ -83,6 +89,7 @@ def _make_full_llm():
         _DUP_RESPONSE,
         _COMBO_RESPONSE,
         _EQUIV_RESPONSE,
+        _RECON_RESPONSE,
         _SYNTH_RESPONSE,
     ]
     call_idx = {"i": 0}
@@ -235,10 +242,10 @@ class TestNoveltyEvaluator:
         report = evaluator.evaluate(SAMPLE_PAPER)
         assert report.paper_title == SAMPLE_PAPER.title
 
-    def test_report_has_three_dimensions(self):
+    def test_report_has_four_dimensions(self):
         evaluator = NoveltyEvaluator(llm=_make_full_llm())
         report = evaluator.evaluate(SAMPLE_PAPER)
-        assert len(report.dimensions) == 3
+        assert len(report.dimensions) == 4
 
     def test_dimension_names(self):
         evaluator = NoveltyEvaluator(llm=_make_full_llm())
@@ -247,6 +254,7 @@ class TestNoveltyEvaluator:
         assert "Direct Duplication" in names
         assert "Simple Combination" in names
         assert "Methodological Equivalence" in names
+        assert "Intellectual Contribution (Reconstruction Test)" in names
 
     def test_overall_verdict_set(self):
         evaluator = NoveltyEvaluator(llm=_make_full_llm())
@@ -261,6 +269,7 @@ class TestNoveltyEvaluator:
         assert "duplication" in report.raw_llm_responses
         assert "combination" in report.raw_llm_responses
         assert "equivalence" in report.raw_llm_responses
+        assert "reconstruction" in report.raw_llm_responses
         assert "synthesis" in report.raw_llm_responses
 
     def test_similar_papers_attached_to_report(self):
@@ -275,7 +284,7 @@ class TestNoveltyEvaluator:
         report = evaluator.evaluate(SAMPLE_PAPER)
         assert report is not None
 
-    def test_llm_called_exactly_four_times(self):
+    def test_llm_called_exactly_five_times(self):
         calls = []
         def counting_llm(prompt: str) -> str:
             calls.append(prompt)
@@ -283,8 +292,8 @@ class TestNoveltyEvaluator:
 
         evaluator = NoveltyEvaluator(llm=counting_llm)
         evaluator.evaluate(SAMPLE_PAPER)
-        # 3 dimension passes + 1 synthesis pass
-        assert len(calls) == 4
+        # 4 dimension passes + 1 synthesis pass
+        assert len(calls) == 5
 
     def test_duplication_high_leads_to_not_novel(self):
         """When duplication is HIGH, synthesis should reflect that."""
@@ -313,12 +322,12 @@ class TestNoveltyEvaluatorJobLog:
         from open_idea_sourcing.novelty_evaluator import RunMetadata
         return RunMetadata(model="gpt-test", input_source="paper.txt")
 
-    def test_evaluate_with_metadata_appends_four_jobs(self):
+    def test_evaluate_with_metadata_appends_five_jobs(self):
         meta = self._make_metadata()
         evaluator = NoveltyEvaluator(llm=_make_full_llm())
         evaluator.evaluate(SAMPLE_PAPER, metadata=meta)
-        # 4 LLM jobs: duplication, combination, equivalence, synthesis
-        assert len(meta.jobs) == 4
+        # 4 LLM dimension jobs + 1 synthesis job
+        assert len(meta.jobs) == 5
 
     def test_evaluate_job_names(self):
         meta = self._make_metadata()
@@ -328,6 +337,7 @@ class TestNoveltyEvaluatorJobLog:
         assert "Duplication check" in names
         assert "Combination check" in names
         assert "Equivalence check" in names
+        assert "Reconstruction check" in names
         assert "Synthesis" in names
 
     def test_evaluate_job_agent_includes_model(self):
@@ -360,6 +370,117 @@ class TestNoveltyEvaluatorJobLog:
         ))
         evaluator = NoveltyEvaluator(llm=_make_full_llm())
         evaluator.evaluate(SAMPLE_PAPER, metadata=meta)
-        # 1 pre-existing + 4 from evaluator = 5
-        assert len(meta.jobs) == 5
+        # 1 pre-existing + 5 from evaluator = 6
+        assert len(meta.jobs) == 6
         assert meta.jobs[0].name == "Parse paper"
+
+
+# ---------------------------------------------------------------------------
+# Tests for the reconstruction dimension (_check_reconstruction)
+# ---------------------------------------------------------------------------
+
+class TestReconstructionDimension:
+    """Tests for the min-hint max-recovery reconstruction analysis pass."""
+
+    def test_reconstruction_dimension_in_report(self):
+        """Reconstruction dimension must appear in the report's dimensions list."""
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        report = evaluator.evaluate(SAMPLE_PAPER)
+        names = [d.name for d in report.dimensions]
+        assert "Intellectual Contribution (Reconstruction Test)" in names
+
+    def test_reconstruction_verdict_stored_in_raw(self):
+        """Raw LLM response for the reconstruction pass must be stored."""
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        report = evaluator.evaluate(SAMPLE_PAPER)
+        assert "reconstruction" in report.raw_llm_responses
+
+    def test_reconstruction_high_verdict_parsed(self):
+        """A HIGH reconstruction verdict is correctly parsed from the LLM response."""
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        report = evaluator.evaluate(SAMPLE_PAPER)
+        recon_dim = next(
+            d for d in report.dimensions
+            if d.name == "Intellectual Contribution (Reconstruction Test)"
+        )
+        assert recon_dim.verdict == "HIGH"
+
+    def test_reconstruction_explanation_not_empty(self):
+        """Reconstruction explanation must be non-empty."""
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        report = evaluator.evaluate(SAMPLE_PAPER)
+        recon_dim = next(
+            d for d in report.dimensions
+            if d.name == "Intellectual Contribution (Reconstruction Test)"
+        )
+        assert recon_dim.explanation.strip() != ""
+
+    def test_reconstruction_references_parsed(self):
+        """References cited in the reconstruction response must be parsed."""
+        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        report = evaluator.evaluate(SAMPLE_PAPER, similar_papers=[
+            SimilarityResult(paper=SAMPLE_REFERENCE, score=0.85)
+        ])
+        recon_dim = next(
+            d for d in report.dimensions
+            if d.name == "Intellectual Contribution (Reconstruction Test)"
+        )
+        assert "att2017" in recon_dim.references
+
+    def test_reconstruction_low_verdict_for_novel_paper(self):
+        """A LOW reconstruction verdict (non-obvious contribution) is correctly handled."""
+        low_recon_response = (
+            "VERDICT: LOW\n"
+            "EXPLANATION: The contribution is a surprising non-obvious insight "
+            "that could not be reconstructed from the problem setup alone.\n"
+            "REFERENCES: none"
+        )
+        responses = [
+            _DUP_RESPONSE, _COMBO_RESPONSE, _EQUIV_RESPONSE,
+            low_recon_response, _SYNTH_RESPONSE,
+        ]
+        call_idx = {"i": 0}
+
+        def sequential_llm(_prompt: str) -> str:
+            idx = call_idx["i"]
+            call_idx["i"] += 1
+            if idx < len(responses):
+                return responses[idx]
+            return "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none"
+
+        evaluator = NoveltyEvaluator(llm=sequential_llm)
+        report = evaluator.evaluate(SAMPLE_PAPER)
+        recon_dim = next(
+            d for d in report.dimensions
+            if d.name == "Intellectual Contribution (Reconstruction Test)"
+        )
+        assert recon_dim.verdict == "LOW"
+
+    def test_reconstruction_prompt_contains_min_hint_keywords(self):
+        """The reconstruction prompt must include the test's key framing."""
+        captured_prompts = []
+
+        def capture_llm(prompt: str) -> str:
+            captured_prompts.append(prompt)
+            return "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none"
+
+        evaluator = NoveltyEvaluator(llm=capture_llm)
+        evaluator.evaluate(SAMPLE_PAPER)
+        # The 4th call (index 3) is the reconstruction pass
+        recon_prompt = captured_prompts[3]
+        assert "reconstruct" in recon_prompt.lower()
+        assert "expert" in recon_prompt.lower()
+
+    def test_reconstruction_synthesis_includes_reconstruction_result(self):
+        """The synthesis prompt must include the reconstruction analysis."""
+        captured_prompts = []
+
+        def capture_llm(prompt: str) -> str:
+            captured_prompts.append(prompt)
+            return "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none"
+
+        evaluator = NoveltyEvaluator(llm=capture_llm)
+        evaluator.evaluate(SAMPLE_PAPER)
+        # The 5th call (index 4) is the synthesis pass
+        synth_prompt = captured_prompts[4]
+        assert "reconstruction" in synth_prompt.lower()

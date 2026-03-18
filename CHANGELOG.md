@@ -35,6 +35,18 @@ The `release.yml` workflow will:
 
 ## [Unreleased]
 
+### Added
+- **Reconstruction test** (4th novelty dimension): `NoveltyEvaluator` now runs a
+  *min-hint max-recovery* reconstruction test that asks whether an expert researcher
+  could independently derive the paper's key contribution from only the minimal
+  problem context.  A HIGH verdict signals an obvious/expected contribution; a LOW
+  verdict signals a genuine non-obvious intellectual leap.
+- `_check_reconstruction()` method and `_RECONSTRUCTION_PROMPT` template added to
+  `novelty_evaluator.py`.
+- Synthesis prompt updated to incorporate the reconstruction analysis alongside the
+  existing three dimensions.
+- Pipeline job log now records 5 entries per run (4 dimension checks + 1 synthesis).
+
 ---
 
 ## [1.1.0] — 2026-03-18
