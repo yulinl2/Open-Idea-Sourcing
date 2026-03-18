@@ -20,6 +20,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from .novelty_evaluator import NoveltyReport, RunMetadata
 
@@ -53,6 +54,23 @@ blockquote { border-left: 4px solid #aaa; margin: 0; padding: 6px 16px; color: #
 code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
 pre code { display: block; padding: 10px; }
 """
+
+
+_NY_TZ = ZoneInfo("America/New_York")
+
+
+def _fmt_datetime_ny(ts: str) -> str:
+    """Format an ISO 8601 UTC timestamp as a human-readable New York time string.
+
+    Converts *ts* to America/New_York (EDT or EST, auto-selected by date) and
+    formats the result as ``YYYY-MM-DD HH:MM:SS EDT/EST`` for human readability.
+    Returns *ts* unchanged if it cannot be parsed.
+    """
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        return dt.astimezone(_NY_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
+    except ValueError:
+        return ts
 
 
 def suggest_filename(report: NoveltyReport, fmt: str = "markdown") -> str:
@@ -171,7 +189,7 @@ class ReportGenerator:
 
             lines.append("  [Run Context]")
             if m.timestamp:
-                lines.append(f"    Timestamp   : {m.timestamp}")
+                lines.append(f"    Timestamp   : {_fmt_datetime_ny(m.timestamp)}")
             if m.git_branch:
                 lines.append(f"    Branch      : {m.git_branch}")
             if m.git_commit:
@@ -239,27 +257,6 @@ class ReportGenerator:
                 lines.append(f"  [{res.score:.2f}] {p.title}{year}")
             lines.append("")
 
-        if r.metadata:
-            m = r.metadata
-            lines += ["RUN METADATA", "-" * 70]
-            if m.timestamp:
-                lines.append(f"  Timestamp   : {m.timestamp}")
-            if m.model:
-                lines.append(f"  Model       : {m.model}")
-            if m.input_source:
-                lines.append(f"  Input       : {m.input_source}")
-            if m.code_version:
-                lines.append(f"  Code version: {m.code_version}")
-            if m.total_runtime_seconds:
-                lines.append(
-                    f"  Total time  : {m.total_runtime_seconds:.1f}s"
-                )
-            if m.stage_runtimes:
-                lines.append("  Stage times :")
-                for stage, secs in m.stage_runtimes.items():
-                    lines.append(f"    {stage}: {secs:.1f}s")
-            lines.append("")
-
         lines.append("=" * 70)
         return "\n".join(lines)
 
@@ -281,7 +278,7 @@ class ReportGenerator:
             # --- Run context group ---
             context_rows = []
             if m.timestamp:
-                context_rows.append(("Timestamp", m.timestamp))
+                context_rows.append(("Timestamp", _fmt_datetime_ny(m.timestamp)))
             if m.git_branch:
                 context_rows.append(("Branch", m.git_branch))
             if m.git_commit:
@@ -417,33 +414,6 @@ class ReportGenerator:
                 title = p.title.replace("|", "\\|")
                 lines.append(f"| {res.score:.2f} | {title} | {year} |")
             lines.append("")
-
-        if r.metadata:
-            m = r.metadata
-            lines += ["## Run Metadata", ""]
-            rows = []
-            if m.timestamp:
-                rows.append(("Timestamp", m.timestamp))
-            if m.model:
-                rows.append(("Model", m.model))
-            if m.input_source:
-                rows.append(("Input", m.input_source))
-            if m.code_version:
-                rows.append(("Code version", m.code_version))
-            if m.total_runtime_seconds:
-                rows.append(("Total runtime", f"{m.total_runtime_seconds:.1f}s"))
-            for stage, secs in (m.stage_runtimes or {}).items():
-                rows.append((f"  {stage}", f"{secs:.1f}s"))
-            if rows:
-                lines += [
-                    "| Field | Value |",
-                    "|-------|-------|",
-                ]
-                for field_name, value in rows:
-                    lines.append(
-                        f"| {field_name} | {str(value).replace('|', r'\|')} |"
-                    )
-                lines.append("")
 
         return "\n".join(lines)
 

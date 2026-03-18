@@ -295,7 +295,7 @@ class TestReportGeneratorMetadataInText:
 
     def test_text_contains_timestamp(self):
         out = self.gen.generate(self.report, fmt="text")
-        assert "2024-06-01T12:00:00Z" in out
+        assert "2024-06-01 08:00:00 EDT" in out
 
     def test_text_contains_total_runtime(self):
         out = self.gen.generate(self.report, fmt="text")
@@ -336,7 +336,7 @@ class TestReportGeneratorMetadataInMarkdown:
 
     def test_markdown_contains_timestamp(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        assert "2024-06-01T12:00:00Z" in out
+        assert "2024-06-01 08:00:00 EDT" in out
 
     def test_markdown_contains_total_runtime(self):
         out = self.gen.generate(self.report, fmt="markdown")
