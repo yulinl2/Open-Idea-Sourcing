@@ -1,6 +1,7 @@
-"""Format a :class:`NoveltyReport` into human-readable output.
+"""Format a :class:`NoveltyReport` or :class:`~idea_decomposer.IdeaNode` tree
+into human-readable output.
 
-Four formats are supported:
+Four formats are supported for novelty reports:
 
 * ``"text"`` — plain-text report suitable for terminal output.
 * ``"markdown"`` — Markdown-formatted report suitable for embedding in
@@ -9,8 +10,12 @@ Four formats are supported:
 * ``"pdf"`` — PDF document rendered from Markdown (requires the
   ``markdown`` and ``weasyprint`` packages).
 
+Idea decomposition reports are rendered as Markdown with a Mermaid diagram,
+per-node reference lists, and backlinks to parent nodes.
+
 A :func:`suggest_filename` helper builds an informative output filename
-from the report content and run metadata.
+from the report content and run metadata.  :func:`suggest_idea_filename`
+serves the same purpose for idea decomposition reports.
 """
 
 from __future__ import annotations
@@ -20,10 +25,14 @@ import re
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .novelty_evaluator import NoveltyReport, RunMetadata
+from .reference_store import ReferencePaper
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .idea_decomposer import IdeaNode
 
 OutputFormat = Literal["text", "markdown", "json", "pdf"]
 
@@ -116,8 +125,29 @@ def suggest_filename(report: NoveltyReport, fmt: str = "markdown") -> str:
     return "_".join(parts) + f".{ext}"
 
 
+def suggest_idea_filename(root_topic: str, fmt: str = "markdown") -> str:
+    """Return an informative filename for an idea decomposition report.
+
+    The filename encodes the sanitised root topic and the current UTC
+    timestamp so that successive runs produce distinct filenames.
+
+    Examples
+    --------
+    >>> suggest_idea_filename("Attention Mechanisms", "markdown")
+    'idea_Attention_Mechanisms_2024-06-01T120000.md'
+    """
+    ext_map = {"text": "txt", "markdown": "md", "json": "json"}
+    ext = ext_map.get(fmt, "txt")
+
+    safe_topic = re.sub(r"[^\w\s-]", "", root_topic or "idea")
+    safe_topic = re.sub(r"\s+", "_", safe_topic.strip())[:60]
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%S")
+    return f"idea_{safe_topic}_{timestamp}.{ext}"
+
+
 class ReportGenerator:
-    """Convert a :class:`NoveltyReport` to a formatted string or PDF file."""
+    """Convert a :class:`NoveltyReport` or idea decomposition tree to formatted output."""
 
     def generate(
         self, report: NoveltyReport, fmt: OutputFormat = "text"
@@ -177,6 +207,185 @@ class ReportGenerator:
             f"<body>{html_body}</body></html>"
         )
         weasyprint.HTML(string=html).write_pdf(str(output_path))
+
+    def generate_idea_report(
+        self, root: "IdeaNode", fmt: str = "markdown"
+    ) -> str:
+        """Render an idea decomposition tree as a formatted string.
+
+        Parameters
+        ----------
+        root:
+            Root :class:`~idea_decomposer.IdeaNode` of the decomposition tree
+            as returned by :meth:`~idea_decomposer.IdeaDecomposer.decompose`.
+        fmt:
+            Output format — ``"markdown"`` (default), ``"text"``, or
+            ``"json"``.
+
+        Returns
+        -------
+        str
+            Formatted report as a string.
+        """
+        if fmt == "json":
+            return self._idea_to_json(root)
+        if fmt == "text":
+            return self._idea_to_text(root)
+        return self._idea_to_markdown(root)
+
+    # ------------------------------------------------------------------
+    # Idea report — Markdown
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _idea_to_markdown(root: "IdeaNode") -> str:
+        """Render *root* as Markdown with a Mermaid diagram and backlinks."""
+        lines: list[str] = [
+            f"# Research Landscape: {root.topic}",
+            "",
+            "> Hierarchical decomposition with online reference search.",
+            "",
+        ]
+
+        # --- Mermaid navigation map ---
+        if root.children:
+            lines += [
+                "## Navigation Map",
+                "",
+                "```mermaid",
+                "graph TD",
+            ]
+            node_id_map: dict[int, str] = {}  # id(node) -> mermaid id
+            counter = [0]
+
+            def _assign_ids(node: "IdeaNode") -> None:
+                nid = f"N{counter[0]}"
+                counter[0] += 1
+                node_id_map[id(node)] = nid
+                for child in node.children:
+                    _assign_ids(child)
+
+            _assign_ids(root)
+
+            def _emit_edges(node: "IdeaNode") -> None:
+                nid = node_id_map[id(node)]
+                safe_label = node.topic.replace('"', "'")
+                lines.append(f'    {nid}["{safe_label}"]')
+                for child in node.children:
+                    cid = node_id_map[id(child)]
+                    child_label = child.topic.replace('"', "'")
+                    lines.append(f'    {nid} --> {cid}["{child_label}"]')
+                    _emit_edges(child)
+
+            _emit_edges(root)
+            lines += ["```", ""]
+
+        # --- Root node references ---
+        root_anchor = _anchor(root.topic)
+        lines += [
+            f"## {root.topic}",
+            f'<a id="{root_anchor}"></a>',
+            "",
+        ]
+        if root.description and root.description != "Root research idea":
+            lines += [f"> {root.description}", ""]
+        if root.references:
+            lines += ["**References:**", ""]
+            for ref in root.references:
+                lines.append(_format_ref_link(ref))
+            lines.append("")
+        else:
+            lines += ["*No references found for this topic.*", ""]
+
+        # --- Child nodes ---
+        def _emit_section(
+            node: "IdeaNode",
+            parent_topic: str,
+            level: int,
+        ) -> None:
+            heading = "#" * min(level, 6)
+            anchor = _anchor(node.topic)
+            parent_anchor = _anchor(parent_topic)
+            lines.extend([
+                f"{heading} {node.topic}",
+                f'<a id="{anchor}"></a>',
+                "",
+                f"[↑ Back to {parent_topic}](#{parent_anchor})",
+                "",
+            ])
+            if node.description:
+                lines.extend([f"> {node.description}", ""])
+            if node.references:
+                lines.extend(["**References:**", ""])
+                for ref in node.references:
+                    lines.append(_format_ref_link(ref))
+                lines.append("")
+            else:
+                lines.extend(["*No references found for this sub-topic.*", ""])
+            for child in node.children:
+                _emit_section(child, node.topic, level + 1)
+
+        for child in root.children:
+            _emit_section(child, root.topic, 3)
+
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Idea report — plain text
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _idea_to_text(root: "IdeaNode") -> str:
+        lines: list[str] = [
+            "=" * 70,
+            f"RESEARCH LANDSCAPE: {root.topic.upper()}",
+            "=" * 70,
+            "",
+        ]
+
+        def _emit_node(node: "IdeaNode", prefix: str, parent: str) -> None:
+            lines.append(f"{prefix}{node.topic}")
+            if node.description:
+                lines.append(f"{prefix}  {node.description}")
+            if node.references:
+                for ref in node.references:
+                    year = f" ({ref.year})" if ref.year else ""
+                    lines.append(f"{prefix}  - {ref.title}{year}  {ref.url}")
+            else:
+                lines.append(f"{prefix}  (no references found)")
+            lines.append("")
+            for child in node.children:
+                _emit_node(child, prefix + "  ", node.topic)
+
+        _emit_node(root, "", "")
+        lines.append("=" * 70)
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Idea report — JSON
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _idea_to_json(root: "IdeaNode") -> str:
+        def _serialise(node: "IdeaNode") -> dict:
+            return {
+                "topic": node.topic,
+                "description": node.description,
+                "references": [
+                    {
+                        "id": r.id,
+                        "title": r.title,
+                        "abstract": r.abstract,
+                        "authors": r.authors,
+                        "year": r.year,
+                        "url": r.url,
+                    }
+                    for r in node.references
+                ],
+                "children": [_serialise(c) for c in node.children],
+            }
+
+        return json.dumps(_serialise(root), indent=2)
 
     # ------------------------------------------------------------------
     # Plain text
@@ -487,6 +696,42 @@ class ReportGenerator:
                 ],
             }
         return json.dumps(data, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers for idea report rendering
+# ---------------------------------------------------------------------------
+
+def _anchor(text: str) -> str:
+    """Convert *text* to a GitHub-compatible Markdown anchor slug.
+
+    Mimics GitHub's algorithm: lower-case, keep alphanumerics and hyphens,
+    replace spaces with hyphens, strip all other characters.
+    """
+    slug = text.lower()
+    slug = re.sub(r"[^\w\s-]", "", slug)
+    slug = re.sub(r"[\s_]+", "-", slug)
+    slug = slug.strip("-")
+    return slug
+
+
+def _format_ref_link(ref: ReferencePaper) -> str:
+    """Format a :class:`~reference_store.ReferencePaper` as a Markdown list item.
+
+    The title becomes a hyperlink when a URL is available.  Authors and year
+    are appended in plain text.
+    """
+    title = ref.title or "(untitled)"
+    year = f" ({ref.year})" if ref.year else ""
+    authors = (
+        ", ".join(ref.authors[:3]) + (" et al." if len(ref.authors) > 3 else "")
+        if ref.authors
+        else ""
+    )
+    suffix = f" — {authors}" if authors else ""
+    if ref.url:
+        return f"- [{title}]({ref.url}){year}{suffix}"
+    return f"- {title}{year}{suffix}"
 
 
 # ---------------------------------------------------------------------------

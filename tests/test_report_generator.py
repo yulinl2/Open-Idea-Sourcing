@@ -716,3 +716,195 @@ class TestPipelineJobsInJSON:
         report.metadata = _sample_metadata()
         data = json.loads(self.gen.generate(report, fmt="json"))
         assert data["metadata"]["jobs"] == []
+
+
+# ---------------------------------------------------------------------------
+# Idea report generation
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.idea_decomposer import IdeaNode
+from open_idea_sourcing.report_generator import suggest_idea_filename, _anchor, _format_ref_link
+
+
+def _sample_idea_tree() -> IdeaNode:
+    """Build a small two-level IdeaNode tree for testing."""
+    ref1 = ReferencePaper(
+        id="att2017",
+        title="Attention Is All You Need",
+        abstract="Transformer paper.",
+        authors=["Vaswani", "Shazeer"],
+        year=2017,
+        url="https://example.com/att2017",
+    )
+    ref2 = ReferencePaper(
+        id="bert2019",
+        title="BERT",
+        abstract="BERT paper.",
+        authors=["Devlin"],
+        year=2019,
+        url="https://example.com/bert2019",
+    )
+    child1 = IdeaNode(
+        topic="Self-Attention",
+        description="Each token attends to every other token.",
+        references=[ref1],
+    )
+    child2 = IdeaNode(
+        topic="Positional Encoding",
+        description="Injecting position information into embeddings.",
+        references=[ref2],
+    )
+    root = IdeaNode(
+        topic="Attention Mechanisms",
+        description="Root research idea",
+        children=[child1, child2],
+        references=[ref1],
+    )
+    return root
+
+
+class TestGenerateIdeaReport:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.root = _sample_idea_tree()
+
+    def test_markdown_contains_root_topic(self):
+        out = self.gen.generate_idea_report(self.root, fmt="markdown")
+        assert "Attention Mechanisms" in out
+
+    def test_markdown_contains_child_topics(self):
+        out = self.gen.generate_idea_report(self.root, fmt="markdown")
+        assert "Self-Attention" in out
+        assert "Positional Encoding" in out
+
+    def test_markdown_contains_mermaid_block(self):
+        out = self.gen.generate_idea_report(self.root, fmt="markdown")
+        assert "```mermaid" in out
+        assert "graph TD" in out
+
+    def test_markdown_contains_reference_hyperlinks(self):
+        out = self.gen.generate_idea_report(self.root, fmt="markdown")
+        assert "Attention Is All You Need" in out
+        assert "https://example.com/att2017" in out
+
+    def test_markdown_contains_backlinks(self):
+        out = self.gen.generate_idea_report(self.root, fmt="markdown")
+        # Each child section should have a backlink to the parent
+        assert "↑ Back to Attention Mechanisms" in out
+
+    def test_markdown_no_online_search_message_when_empty_refs(self):
+        child = IdeaNode(topic="Empty Topic", references=[])
+        root = IdeaNode(topic="Root", children=[child])
+        out = self.gen.generate_idea_report(root, fmt="markdown")
+        assert "No references found" in out
+
+    def test_json_format_returns_valid_json(self):
+        out = self.gen.generate_idea_report(self.root, fmt="json")
+        data = json.loads(out)
+        assert data["topic"] == "Attention Mechanisms"
+
+    def test_json_contains_children(self):
+        out = self.gen.generate_idea_report(self.root, fmt="json")
+        data = json.loads(out)
+        assert len(data["children"]) == 2
+
+    def test_json_references_serialised(self):
+        out = self.gen.generate_idea_report(self.root, fmt="json")
+        data = json.loads(out)
+        ref_ids = [r["id"] for r in data["references"]]
+        assert "att2017" in ref_ids
+
+    def test_text_format_contains_topic(self):
+        out = self.gen.generate_idea_report(self.root, fmt="text")
+        assert "ATTENTION MECHANISMS" in out
+
+    def test_text_format_contains_child_topics(self):
+        out = self.gen.generate_idea_report(self.root, fmt="text")
+        assert "Self-Attention" in out
+
+    def test_text_no_references_message(self):
+        child = IdeaNode(topic="No Refs Topic", references=[])
+        root = IdeaNode(topic="Root", children=[child])
+        out = self.gen.generate_idea_report(root, fmt="text")
+        assert "no references found" in out
+
+    def test_no_mermaid_when_no_children(self):
+        root = IdeaNode(topic="Leaf Idea", references=[])
+        out = self.gen.generate_idea_report(root, fmt="markdown")
+        assert "graph TD" not in out
+
+
+class TestSuggestIdeaFilename:
+    def test_starts_with_idea_prefix(self):
+        name = suggest_idea_filename("Transformers", "markdown")
+        assert name.startswith("idea_")
+
+    def test_contains_sanitised_topic(self):
+        name = suggest_idea_filename("Attention Mechanisms", "markdown")
+        assert "Attention_Mechanisms" in name
+
+    def test_has_correct_extension_markdown(self):
+        name = suggest_idea_filename("Topic", "markdown")
+        assert name.endswith(".md")
+
+    def test_has_correct_extension_json(self):
+        name = suggest_idea_filename("Topic", "json")
+        assert name.endswith(".json")
+
+    def test_has_correct_extension_text(self):
+        name = suggest_idea_filename("Topic", "text")
+        assert name.endswith(".txt")
+
+    def test_special_chars_removed(self):
+        name = suggest_idea_filename("Topic: A/B?!", "markdown")
+        assert "/" not in name
+        assert "?" not in name
+        assert "!" not in name
+
+
+class TestAnchorHelper:
+    def test_simple_text(self):
+        assert _anchor("Self Attention") == "self-attention"
+
+    def test_special_chars_stripped(self):
+        assert _anchor("Topic (2024)") == "topic-2024"
+
+    def test_hyphens_preserved(self):
+        assert _anchor("well-known method") == "well-known-method"
+
+    def test_already_lowercase(self):
+        assert _anchor("bert") == "bert"
+
+
+class TestFormatRefLink:
+    def test_with_url(self):
+        ref = ReferencePaper(
+            id="p1", title="My Paper", abstract="",
+            authors=["Smith"], year=2020, url="https://example.com"
+        )
+        link = _format_ref_link(ref)
+        assert "[My Paper](https://example.com)" in link
+        assert "(2020)" in link
+        assert "Smith" in link
+
+    def test_without_url(self):
+        ref = ReferencePaper(
+            id="p1", title="My Paper", abstract="",
+            year=2020, url=""
+        )
+        link = _format_ref_link(ref)
+        assert "My Paper" in link
+        assert "http" not in link
+
+    def test_many_authors_truncated(self):
+        ref = ReferencePaper(
+            id="p1", title="Multi-Author", abstract="",
+            authors=["A", "B", "C", "D"], year=2020, url=""
+        )
+        link = _format_ref_link(ref)
+        assert "et al." in link
+
+    def test_no_authors(self):
+        ref = ReferencePaper(id="p1", title="Paper", abstract="", year=2020, url="")
+        link = _format_ref_link(ref)
+        assert "—" not in link or "Paper" in link
