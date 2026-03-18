@@ -35,15 +35,21 @@ The `release.yml` workflow will:
 
 ## [Unreleased]
 
+---
+
+## [1.1.0] — 2026-03-18
+
 ### Added
 - Pipeline Job Log (Mermaid Gantt diagram + table) displayed at the top of every report, immediately after run metadata.
-- `RunMetadata` now records `git_branch`, `git_commit` (with clickable hyperlink), `git_commit_url`, and `ci_run_url` for full provenance tracing.
+- `RunMetadata` now records `git_branch`, `git_commit` (with clickable hyperlink), `git_commit_url`, `ci_run_url`, and `pr_number` for full provenance tracing.
 - Metadata section grouped into three sub-tables: **Run context**, **Configuration**, **Performance**.
 - Report filenames now start directly with the paper title (no `novelty_report_` prefix).
+- Automated GitHub Releases via `release.yml` workflow (triggered by `v*` tags).
+- `CHANGELOG.md` with Keep-a-Changelog format and tagging guide.
 
 ---
 
-## [1.0.0] — 2025-01-01
+## [1.0.0] — 2026-03-14
 
 ### Added
 - Initial release: novelty evaluation pipeline with duplication, combination, and methodological-equivalence checks.
@@ -56,5 +62,6 @@ The `release.yml` workflow will:
 ---
 
 <!-- Links are auto-maintained — update when a new version is tagged -->
-[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/yulinl2/Open-Idea-Sourcing/releases/tag/v1.0.0

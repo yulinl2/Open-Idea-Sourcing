@@ -82,6 +82,9 @@ class RunMetadata:
         Full URL to the commit on GitHub (e.g. ``https://github.com/org/repo/commit/<sha>``).
     ci_run_url:
         URL to the CI workflow run that produced the report (empty when run locally).
+    pr_number:
+        GitHub pull-request number associated with this run (e.g. ``"42"``).
+        Empty when run locally or from a push that has no open PR.
     jobs:
         Ordered list of :class:`PipelineJob` entries recorded during
         evaluation, suitable for rendering a Gantt-style job log.
@@ -97,6 +100,7 @@ class RunMetadata:
     git_commit: str = ""
     git_commit_url: str = ""
     ci_run_url: str = ""
+    pr_number: str = ""
     jobs: list[PipelineJob] = field(default_factory=list)
 
 

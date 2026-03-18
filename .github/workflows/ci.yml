@@ -89,6 +89,7 @@ jobs:
           GH_PAPER_PATH: ${{ github.event.inputs.paper_path }}
           GH_REFS_PATH: ${{ github.event.inputs.references_path }}
           GH_OUTPUT_FORMAT: ${{ github.event.inputs.output_format }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           # Fall back to github.event.inputs for re-run compatibility
           PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"

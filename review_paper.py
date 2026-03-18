@@ -405,6 +405,7 @@ def main(argv: list[str] | None = None) -> int:
         _gh_repo = os.environ.get("GITHUB_REPOSITORY", "")
         _gh_sha = os.environ.get("GITHUB_SHA", "")
         _gh_run_id = os.environ.get("GITHUB_RUN_ID", "")
+        _gh_ref = os.environ.get("GITHUB_REF", "")
         git_commit = _gh_sha[:7] if _gh_sha else ""
         git_commit_url = (
             f"{_gh_server}/{_gh_repo}/commit/{_gh_sha}"
@@ -415,6 +416,14 @@ def main(argv: list[str] | None = None) -> int:
             f"{_gh_server}/{_gh_repo}/actions/runs/{_gh_run_id}"
             if (_gh_server and _gh_repo and _gh_run_id)
             else ""
+        )
+        # Derive PR number from refs/pull/<NUMBER>/merge (pull_request events)
+        # or from the PR_NUMBER env var (set explicitly in CI for other triggers).
+        _pr_match = re.match(r"refs/pull/(\d+)/", _gh_ref)
+        pr_number = (
+            _pr_match.group(1)
+            if _pr_match
+            else os.environ.get("PR_NUMBER", "")
         )
 
         # Pre-build the metadata object so per-job timings can be appended
@@ -429,6 +438,7 @@ def main(argv: list[str] | None = None) -> int:
             git_commit=git_commit,
             git_commit_url=git_commit_url,
             ci_run_url=ci_run_url,
+            pr_number=pr_number,
             jobs=early_jobs,
         )
         try:

@@ -191,6 +191,7 @@ class TestRunMetadata:
         assert m.git_commit == ""
         assert m.git_commit_url == ""
         assert m.ci_run_url == ""
+        assert m.pr_number == ""
 
     def test_all_fields_set(self):
         m = _sample_metadata()
@@ -212,6 +213,14 @@ class TestRunMetadata:
         assert m.git_commit == "abc1234"
         assert "abc1234def" in m.git_commit_url
         assert "runs/42" in m.ci_run_url
+
+    def test_pr_number_default_empty(self):
+        m = RunMetadata()
+        assert m.pr_number == ""
+
+    def test_pr_number_set(self):
+        m = RunMetadata(pr_number="42")
+        assert m.pr_number == "42"
 
 
 class TestSuggestFilename:
@@ -535,6 +544,7 @@ class TestMetadataGitContext:
             git_commit="abc1234",
             git_commit_url="https://github.com/org/repo/commit/abc1234def",
             ci_run_url="https://github.com/org/repo/actions/runs/42",
+            pr_number="19",
         )
 
     def test_markdown_contains_branch(self):
@@ -593,6 +603,29 @@ class TestMetadataGitContext:
         self.report.metadata.ci_run_url = ""
         out = self.gen.generate(self.report, fmt="markdown")
         assert "CI Run" not in out
+
+    def test_markdown_contains_pr_number_as_link(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "#19" in out
+        assert "/pull/19" in out
+
+    def test_markdown_omits_pr_when_empty(self):
+        self.report.metadata.pr_number = ""
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "| PR |" not in out
+
+    def test_text_contains_pr_number(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "#19" in out
+
+    def test_text_omits_pr_when_empty(self):
+        self.report.metadata.pr_number = ""
+        out = self.gen.generate(self.report, fmt="text")
+        assert "PR          :" not in out
+
+    def test_json_contains_pr_number(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert data["metadata"]["pr_number"] == "19"
 
 
 class TestPipelineJobLogInMarkdown:

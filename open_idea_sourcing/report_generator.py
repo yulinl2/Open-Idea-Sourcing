@@ -178,6 +178,8 @@ class ReportGenerator:
                 lines.append(f"    Commit      : {m.git_commit}")
             if m.ci_run_url:
                 lines.append(f"    CI Run      : {m.ci_run_url}")
+            if m.pr_number:
+                lines.append(f"    PR          : #{m.pr_number}")
 
             lines.append("  [Configuration]")
             if m.model:
@@ -296,6 +298,14 @@ class ReportGenerator:
                 run_num = m.ci_run_url.rstrip("/").rsplit("/", 1)[-1]
                 label = f"Run #{run_num}" if run_num.isdigit() else "CI Run"
                 context_rows.append(("CI Run", f"[{label}]({m.ci_run_url})"))
+            if m.pr_number:
+                _gh_server = m.git_commit_url.split("/commit/")[0] if m.git_commit_url else ""
+                pr_val = (
+                    f"[#{m.pr_number}]({_gh_server}/pull/{m.pr_number})"
+                    if _gh_server
+                    else f"#{m.pr_number}"
+                )
+                context_rows.append(("PR", pr_val))
             if context_rows:
                 lines += [
                     "**Run context**",
@@ -480,6 +490,7 @@ class ReportGenerator:
                 "git_commit": m.git_commit,
                 "git_commit_url": m.git_commit_url,
                 "ci_run_url": m.ci_run_url,
+                "pr_number": m.pr_number,
                 "jobs": [
                     {
                         "name": j.name,
