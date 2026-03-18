@@ -1,0 +1,18 @@
+[
+  {
+    "id": "arxiv-1904.06019",
+    "title": "Measuring the Effects of Data Parallelism on Neural Network Training",
+    "abstract": "We study the relationship between training speed and the number of workers in synchronous data-parallel neural network training. We examine factors that affect the relationship between batch size and the number of gradient steps required to reach a target error. We find that all neural networks in our study contain a regime where batch size can be scaled without degrading model quality, but this 'perfect scaling' regime ends at a critical batch size. We also find that beyond the critical batch size, larger batches are less compute efficient. We characterize the boundaries of perfect scaling as a function of dataset, model architecture, and optimizer, shedding light on the factors that limit the benefit of additional parallelism.",
+    "authors": [
+      "Christopher J. Shallue",
+      "Jaehoon Lee",
+      "Joseph Antognini",
+      "Jascha Sohl-Dickstein",
+      "Roy Frostig",
+      "George E. Dahl"
+    ],
+    "year": 2019,
+    "venue": "JMLR",
+    "url": "https://arxiv.org/abs/1904.06019"
+  }
+]

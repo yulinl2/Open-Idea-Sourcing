@@ -67,6 +67,9 @@ except ImportError:  # pragma: no cover - dependency is declared in requirements
 
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MiB safety limit for downloads
 
+# Path to the bundled default reference store shipped with the repository.
+_BUNDLED_REFERENCES = Path(__file__).resolve().parent / "data" / "references.json"
+
 from open_idea_sourcing import __version__
 from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator, PipelineJob, RunMetadata
 from open_idea_sourcing.paper_parser import PaperParser
@@ -428,7 +431,16 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             return _fail("no text could be extracted from the paper.", args.format)
 
         # --- Load reference store ---
+        # Always start with the bundled default references so that every run
+        # benefits from the curated baseline corpus.  Any user-supplied store
+        # (via --references) is merged on top.
         store = ReferenceStore()
+        if _BUNDLED_REFERENCES.exists():
+            store.load(_BUNDLED_REFERENCES)
+            print(
+                f"Loaded {len(store)} bundled reference(s) from {_BUNDLED_REFERENCES.name}",
+                file=sys.stderr,
+            )
         if args.references:
             ref_path = Path(args.references)
             if ref_path.exists():
