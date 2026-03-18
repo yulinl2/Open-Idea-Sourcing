@@ -237,6 +237,27 @@ class ReportGenerator:
                 lines.append(f"  [{res.score:.2f}] {p.title}{year}")
             lines.append("")
 
+        if r.metadata:
+            m = r.metadata
+            lines += ["RUN METADATA", "-" * 70]
+            if m.timestamp:
+                lines.append(f"  Timestamp   : {m.timestamp}")
+            if m.model:
+                lines.append(f"  Model       : {m.model}")
+            if m.input_source:
+                lines.append(f"  Input       : {m.input_source}")
+            if m.code_version:
+                lines.append(f"  Code version: {m.code_version}")
+            if m.total_runtime_seconds:
+                lines.append(
+                    f"  Total time  : {m.total_runtime_seconds:.1f}s"
+                )
+            if m.stage_runtimes:
+                lines.append("  Stage times :")
+                for stage, secs in m.stage_runtimes.items():
+                    lines.append(f"    {stage}: {secs:.1f}s")
+            lines.append("")
+
         lines.append("=" * 70)
         return "\n".join(lines)
 
@@ -386,6 +407,33 @@ class ReportGenerator:
                 title = p.title.replace("|", "\\|")
                 lines.append(f"| {res.score:.2f} | {title} | {year} |")
             lines.append("")
+
+        if r.metadata:
+            m = r.metadata
+            lines += ["## Run Metadata", ""]
+            rows = []
+            if m.timestamp:
+                rows.append(("Timestamp", m.timestamp))
+            if m.model:
+                rows.append(("Model", m.model))
+            if m.input_source:
+                rows.append(("Input", m.input_source))
+            if m.code_version:
+                rows.append(("Code version", m.code_version))
+            if m.total_runtime_seconds:
+                rows.append(("Total runtime", f"{m.total_runtime_seconds:.1f}s"))
+            for stage, secs in (m.stage_runtimes or {}).items():
+                rows.append((f"  {stage}", f"{secs:.1f}s"))
+            if rows:
+                lines += [
+                    "| Field | Value |",
+                    "|-------|-------|",
+                ]
+                for field_name, value in rows:
+                    lines.append(
+                        f"| {field_name} | {str(value).replace('|', r'\|')} |"
+                    )
+                lines.append("")
 
         return "\n".join(lines)
 
