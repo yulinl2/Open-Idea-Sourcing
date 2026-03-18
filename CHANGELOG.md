@@ -37,6 +37,17 @@ The `release.yml` workflow will:
 
 ---
 
+## [1.2.0] — 2026-03-18
+
+### Added
+- Automatic online reference search via the [Semantic Scholar](https://api.semanticscholar.org/) Graph API (no API key required).
+- `OnlineReferenceSearch` class in `open_idea_sourcing/online_search.py`: keyword extraction from paper title/abstract, batched API calls, deduplication, and graceful fallback on network errors.
+- `--no-online-search` CLI flag to disable online search when running offline or in restricted environments.
+- Online search results are surfaced as a `PipelineJob` entry in the Pipeline Job Log of every report.
+- Minimal `docs/` site (`_config.yml` + `index.md`) to satisfy the GitHub Pages deployment workflow.
+
+---
+
 ## [1.1.0] — 2026-03-18
 
 ### Added
@@ -62,6 +73,7 @@ The `release.yml` workflow will:
 ---
 
 <!-- Links are auto-maintained — update when a new version is tagged -->
-[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/yulinl2/Open-Idea-Sourcing/releases/tag/v1.0.0
