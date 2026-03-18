@@ -49,9 +49,9 @@ jobs:
         run: python -m pytest tests/ -v
 
   review:
-    name: Review paper (manual trigger)
+    name: Review paper (manual trigger or main merge)
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     needs: test
     permissions:
       contents: write
@@ -59,6 +59,7 @@ jobs:
     steps:
       - name: Validate inputs
         env:
+          EVENT_NAME: ${{ github.event_name }}
           PAPER_URL: ${{ inputs.paper_url }}
           PAPER_PATH: ${{ inputs.paper_path }}
           PAPERS_FILE: ${{ inputs.papers_file }}
@@ -66,6 +67,11 @@ jobs:
           GH_PAPER_PATH: ${{ github.event.inputs.paper_path }}
           GH_PAPERS_FILE: ${{ github.event.inputs.papers_file }}
         run: |
+          # Push-triggered runs always use the default batch file — no inputs to validate.
+          if [ "$EVENT_NAME" = "push" ]; then
+            echo "Push-triggered run — using default batch file (data/test_papers.ndjson)."
+            exit 0
+          fi
           PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"
           PAPER_PATH="${PAPER_PATH:-$GH_PAPER_PATH}"
           PAPERS_FILE="${PAPERS_FILE:-$GH_PAPERS_FILE}"
