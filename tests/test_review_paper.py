@@ -10,7 +10,7 @@ import pytest
 import review_paper
 
 # Import the helpers we want to test
-from review_paper import _normalise_arxiv_url, _download_paper, _build_llm, main
+from review_paper import _normalise_arxiv_url, _extract_arxiv_id, _download_paper, _build_llm, main
 
 # ---------------------------------------------------------------------------
 # _normalise_arxiv_url
@@ -37,6 +37,31 @@ class TestNormaliseArxivUrl:
     def test_http_abs_url_converted(self):
         assert _normalise_arxiv_url("http://arxiv.org/abs/1234.5678") == \
             "http://arxiv.org/pdf/1234.5678"
+
+
+# ---------------------------------------------------------------------------
+# _extract_arxiv_id
+# ---------------------------------------------------------------------------
+
+
+class TestExtractArxivId:
+    def test_abs_url_returns_id(self):
+        assert _extract_arxiv_id("https://arxiv.org/abs/2006.06138") == "2006.06138"
+
+    def test_pdf_url_returns_id(self):
+        assert _extract_arxiv_id("https://arxiv.org/pdf/1706.03762") == "1706.03762"
+
+    def test_abs_url_with_version(self):
+        assert _extract_arxiv_id("https://arxiv.org/abs/2006.06138v2") == "2006.06138v2"
+
+    def test_non_arxiv_url_returns_empty(self):
+        assert _extract_arxiv_id("https://example.com/paper.pdf") == ""
+
+    def test_local_path_returns_empty(self):
+        assert _extract_arxiv_id("/path/to/paper.pdf") == ""
+
+    def test_empty_string_returns_empty(self):
+        assert _extract_arxiv_id("") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -789,7 +814,7 @@ class TestOnlineSearchIntegration:
         fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
         call_count = {"n": 0}
 
-        def tracking_search(self_obj, title, abstract=""):
+        def tracking_search(self_obj, title, abstract="", arxiv_id=""):
             call_count["n"] += 1
             return []  # empty so the rest of the pipeline is unaffected
 
@@ -812,7 +837,7 @@ class TestOnlineSearchIntegration:
         fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
         call_count = {"n": 0}
 
-        def tracking_search(self_obj, title, abstract=""):
+        def tracking_search(self_obj, title, abstract="", arxiv_id=""):
             call_count["n"] += 1
             return []
 

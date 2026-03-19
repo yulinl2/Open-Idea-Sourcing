@@ -11,6 +11,7 @@ from open_idea_sourcing.online_search import (
     OnlineReferenceSearch,
     _extract_query_from_abstract,
     _parse_semantic_scholar_item,
+    _SEMANTIC_SCHOLAR_PAPER_URL,
 )
 from open_idea_sourcing.reference_store import ReferencePaper
 
@@ -357,3 +358,211 @@ class TestOnlineReferenceSearchSearch:
         with patch("urllib.request.urlopen", side_effect=socket.timeout("timed out")):
             papers = searcher.search("Any Title")
         assert papers == []
+
+
+# ---------------------------------------------------------------------------
+# OnlineReferenceSearch._fetch_references
+# ---------------------------------------------------------------------------
+
+
+def _make_references_response(paper_ids: list[str]) -> bytes:
+    """Build a fake Semantic Scholar /references API response body."""
+    data = [
+        {
+            "isInfluential": False,
+            "intents": [],
+            "citedPaper": {
+                "paperId": pid,
+                "title": f"Cited Paper {pid}",
+                "abstract": "Some abstract.",
+                "year": 2021,
+                "authors": [{"authorId": "1", "name": "Author One"}],
+                "externalIds": {"ArXiv": f"2100.0{i:04d}"},
+                "url": f"https://semanticscholar.org/paper/{pid}",
+            },
+        }
+        for i, pid in enumerate(paper_ids)
+    ]
+    return json.dumps({"data": data}).encode()
+
+
+class TestFetchReferences:
+    def test_returns_cited_papers(self):
+        body = _make_references_response(["r1", "r2", "r3"])
+        mock_resp = _make_mock_response(body)
+        searcher = OnlineReferenceSearch()
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            papers = searcher._fetch_references("arXiv:2006.06138")
+        assert len(papers) == 3
+        ids = {p.id for p in papers}
+        assert ids == {"r1", "r2", "r3"}
+
+    def test_url_includes_paper_id(self):
+        body = _make_references_response([])
+        captured_url = {}
+
+        def fake_urlopen(req, timeout=None):
+            captured_url["url"] = req.full_url
+            return _make_mock_response(body)
+
+        searcher = OnlineReferenceSearch()
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            searcher._fetch_references("arXiv:2006.06138")
+
+        assert "arXiv%3A2006.06138" in captured_url["url"] or \
+               "arXiv:2006.06138" in captured_url["url"]
+        assert "/references" in captured_url["url"]
+        assert _SEMANTIC_SCHOLAR_PAPER_URL in captured_url["url"]
+
+    def test_network_error_returns_empty_list(self):
+        searcher = OnlineReferenceSearch()
+        with patch("urllib.request.urlopen", side_effect=OSError("timeout")):
+            papers = searcher._fetch_references("arXiv:2006.06138")
+        assert papers == []
+
+    def test_invalid_json_returns_empty_list(self):
+        mock_resp = _make_mock_response(b"not json")
+        searcher = OnlineReferenceSearch()
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            papers = searcher._fetch_references("arXiv:2006.06138")
+        assert papers == []
+
+    def test_items_with_missing_cited_paper_skipped(self):
+        body = json.dumps({
+            "data": [
+                {"isInfluential": False, "citedPaper": None},
+                {"isInfluential": False, "citedPaper": {"paperId": "x1", "title": "OK"}},
+            ]
+        }).encode()
+        mock_resp = _make_mock_response(body)
+        searcher = OnlineReferenceSearch()
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            papers = searcher._fetch_references("arXiv:2006.06138")
+        assert len(papers) == 1
+        assert papers[0].id == "x1"
+
+    def test_fields_param_uses_cited_paper_prefix(self):
+        body = _make_references_response([])
+        captured_url = {}
+
+        def fake_urlopen(req, timeout=None):
+            captured_url["url"] = req.full_url
+            return _make_mock_response(body)
+
+        searcher = OnlineReferenceSearch()
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            searcher._fetch_references("arXiv:2006.06138")
+
+        assert "citedPaper." in captured_url["url"]
+
+
+# ---------------------------------------------------------------------------
+# OnlineReferenceSearch.search with arxiv_id
+# ---------------------------------------------------------------------------
+
+
+class TestOnlineReferenceSearchWithArxivId:
+    def _make_ref_response(self, paper_ids: list[str]) -> bytes:
+        return _make_references_response(paper_ids)
+
+    def _make_search_response(self, paper_ids: list[str]) -> bytes:
+        data = [
+            {
+                "paperId": pid,
+                "title": f"Paper {pid}",
+                "abstract": "Keyword search result.",
+                "year": 2020,
+                "authors": [],
+                "externalIds": {},
+                "url": f"https://example.com/{pid}",
+            }
+            for pid in paper_ids
+        ]
+        return json.dumps({"data": data}).encode()
+
+    def test_arxiv_id_triggers_references_endpoint(self):
+        """When arxiv_id is given, the references endpoint must be called."""
+        refs_body = self._make_ref_response(["r1", "r2", "r3", "r4", "r5"])
+        captured_urls = []
+
+        def fake_urlopen(req, timeout=None):
+            captured_urls.append(req.full_url)
+            return _make_mock_response(refs_body)
+
+        searcher = OnlineReferenceSearch(max_results=5)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            papers = searcher.search("Some Title", arxiv_id="2006.06138")
+
+        assert any("/references" in u for u in captured_urls)
+        assert len(papers) == 5
+
+    def test_references_results_returned_first(self):
+        """Papers from references endpoint come before keyword results."""
+        refs_body = self._make_ref_response(["r1", "r2", "r3", "r4", "r5"])
+        call_n = {"n": 0}
+
+        def fake_urlopen(req, timeout=None):
+            call_n["n"] += 1
+            return _make_mock_response(refs_body)
+
+        searcher = OnlineReferenceSearch(max_results=5)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            papers = searcher.search("Title", arxiv_id="2006.06138")
+
+        # Sufficient references → keyword search should not fire
+        assert call_n["n"] == 1
+
+    def test_keyword_fallback_fires_when_references_sparse(self):
+        """When references are sparse, keyword search supplements them."""
+        sparse_refs = self._make_ref_response(["r1"])
+        keyword_results = self._make_search_response(["k1", "k2", "k3"])
+        call_n = {"n": 0}
+
+        def fake_urlopen(req, timeout=None):
+            call_n["n"] += 1
+            body = sparse_refs if call_n["n"] == 1 else keyword_results
+            return _make_mock_response(body)
+
+        searcher = OnlineReferenceSearch(max_results=5)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            papers = searcher.search("Title", arxiv_id="2006.06138")
+
+        assert call_n["n"] >= 2  # references + at least one keyword query
+        ids = {p.id for p in papers}
+        assert "r1" in ids
+        assert "k1" in ids
+
+    def test_no_arxiv_id_skips_references_endpoint(self):
+        """Without an arXiv ID only the keyword search endpoint is called."""
+        keyword_body = self._make_search_response(["k1", "k2"])
+        captured_urls = []
+
+        def fake_urlopen(req, timeout=None):
+            captured_urls.append(req.full_url)
+            return _make_mock_response(keyword_body)
+
+        searcher = OnlineReferenceSearch(max_results=5)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            papers = searcher.search("Title With No ID")
+
+        assert not any("/references" in u for u in captured_urls)
+        assert len(papers) == 2
+
+    def test_references_endpoint_error_falls_back_to_keyword(self):
+        """If the references endpoint fails, keyword search still runs."""
+        keyword_body = self._make_search_response(["k1", "k2"])
+        call_n = {"n": 0}
+
+        def fake_urlopen(req, timeout=None):
+            call_n["n"] += 1
+            if "/references" in req.full_url:
+                raise OSError("references endpoint down")
+            return _make_mock_response(keyword_body)
+
+        searcher = OnlineReferenceSearch(max_results=5)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            papers = searcher.search("Title", arxiv_id="2006.06138")
+
+        assert len(papers) == 2
+        assert papers[0].id == "k1"
+

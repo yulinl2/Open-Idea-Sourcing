@@ -127,6 +127,30 @@ def _normalise_arxiv_url(url: str) -> str:
     return url
 
 
+def _extract_arxiv_id(source: str) -> str:
+    """Return the arXiv paper ID from an arXiv URL, or an empty string.
+
+    Supports both ``/abs/`` and ``/pdf/`` URL forms, with or without a
+    version suffix.
+
+    Examples
+    --------
+    >>> _extract_arxiv_id("https://arxiv.org/abs/2006.06138")
+    '2006.06138'
+    >>> _extract_arxiv_id("https://arxiv.org/abs/2006.06138v2")
+    '2006.06138v2'
+    >>> _extract_arxiv_id("https://arxiv.org/pdf/1706.03762")
+    '1706.03762'
+    >>> _extract_arxiv_id("/path/to/paper.pdf")
+    ''
+    """
+    m = re.match(
+        r"https?://arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5}(?:v\d+)?)",
+        source,
+    )
+    return m.group(1) if m else ""
+
+
 def _download_paper(url: str, dest_dir: str) -> Path:
     """Download a paper PDF from *url* into *dest_dir* and return the path.
 
@@ -454,6 +478,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         # --- Online reference search ---
         online_papers_count = 0
         online_duration = 0.0
+        arxiv_id = _extract_arxiv_id(paper_source)
         if not args.no_online_search:
             print(
                 "Searching for related papers online (Semantic Scholar) ...",
@@ -461,7 +486,9 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             )
             t0 = time.monotonic()
             online_searcher = OnlineReferenceSearch(max_results=args.top_k * 2)
-            online_papers = online_searcher.search(paper.title, paper.abstract)
+            online_papers = online_searcher.search(
+                paper.title, paper.abstract, arxiv_id=arxiv_id
+            )
             for ref_paper in online_papers:
                 store.add(ref_paper)
             online_papers_count = len(online_papers)
@@ -497,7 +524,9 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                     agent="SemanticScholar API",
                     offset_s=round(stage_runtimes["parsing"], 3),
                     duration_s=online_duration,
-                    input_summary=f'title="{paper.title}"',
+                    input_summary=(
+                        f"arXiv:{arxiv_id}" if arxiv_id else f'title="{paper.title}"'
+                    ),
                     output_summary=f"{online_papers_count} paper(s) fetched",
                 )
             )
