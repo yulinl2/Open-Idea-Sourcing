@@ -69,7 +69,7 @@ MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MiB safety limit for downloads
 
 from open_idea_sourcing import __version__
 from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator, PipelineJob, RunMetadata
-from open_idea_sourcing.online_search import OnlineReferenceSearch
+from open_idea_sourcing.online_search import OnlineReferenceSearch, generate_search_queries
 from open_idea_sourcing.paper_parser import PaperParser
 from open_idea_sourcing.reference_store import ReferenceStore
 from open_idea_sourcing.report_generator import ReportGenerator, suggest_filename
@@ -475,11 +475,42 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                     f"Warning: reference file not found: {ref_path}", file=sys.stderr
                 )
 
+        # --- Build LLM (needed for query generation and novelty evaluation) ---
+        try:
+            llm = _build_llm(args.model)
+        except SystemExit as exc:
+            return _fail(str(exc.code), args.format)
+
         # --- Online reference search ---
         online_papers_count = 0
         online_duration = 0.0
+        search_queries: list[str] = []
         arxiv_id = _extract_arxiv_id(paper_source)
         if not args.no_online_search:
+            # Ask the LLM to digest the paper and produce conceptual search
+            # queries (core problem, proposed strategy, alternative approaches).
+            # This is the primary breadth signal — queries are tailored to
+            # Semantic Scholar's semantic matching so they surface work that is
+            # conceptually equivalent, not merely keyword-similar.
+            print(
+                "Generating conceptual search queries ...",
+                file=sys.stderr,
+            )
+            search_queries = generate_search_queries(paper.key_content(), llm)
+            if search_queries:
+                print(
+                    f"  Generated {len(search_queries)} quer"
+                    f"{'y' if len(search_queries) == 1 else 'ies'}: "
+                    + ", ".join(f'"{q}"' for q in search_queries),
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "  Query generation failed or returned no queries; "
+                    "falling back to title-based search.",
+                    file=sys.stderr,
+                )
+
             print(
                 "Searching for related papers online (Semantic Scholar) ...",
                 file=sys.stderr,
@@ -487,7 +518,10 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             t0 = time.monotonic()
             online_searcher = OnlineReferenceSearch(max_results=args.top_k * 2)
             online_papers = online_searcher.search(
-                paper.title, paper.abstract, arxiv_id=arxiv_id
+                paper.title,
+                paper.abstract,
+                arxiv_id=arxiv_id,
+                queries=search_queries or None,
             )
             for ref_paper in online_papers:
                 store.add(ref_paper)
@@ -518,15 +552,24 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             ),
         ]
         if not args.no_online_search:
+            # Build a descriptive input summary for the pipeline log.
+            if arxiv_id and search_queries:
+                _search_input = (
+                    f"arXiv:{arxiv_id} + {len(search_queries)} LLM queries"
+                )
+            elif search_queries:
+                _search_input = f"{len(search_queries)} LLM queries"
+            elif arxiv_id:
+                _search_input = f"arXiv:{arxiv_id}"
+            else:
+                _search_input = f'title="{paper.title}"'
             early_jobs.append(
                 PipelineJob(
                     name="Online reference search",
                     agent="SemanticScholar API",
                     offset_s=round(stage_runtimes["parsing"], 3),
                     duration_s=online_duration,
-                    input_summary=(
-                        f"arXiv:{arxiv_id}" if arxiv_id else f'title="{paper.title}"'
-                    ),
+                    input_summary=_search_input,
                     output_summary=f"{online_papers_count} paper(s) fetched",
                 )
             )
@@ -546,10 +589,6 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         )
 
         # --- LLM evaluation ---
-        try:
-            llm = _build_llm(args.model)
-        except SystemExit as exc:
-            return _fail(str(exc.code), args.format)
         evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
         print("Running novelty evaluation ...", file=sys.stderr)
         t0 = time.monotonic()

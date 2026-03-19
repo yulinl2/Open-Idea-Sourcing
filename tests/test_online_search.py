@@ -12,6 +12,7 @@ from open_idea_sourcing.online_search import (
     _extract_query_from_abstract,
     _parse_semantic_scholar_item,
     _SEMANTIC_SCHOLAR_PAPER_URL,
+    generate_search_queries,
 )
 from open_idea_sourcing.reference_store import ReferencePaper
 
@@ -576,4 +577,199 @@ class TestOnlineReferenceSearchWithArxivId:
 
         assert len(papers) == 2
         assert papers[0].id == "k1"
+
+
+# ---------------------------------------------------------------------------
+# generate_search_queries
+# ---------------------------------------------------------------------------
+
+
+_VALID_LLM_RESPONSE = json.dumps({
+    "central_problem": "Uncertainty quantification for machine learning models",
+    "proposed_approach": "Conformal prediction intervals with guaranteed coverage",
+    "alternative_approaches": ["Bayesian uncertainty estimation", "Ensemble methods"],
+    "queries": [
+        "conformal prediction coverage guarantee",
+        "uncertainty quantification machine learning",
+        "prediction intervals calibration",
+        "Bayesian inference uncertainty",
+    ],
+})
+
+
+class TestGenerateSearchQueries:
+    def test_returns_queries_from_valid_llm_response(self):
+        llm = lambda prompt: _VALID_LLM_RESPONSE  # noqa: E731
+        queries = generate_search_queries("Paper about conformal inference...", llm)
+        assert len(queries) == 4
+        assert "conformal prediction coverage guarantee" in queries
+        assert "uncertainty quantification machine learning" in queries
+
+    def test_strips_code_fence(self):
+        fenced = f"```json\n{_VALID_LLM_RESPONSE}\n```"
+        llm = lambda prompt: fenced  # noqa: E731
+        queries = generate_search_queries("content", llm)
+        assert len(queries) > 0
+        assert all(isinstance(q, str) for q in queries)
+
+    def test_returns_empty_on_llm_exception(self):
+        def failing_llm(prompt):
+            raise RuntimeError("API down")
+
+        queries = generate_search_queries("content", failing_llm)
+        assert queries == []
+
+    def test_returns_empty_on_invalid_json(self):
+        llm = lambda prompt: "not json at all"  # noqa: E731
+        queries = generate_search_queries("content", llm)
+        assert queries == []
+
+    def test_returns_empty_when_queries_key_missing(self):
+        llm = lambda prompt: json.dumps({"central_problem": "something"})  # noqa: E731
+        queries = generate_search_queries("content", llm)
+        assert queries == []
+
+    def test_respects_max_queries(self):
+        many_queries = [f"query {i}" for i in range(20)]
+        llm = lambda prompt: json.dumps({"queries": many_queries})  # noqa: E731
+        queries = generate_search_queries("content", llm, max_queries=3)
+        assert len(queries) == 3
+
+    def test_strips_empty_strings_from_queries(self):
+        llm = lambda prompt: json.dumps({"queries": ["q1", "", "  ", "q2"]})  # noqa: E731
+        queries = generate_search_queries("content", llm)
+        assert queries == ["q1", "q2"]
+
+    def test_extracts_json_embedded_in_text(self):
+        """Some models add preamble text before the JSON object."""
+        embedded = f"Here is my analysis:\n{_VALID_LLM_RESPONSE}\nEnd of response."
+        llm = lambda prompt: embedded  # noqa: E731
+        queries = generate_search_queries("content", llm)
+        assert len(queries) > 0
+
+
+# ---------------------------------------------------------------------------
+# OnlineReferenceSearch.search with queries parameter
+# ---------------------------------------------------------------------------
+
+
+class TestOnlineReferenceSearchWithQueries:
+    def _make_search_response(self, paper_ids: list[str]) -> bytes:
+        data = [
+            {
+                "paperId": pid,
+                "title": f"Paper {pid}",
+                "abstract": "Abstract text.",
+                "year": 2020,
+                "authors": [],
+                "externalIds": {},
+                "url": f"https://example.com/{pid}",
+            }
+            for pid in paper_ids
+        ]
+        return json.dumps({"data": data}).encode()
+
+    def test_each_query_is_issued(self):
+        """When queries are provided, each one results in a separate HTTP call."""
+        issued_queries = []
+
+        def fake_urlopen(req, timeout=None):
+            import urllib.parse
+            parsed = urllib.parse.urlparse(req.full_url)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if "query" in qs:
+                issued_queries.append(qs["query"][0])
+            return _make_mock_response(self._make_search_response([]))
+
+        searcher = OnlineReferenceSearch(max_results=10)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            searcher.search(
+                "ignored title",
+                queries=["conformal prediction", "uncertainty quantification"],
+            )
+
+        assert "conformal prediction" in issued_queries
+        assert "uncertainty quantification" in issued_queries
+
+    def test_queries_replace_title_for_keyword_phase(self):
+        """When queries are given, the raw title must NOT be used as a query."""
+        raw_title = "My Unique Raw Title 12345"
+        issued_queries = []
+
+        def fake_urlopen(req, timeout=None):
+            import urllib.parse
+            parsed = urllib.parse.urlparse(req.full_url)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if "query" in qs:
+                issued_queries.append(qs["query"][0])
+            return _make_mock_response(self._make_search_response([]))
+
+        searcher = OnlineReferenceSearch(max_results=10)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            searcher.search(
+                raw_title,
+                queries=["conformal prediction"],
+            )
+
+        assert raw_title not in issued_queries
+        assert "conformal prediction" in issued_queries
+
+    def test_results_from_multiple_queries_are_merged(self):
+        """Papers from different queries should all appear in the result."""
+        call_n = {"n": 0}
+
+        def fake_urlopen(req, timeout=None):
+            call_n["n"] += 1
+            # Each call returns a different paper
+            pid = f"q{call_n['n']}"
+            return _make_mock_response(self._make_search_response([pid]))
+
+        searcher = OnlineReferenceSearch(max_results=10)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            papers = searcher.search(
+                "title",
+                queries=["query one", "query two", "query three"],
+            )
+
+        ids = {p.id for p in papers}
+        assert "q1" in ids
+        assert "q2" in ids
+        assert "q3" in ids
+
+    def test_empty_queries_falls_back_to_title(self):
+        """Empty queries list behaves like no queries — raw title is used."""
+        issued_queries = []
+
+        def fake_urlopen(req, timeout=None):
+            import urllib.parse
+            parsed = urllib.parse.urlparse(req.full_url)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if "query" in qs:
+                issued_queries.append(qs["query"][0])
+            return _make_mock_response(self._make_search_response(["p1"]))
+
+        searcher = OnlineReferenceSearch(max_results=5)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            searcher.search("My Fallback Title", queries=[])
+
+        assert "My Fallback Title" in issued_queries
+
+    def test_none_queries_falls_back_to_title(self):
+        """queries=None behaves like no queries — raw title is used."""
+        issued_queries = []
+
+        def fake_urlopen(req, timeout=None):
+            import urllib.parse
+            parsed = urllib.parse.urlparse(req.full_url)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if "query" in qs:
+                issued_queries.append(qs["query"][0])
+            return _make_mock_response(self._make_search_response(["p1"]))
+
+        searcher = OnlineReferenceSearch(max_results=5)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            searcher.search("My Fallback Title", queries=None)
+
+        assert "My Fallback Title" in issued_queries
+
 

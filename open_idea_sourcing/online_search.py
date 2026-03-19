@@ -15,27 +15,75 @@ degrades gracefully when the internet is unavailable.
 
 Search strategy
 ---------------
-When an arXiv ID is supplied the search proceeds in two phases:
+When a set of LLM-generated conceptual queries is supplied the search
+proceeds in two phases:
 
 1. **References endpoint** — ``GET /paper/arXiv:{id}/references`` retrieves
-   the papers that the submitted paper itself cites.  These are the most
-   directly relevant works for a novelty evaluation and do not depend on
-   title-extraction quality.
-2. **Keyword fallback** — if the references list is sparse (or no arXiv ID
-   is available), a keyword query built from the paper title is issued
-   against the ``/paper/search`` endpoint.  When that is also sparse,
-   a second query derived from the opening of the abstract is tried.
+   the papers that the submitted paper itself cites (when an arXiv ID is
+   available).  These are the most directly relevant works for a novelty
+   evaluation and do not depend on title-extraction quality.
+2. **Conceptual keyword search** — each LLM-generated query is issued
+   against the ``/paper/search`` endpoint.  Queries are derived from a
+   conceptual digest of the paper (central problem, proposed strategy,
+   alternative solutions) so that Semantic Scholar's semantic matching
+   finds work that is *conceptually equivalent*, not merely keyword-similar.
+   When no queries are supplied the raw title is used as a single fallback
+   query.  When all of the above are sparse, an abstract-derived query
+   is tried as a last resort.
+
+The query-generation step is deliberately separated into
+:func:`generate_search_queries` so that the search engine
+(:class:`OnlineReferenceSearch`) and the query-generation logic can be
+evolved or replaced independently.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sys
 import urllib.parse
 import urllib.request
-from typing import Any
+from typing import Any, Callable
 
 from .reference_store import ReferencePaper
+
+# Type alias for an LLM callable (matches novelty_evaluator.LLMCallable)
+LLMCallable = Callable[[str], str]
+
+# ---------------------------------------------------------------------------
+# LLM-based query generation
+# ---------------------------------------------------------------------------
+
+_QUERY_GENERATION_PROMPT = """\
+You are analyzing an academic paper to generate search queries for finding \
+related work in Semantic Scholar.
+
+Your task is to understand the paper at a **conceptual** level and generate \
+queries that will surface papers solving the SAME PROBLEM, possibly under \
+a different name, framing, or notation — not just papers that share keywords.
+
+Based on the paper content below:
+1. Identify the **central scientific or technical problem** being addressed.
+2. Identify the **proposed approach or method**.
+3. List **2–3 alternative approaches** that could solve the same problem.
+4. Generate **4–6 short search queries** (2–6 words each) optimised for \
+Semantic Scholar's semantic search.  Include queries for:
+   - The core problem domain
+   - The proposed method / technique
+   - The alternative solution approaches
+
+Respond with ONLY a valid JSON object in this exact format (no extra text):
+{{
+  "central_problem": "<one-sentence statement of the core problem>",
+  "proposed_approach": "<one-sentence description of the paper's method>",
+  "alternative_approaches": ["<approach 1>", "<approach 2>"],
+  "queries": ["<query 1>", "<query 2>", "<query 3>", "<query 4>"]
+}}
+
+Paper content:
+{content}
+"""
 
 _SEMANTIC_SCHOLAR_PAPER_URL = (
     "https://api.semanticscholar.org/graph/v1/paper"
@@ -53,6 +101,72 @@ _USER_AGENT = (
     "open-idea-sourcing/1.0 (academic novelty evaluator; "
     "https://github.com/yulinl2/Open-Idea-Sourcing)"
 )
+
+
+def generate_search_queries(
+    paper_content: str,
+    llm: LLMCallable,
+    *,
+    max_queries: int = 6,
+) -> list[str]:
+    """Ask an LLM to generate conceptual search queries for a paper.
+
+    The LLM is asked to identify the paper's central problem, proposed
+    approach, and alternative solutions, then produce short queries
+    optimised for Semantic Scholar's semantic search.  This surfaces
+    work that is *conceptually equivalent* — same problem, different name
+    or framing — rather than just keyword-similar papers.
+
+    Parameters
+    ----------
+    paper_content:
+        Textual content of the paper (e.g. ``paper.key_content()``).
+    llm:
+        Callable that accepts a prompt string and returns the LLM response.
+    max_queries:
+        Maximum number of queries to return (excess are silently dropped).
+
+    Returns
+    -------
+    list[str]
+        List of short query strings.  Returns an empty list on any error
+        (LLM failure, malformed response, etc.) so that callers can fall
+        back to title-based search gracefully.
+    """
+    prompt = _QUERY_GENERATION_PROMPT.format(content=paper_content)
+    try:
+        response = llm(prompt)
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"  [online_search] query generation failed: {exc}",
+            file=sys.stderr,
+        )
+        return []
+
+    raw = response.strip()
+
+    # Strip possible ```json ... ``` fences that some models add.
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?", "", raw, flags=re.MULTILINE)
+        raw = re.sub(r"\n?```$", "", raw.strip())
+
+    # Parse the JSON response.
+    try:
+        data: dict[str, Any] = json.loads(raw)
+    except json.JSONDecodeError:
+        # Try to extract a JSON object embedded in the response.
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        if not m:
+            return []
+        try:
+            data = json.loads(m.group())
+        except json.JSONDecodeError:
+            return []
+
+    queries = data.get("queries") or []
+    if not isinstance(queries, list):
+        return []
+    return [str(q).strip() for q in queries if str(q).strip()][:max_queries]
 
 
 class OnlineReferenceSearch:
@@ -83,25 +197,28 @@ class OnlineReferenceSearch:
     # ------------------------------------------------------------------
 
     def search(
-        self, title: str, abstract: str = "", arxiv_id: str = ""
+        self,
+        title: str,
+        abstract: str = "",
+        arxiv_id: str = "",
+        queries: list[str] | None = None,
     ) -> list[ReferencePaper]:
         """Return papers related to the submitted paper.
 
         Strategy
         --------
-        Both queries run in parallel and their results are merged:
-
         1. **arXiv references** (when *arxiv_id* is given): fetch the paper's
            reference list from Semantic Scholar's ``/paper/arXiv:{id}/references``
            endpoint.  These are the papers the authors cited — depth signal for
            detecting duplicates and near-equivalent prior work.
-        2. **Keyword search** (always): query ``/paper/search`` with the paper
-           title for broader field discovery — finds topically related work that
-           the authors may not have cited.  Semantic Scholar's semantic matching
-           works well with short topic-level queries ("Conformal Inference",
-           "diffusion models"), surfacing subtly equivalent work across the field.
+        2. **Conceptual keyword search** (breadth): when LLM-generated *queries*
+           are provided, each query is issued independently against
+           ``/paper/search``; results are merged.  This surfaces work that is
+           conceptually equivalent to the submitted paper even when the wording
+           differs.  When *queries* is *None* or empty, the raw *title* is used
+           as a single fallback query.
         3. **Abstract fallback** (when both above are sparse): an additional
-           keyword query derived from the opening of *abstract* for higher recall.
+           keyword query derived from the opening of *abstract*.
 
         All network and parsing errors are swallowed; on failure the method
         returns whatever partial results have been collected so far.
@@ -111,10 +228,13 @@ class OnlineReferenceSearch:
         title:
             Title of the paper being evaluated.
         abstract:
-            Abstract text used as a third-pass fallback query.  May be empty.
+            Abstract text used as a last-resort fallback query.  May be empty.
         arxiv_id:
             arXiv identifier (e.g. ``"2006.06138"``).  When supplied,
-            the references endpoint runs in addition to keyword search.
+            the references endpoint runs in addition to keyword queries.
+        queries:
+            LLM-generated conceptual queries (from :func:`generate_search_queries`).
+            When provided these replace the title-based keyword search.
 
         Returns
         -------
@@ -129,11 +249,11 @@ class OnlineReferenceSearch:
             for paper in self._fetch_references(f"arXiv:{arxiv_id}"):
                 results[paper.id] = paper
 
-        # Phase 2: keyword search (breadth — broader field / topic discovery).
-        # Runs always, not just as a fallback, because it finds related work the
-        # authors may not have cited (subtly equivalent work, parallel efforts).
-        if title:
-            for paper in self._query(title):
+        # Phase 2: conceptual keyword search (breadth).
+        # Use LLM-generated queries when available; fall back to the raw title.
+        search_queries = queries if queries else ([title] if title else [])
+        for q in search_queries:
+            for paper in self._query(q):
                 results.setdefault(paper.id, paper)
 
         # Phase 3: abstract fallback when both above are sparse.
@@ -141,7 +261,7 @@ class OnlineReferenceSearch:
             fallback_query = _extract_query_from_abstract(abstract)
             if fallback_query:
                 for paper in self._query(fallback_query):
-                        results.setdefault(paper.id, paper)
+                    results.setdefault(paper.id, paper)
 
         return list(results.values())[: self._max_results]
 

@@ -814,7 +814,7 @@ class TestOnlineSearchIntegration:
         fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
         call_count = {"n": 0}
 
-        def tracking_search(self_obj, title, abstract="", arxiv_id=""):
+        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None):
             call_count["n"] += 1
             return []  # empty so the rest of the pipeline is unaffected
 
@@ -837,7 +837,7 @@ class TestOnlineSearchIntegration:
         fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
         call_count = {"n": 0}
 
-        def tracking_search(self_obj, title, abstract="", arxiv_id=""):
+        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None):
             call_count["n"] += 1
             return []
 
