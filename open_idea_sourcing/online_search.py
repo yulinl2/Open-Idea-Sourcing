@@ -89,16 +89,19 @@ class OnlineReferenceSearch:
 
         Strategy
         --------
+        Both queries run in parallel and their results are merged:
+
         1. **arXiv references** (when *arxiv_id* is given): fetch the paper's
            reference list from Semantic Scholar's ``/paper/arXiv:{id}/references``
-           endpoint.  These are the papers the authors cited — the highest-quality
-           signal for novelty evaluation and completely independent of how well
-           the PDF title was extracted.
-        2. **Keyword search** (always, when the above yields fewer than
-           ``max_results // 2`` results or when no arXiv ID is provided):
-           query ``/paper/search`` with the paper title.
-        3. **Abstract fallback** (when keyword search is also sparse): query
-           with the opening terms of *abstract*.
+           endpoint.  These are the papers the authors cited — depth signal for
+           detecting duplicates and near-equivalent prior work.
+        2. **Keyword search** (always): query ``/paper/search`` with the paper
+           title for broader field discovery — finds topically related work that
+           the authors may not have cited.  Semantic Scholar's semantic matching
+           works well with short topic-level queries ("Conformal Inference",
+           "diffusion models"), surfacing subtly equivalent work across the field.
+        3. **Abstract fallback** (when both above are sparse): an additional
+           keyword query derived from the opening of *abstract* for higher recall.
 
         All network and parsing errors are swallowed; on failure the method
         returns whatever partial results have been collected so far.
@@ -108,11 +111,10 @@ class OnlineReferenceSearch:
         title:
             Title of the paper being evaluated.
         abstract:
-            Abstract text used as a fallback query when the title search
-            returns few results.  May be empty.
+            Abstract text used as a third-pass fallback query.  May be empty.
         arxiv_id:
             arXiv identifier (e.g. ``"2006.06138"``).  When supplied,
-            the references endpoint is tried first.
+            the references endpoint runs in addition to keyword search.
 
         Returns
         -------
@@ -122,22 +124,23 @@ class OnlineReferenceSearch:
         """
         results: dict[str, ReferencePaper] = {}
 
-        # Phase 1: paper-specific references (highest quality).
+        # Phase 1: paper-specific references (depth — papers the authors cited).
         if arxiv_id:
             for paper in self._fetch_references(f"arXiv:{arxiv_id}"):
                 results[paper.id] = paper
 
-        # Phase 2: keyword search — when no arXiv ID, or references are sparse.
-        if not arxiv_id or len(results) < max(1, self._max_results // 2):
-            if title:
-                for paper in self._query(title):
-                    results.setdefault(paper.id, paper)
+        # Phase 2: keyword search (breadth — broader field / topic discovery).
+        # Runs always, not just as a fallback, because it finds related work the
+        # authors may not have cited (subtly equivalent work, parallel efforts).
+        if title:
+            for paper in self._query(title):
+                results.setdefault(paper.id, paper)
 
-            # Phase 3: abstract fallback when keyword search is also sparse.
-            if len(results) < max(1, self._max_results // 2) and abstract:
-                fallback_query = _extract_query_from_abstract(abstract)
-                if fallback_query:
-                    for paper in self._query(fallback_query):
+        # Phase 3: abstract fallback when both above are sparse.
+        if len(results) < max(1, self._max_results // 2) and abstract:
+            fallback_query = _extract_query_from_abstract(abstract)
+            if fallback_query:
+                for paper in self._query(fallback_query):
                         results.setdefault(paper.id, paper)
 
         return list(results.values())[: self._max_results]

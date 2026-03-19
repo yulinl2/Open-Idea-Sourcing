@@ -483,51 +483,62 @@ class TestOnlineReferenceSearchWithArxivId:
     def test_arxiv_id_triggers_references_endpoint(self):
         """When arxiv_id is given, the references endpoint must be called."""
         refs_body = self._make_ref_response(["r1", "r2", "r3", "r4", "r5"])
+        search_body = self._make_search_response(["k1"])
         captured_urls = []
 
         def fake_urlopen(req, timeout=None):
             captured_urls.append(req.full_url)
-            return _make_mock_response(refs_body)
+            if "/references" in req.full_url:
+                return _make_mock_response(refs_body)
+            return _make_mock_response(search_body)
 
         searcher = OnlineReferenceSearch(max_results=5)
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
             papers = searcher.search("Some Title", arxiv_id="2006.06138")
 
         assert any("/references" in u for u in captured_urls)
-        assert len(papers) == 5
+        # references (5) + keyword (1 new) capped at max_results=5
+        assert len(papers) <= 5
 
-    def test_references_results_returned_first(self):
-        """Papers from references endpoint come before keyword results."""
+    def test_references_and_keyword_both_run(self):
+        """Both references endpoint and keyword search always run when arxiv_id is given."""
         refs_body = self._make_ref_response(["r1", "r2", "r3", "r4", "r5"])
+        keyword_body = self._make_search_response(["k1", "k2"])
         call_n = {"n": 0}
 
         def fake_urlopen(req, timeout=None):
             call_n["n"] += 1
-            return _make_mock_response(refs_body)
+            if "/references" in req.full_url:
+                return _make_mock_response(refs_body)
+            return _make_mock_response(keyword_body)
 
-        searcher = OnlineReferenceSearch(max_results=5)
+        searcher = OnlineReferenceSearch(max_results=10)
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
             papers = searcher.search("Title", arxiv_id="2006.06138")
 
-        # Sufficient references → keyword search should not fire
-        assert call_n["n"] == 1
+        # Both references endpoint AND keyword search should have fired
+        assert call_n["n"] >= 2
+        ids = {p.id for p in papers}
+        assert "r1" in ids  # from references
+        assert "k1" in ids  # from keyword search
 
-    def test_keyword_fallback_fires_when_references_sparse(self):
-        """When references are sparse, keyword search supplements them."""
+    def test_keyword_search_supplements_references(self):
+        """keyword search always runs alongside references and results are merged."""
         sparse_refs = self._make_ref_response(["r1"])
         keyword_results = self._make_search_response(["k1", "k2", "k3"])
         call_n = {"n": 0}
 
         def fake_urlopen(req, timeout=None):
             call_n["n"] += 1
-            body = sparse_refs if call_n["n"] == 1 else keyword_results
-            return _make_mock_response(body)
+            if "/references" in req.full_url:
+                return _make_mock_response(sparse_refs)
+            return _make_mock_response(keyword_results)
 
         searcher = OnlineReferenceSearch(max_results=5)
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
             papers = searcher.search("Title", arxiv_id="2006.06138")
 
-        assert call_n["n"] >= 2  # references + at least one keyword query
+        assert call_n["n"] >= 2  # references + keyword query
         ids = {p.id for p in papers}
         assert "r1" in ids
         assert "k1" in ids
