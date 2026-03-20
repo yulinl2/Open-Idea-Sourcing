@@ -439,6 +439,8 @@ class ReportGenerator:
                 "",
             ]
             # Group jobs by agent; each new agent gets a bold section header.
+            # None is used as the sentinel for "no group opened yet" so that the
+            # first iteration always opens a header (even when first agent is "").
             current_agent: str | None = None
             for i, job in enumerate(r.metadata.jobs, 1):
                 if job.agent != current_agent:
@@ -749,9 +751,8 @@ def _build_mindmap(decomp: IdeaDecomposition, paper_title: str = "") -> str:
           LLM-generated items are often full sentences that would cause
           the renderer to silently drop all branches.
         """
-        for ch in ("(", ")", "[", "]", "{", "}", '"', "#"):
-            text = text.replace(ch, "")
-        text = text.replace("`", "'")
+        _remove_table = str.maketrans("", "", '()[]{}\"#')
+        text = text.translate(_remove_table).replace("`", "'")
         if len(text) > _MAX_NODE_LEN:
             text = text[:_MAX_NODE_LEN].rstrip() + "…"
         return text

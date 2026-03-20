@@ -1147,6 +1147,16 @@ class TestMindMapEmptyBranches:
         assert "A" * 100 not in diagram
         assert "…" in diagram
 
+    def test_build_mindmap_does_not_truncate_exactly_max_length(self):
+        exact_text = "B" * 60  # exactly at the limit — must NOT be truncated
+        d = IdeaDecomposition(
+            core_concept="Core",
+            sub_ideas=[exact_text],
+        )
+        diagram = _build_mindmap(d, "Paper")
+        assert "B" * 60 in diagram
+        assert "…" not in diagram
+
     def test_build_mindmap_removes_brackets_and_braces(self):
         d = IdeaDecomposition(
             core_concept="Core",
