@@ -771,5 +771,3 @@ class TestOnlineReferenceSearchWithQueries:
             searcher.search("My Fallback Title", queries=None)
 
         assert "My Fallback Title" in issued_queries
-
-
