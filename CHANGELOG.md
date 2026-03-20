@@ -37,6 +37,39 @@ The `release.yml` workflow will:
 
 ---
 
+## [1.2.0] — 2026-03-20
+
+### Added
+
+**Online reference search (Stage 3 — Retrieve)**
+- `open_idea_sourcing/online_search.py` — `OnlineReferenceSearch` class queries the [Semantic Scholar Graph API](https://api.semanticscholar.org/) (no API key required).
+  - *Depth signal*: `GET /paper/arXiv:{id}/references` fetches the paper's own bibliography when an arXiv ID is available.
+  - *Breadth signal*: LLM-generated conceptual queries (central problem, proposed strategy, alternative approaches) are issued against `/paper/search`, surfacing work that is *conceptually equivalent* even when terminology differs.
+  - *Fallback*: abstract-derived query fires when both depth and breadth returns are sparse.
+  - Results are merged, deduplicated, and added to the reference store before TF-IDF similarity search.
+- `generate_search_queries(paper_content, llm)` free function — separated from the search engine so query generation and retrieval can be swapped or ablated independently.
+- `--no-online-search` CLI flag — opt out when working offline or debugging with a fixed reference corpus.
+- `_extract_arxiv_id(source)` helper in `review_paper.py` — extracts the arXiv ID from the paper URL and passes it to `OnlineReferenceSearch.search(arxiv_id=...)`.
+- Pipeline Job Log now includes an **Online reference search** entry showing the exact arXiv ID and LLM-generated query strings (e.g. `arXiv:2006.06138 + 4 LLM queries: "conformal prediction coverage"; ...`).
+
+**Enriched evaluation pipeline (PR #26)**
+- `IdeaDecomposition` dataclass — runs *first* in the evaluation pipeline; decomposes the paper into core concept, sub-ideas, assumptions, and limitations.
+- Idea decomposition section (with Mermaid mind-map diagram) appears at the top of every report, before the overall verdict.
+- `SimilarityAnnotation` dataclass — per-reference LLM annotation of overlap, differences, and derivation for each top-matched paper.
+- `DomainReference` dataclass — LLM-identified key references contextualising the paper in its field.
+- Bundled reference corpus `data/references.json` — ships with the repository; loaded automatically without requiring `--references`.
+- `--references` now defaults to the bundled baseline corpus (`data/references.json`); user-supplied stores are merged on top.
+- Paper metainfo block (title, authors, venue, year) displayed at the top of Markdown/PDF reports.
+- Collapsible `<details>` blocks for each novelty dimension in Markdown/PDF reports.
+
+### Changed
+- `--save-references` removed; the bundled corpus is now the persistent default store.
+- `evaluate()` LLM call order: decomposition → duplication → combination → equivalence → synthesis → domain references → per-paper annotation.
+- Pipeline Job Log Gantt diagram groups pre-LLM stages (parse, online search, similarity) separately from LLM evaluation stages.
+- Similarity search pipeline job now reports TF-IDF query preview and top-match titles with scores.
+
+---
+
 ## [1.1.0] — 2026-03-18
 
 ### Added
@@ -62,6 +95,7 @@ The `release.yml` workflow will:
 ---
 
 <!-- Links are auto-maintained — update when a new version is tagged -->
-[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/yulinl2/Open-Idea-Sourcing/releases/tag/v1.0.0
