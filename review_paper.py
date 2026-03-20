@@ -313,10 +313,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--save-references",
         metavar="FILE",
-        default=None,
+        default=str(_BUNDLED_REFERENCES),
         help=(
-            "Save the loaded reference store to this JSON file. "
-            "This does not modify or update any references."
+            "Save the loaded reference store (bundled corpus + any online search "
+            "results) to this JSON file after each run, growing the corpus over "
+            "time.  Defaults to the bundled store (data/references.json).  "
+            "Pass an empty string ('') to disable."
         ),
     )
     parser.add_argument(

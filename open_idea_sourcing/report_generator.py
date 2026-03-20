@@ -328,6 +328,19 @@ class ReportGenerator:
             "",
         ]
 
+        # --- Paper metainfo block ---
+        input_source = r.metadata.input_source if r.metadata else ""
+        if input_source:
+            # If the source looks like a URL, turn it into a clickable link.
+            if input_source.startswith("http://") or input_source.startswith("https://"):
+                source_display = f"[{input_source}]({input_source})"
+            else:
+                source_display = f"`{input_source}`"
+            lines += [
+                f"> **Source:** {source_display}",
+                "",
+            ]
+
         if r.metadata:
             m = r.metadata
             lines += ["## Run Metadata", ""]
@@ -424,12 +437,23 @@ class ReportGenerator:
                 "",
                 _build_gantt(r.metadata, r.paper_title),
                 "",
-                "| # | Job | Agent | Start (s) | Duration (s) | Input | Output |",
-                "|---|-----|-------|----------:|-------------:|-------|--------|",
             ]
+            # Group jobs by agent; each new agent gets a bold section header.
+            current_agent: str | None = None
             for i, job in enumerate(r.metadata.jobs, 1):
+                if job.agent != current_agent:
+                    # Close the previous group's table (if any) and open a new one.
+                    if current_agent is not None:
+                        lines.append("")
+                    lines += [
+                        f"**{job.agent}**",
+                        "",
+                        "| # | Job | Start (s) | Duration (s) | Input | Output |",
+                        "|---|-----|----------:|-------------:|-------|--------|",
+                    ]
+                    current_agent = job.agent
                 lines.append(
-                    f"| {i} | {job.name} | {job.agent} "
+                    f"| {i} | {job.name} "
                     f"| {job.offset_s:.2f} | {job.duration_s:.2f} "
                     f"| {job.input_summary} | {job.output_summary} |"
                 )
@@ -541,12 +565,14 @@ class ReportGenerator:
                 for item in d.limitations:
                     lines.append(f"- {item}")
                 lines.append("")
-            lines += [
-                "### Idea Mind Map",
-                "",
-                _build_mindmap(d, r.paper_title),
-                "",
-            ]
+            mindmap_diagram = _build_mindmap(d, r.paper_title)
+            if mindmap_diagram:
+                lines += [
+                    "### Idea Mind Map",
+                    "",
+                    mindmap_diagram,
+                    "",
+                ]
 
         if r.domain_references:
             lines += [
@@ -699,17 +725,36 @@ def _build_mindmap(decomp: IdeaDecomposition, paper_title: str = "") -> str:
 
     The mind map places the core concept at the root and branches out to
     sub-ideas, assumptions, and limitations.
+
+    Returns an empty string when there are no branches so callers can
+    omit the section entirely rather than rendering a bare root circle.
     """
+    has_branches = bool(
+        decomp.sub_ideas or decomp.assumptions or decomp.limitations
+    )
+    if not has_branches:
+        return ""
+
     root_label = paper_title or decomp.core_concept
 
-    def _safe(text: str) -> str:
-        """Replace characters that would break Mermaid node labels.
+    _MAX_NODE_LEN = 60  # chars; longer text breaks GitHub's Mermaid renderer
 
-        Backticks are replaced with single quotes; parentheses are replaced
-        with square brackets to prevent them from being interpreted as Mermaid
-        node shape syntax.
+    def _safe(text: str) -> str:
+        """Sanitise text for a Mermaid mindmap node label.
+
+        * Removes shape-control characters ``()[]{}"#`` that Mermaid
+          interprets as node-shape markers.
+        * Replaces backticks with single quotes.
+        * Truncates long items with an ellipsis so nodes stay readable;
+          LLM-generated items are often full sentences that would cause
+          the renderer to silently drop all branches.
         """
-        return text.replace("`", "'").replace("(", "[").replace(")", "]")
+        for ch in ("(", ")", "[", "]", "{", "}", '"', "#"):
+            text = text.replace(ch, "")
+        text = text.replace("`", "'")
+        if len(text) > _MAX_NODE_LEN:
+            text = text[:_MAX_NODE_LEN].rstrip() + "…"
+        return text
 
     lines = [
         "```mermaid",

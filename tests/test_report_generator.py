@@ -986,3 +986,266 @@ class TestEnrichedFieldsInJSON:
         report = _sample_report()
         data = json.loads(self.gen.generate(report, fmt="json"))
         assert "domain_references" not in data
+
+
+# ---------------------------------------------------------------------------
+# Collapsible analysis sections
+# ---------------------------------------------------------------------------
+
+class TestCollapsibleAnalysisSections:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report()
+
+    def test_markdown_dimensions_wrapped_in_details(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "<details>" in out
+        assert "</details>" in out
+
+    def test_markdown_summary_shows_risk_level(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # Each dimension should have a <summary> line with "Risk level:"
+        assert "<summary>" in out
+        assert "Risk level:" in out
+
+    def test_markdown_explanation_inside_details(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # Explanation text must appear between <details> and </details>
+        details_start = out.index("<details>")
+        details_end = out.index("</details>")
+        section = out[details_start:details_end]
+        assert "Essentially the same as att2017" in section
+
+    def test_markdown_each_dimension_has_own_details_block(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # 3 dimensions → 3 <details> blocks
+        assert out.count("<details>") >= 3
+        assert out.count("</details>") >= 3
+
+
+# ---------------------------------------------------------------------------
+# Paper metainfo block
+# ---------------------------------------------------------------------------
+
+class TestPaperMetainfoBlock:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+
+    def test_markdown_shows_source_url_as_link(self):
+        report = _sample_report()
+        report.metadata = _sample_metadata()
+        report.metadata.input_source = "https://arxiv.org/abs/1234.5678"
+        out = self.gen.generate(report, fmt="markdown")
+        assert "**Source:**" in out
+        assert "[https://arxiv.org/abs/1234.5678]" in out
+
+    def test_markdown_shows_file_source_as_code(self):
+        report = _sample_report()
+        report.metadata = _sample_metadata()
+        report.metadata.input_source = "my_paper.pdf"
+        out = self.gen.generate(report, fmt="markdown")
+        assert "**Source:**" in out
+        assert "`my_paper.pdf`" in out
+
+    def test_markdown_no_source_block_when_no_metadata(self):
+        report = _sample_report()
+        out = self.gen.generate(report, fmt="markdown")
+        assert "**Source:**" not in out
+
+    def test_markdown_no_source_block_when_empty_input_source(self):
+        report = _sample_report()
+        report.metadata = _sample_metadata()
+        report.metadata.input_source = ""
+        out = self.gen.generate(report, fmt="markdown")
+        assert "**Source:**" not in out
+
+
+# ---------------------------------------------------------------------------
+# Pipeline job table grouping by agent
+# ---------------------------------------------------------------------------
+
+class TestPipelineJobTableGrouping:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_with_jobs()
+
+    def test_markdown_table_grouped_with_bold_agent_headers(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # Bold section headers for each distinct agent group
+        assert "**PaperParser**" in out
+        assert "**LLM (gpt-4o)**" in out
+
+    def test_markdown_agent_header_before_its_jobs(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # Bold section headers must appear before their respective sub-tables.
+        # We look within the Pipeline Job Log section (after "## Pipeline Job Log").
+        log_pos = out.index("## Pipeline Job Log")
+        log_section = out[log_pos:]
+        parser_pos = log_section.index("**PaperParser**")
+        llm_pos = log_section.index("**LLM (gpt-4o)**")
+        # PaperParser header must come before LLM header
+        assert parser_pos < llm_pos
+
+    def test_markdown_no_agent_column_in_table(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # The job-detail table header should NOT include an Agent column (it's
+        # already shown as the bold group header).
+        lines = out.splitlines()
+        table_header = next(
+            (l for l in lines if "| Job |" in l), None
+        )
+        assert table_header is not None
+        assert "Agent" not in table_header
+
+
+# ---------------------------------------------------------------------------
+# Mind map: hide when no branches / truncate long items
+# ---------------------------------------------------------------------------
+
+class TestMindMapEmptyBranches:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+
+    def test_mindmap_hidden_when_all_branch_lists_empty(self):
+        """A decomposition with no sub-ideas/assumptions/limitations should not
+        produce an 'Idea Mind Map' section (just a lone root circle is useless)."""
+        report = _sample_report()
+        report.idea_decomposition = IdeaDecomposition(
+            core_concept="Core concept only",
+            sub_ideas=[],
+            assumptions=[],
+            limitations=[],
+        )
+        out = self.gen.generate(report, fmt="markdown")
+        assert "### Idea Mind Map" not in out
+        assert "mindmap" not in out
+
+    def test_mindmap_shown_when_sub_ideas_present(self):
+        report = _sample_report()
+        report.idea_decomposition = IdeaDecomposition(
+            core_concept="Core",
+            sub_ideas=["Idea A"],
+        )
+        out = self.gen.generate(report, fmt="markdown")
+        assert "### Idea Mind Map" in out
+        assert "mindmap" in out
+
+    def test_build_mindmap_returns_empty_string_when_no_branches(self):
+        d = IdeaDecomposition(core_concept="X", sub_ideas=[], assumptions=[], limitations=[])
+        result = _build_mindmap(d, "Paper")
+        assert result == ""
+
+    def test_build_mindmap_truncates_long_items(self):
+        long_text = "A" * 100  # definitely over 60 chars
+        d = IdeaDecomposition(
+            core_concept="Core",
+            sub_ideas=[long_text],
+        )
+        diagram = _build_mindmap(d, "Paper")
+        # The truncated label should appear in the diagram (60 chars + ellipsis)
+        assert "A" * 60 in diagram
+        assert "A" * 100 not in diagram
+        assert "…" in diagram
+
+    def test_build_mindmap_removes_brackets_and_braces(self):
+        d = IdeaDecomposition(
+            core_concept="Core",
+            sub_ideas=["Method [A] and {B}"],
+        )
+        diagram = _build_mindmap(d, "Paper")
+        assert "[" not in diagram.split("root")[1]  # not in branches
+        assert "{" not in diagram.split("root")[1]
+
+
+# ---------------------------------------------------------------------------
+# Similarity annotations in Markdown and JSON
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import SimilarityAnnotation
+
+
+def _sample_report_with_annotations() -> NoveltyReport:
+    """Sample report that has similar papers AND annotations."""
+    report = _sample_report()
+    # Give the existing similar paper a URL
+    report.similar_papers[0].paper.url = "https://arxiv.org/abs/1706.03762"
+    report.similar_paper_annotations = [
+        SimilarityAnnotation(
+            paper_id="att2017",
+            overlap="Both use self-attention as core mechanism.",
+            differences="Submitted paper adds dynamic masking; original is static.",
+            derivation="The multi-head attention design is directly derived from Vaswani et al.",
+        )
+    ]
+    return report
+
+
+class TestSimilarPaperAnnotationsInMarkdown:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_with_annotations()
+
+    def test_markdown_shows_reference_annotations_section(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "### Reference Annotations" in out
+
+    def test_markdown_annotations_wrapped_in_details(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # Annotation blocks are collapsible
+        ann_pos = out.index("### Reference Annotations")
+        section = out[ann_pos:]
+        assert "<details>" in section
+        assert "Comparative annotation" in section
+
+    def test_markdown_shows_overlap(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "Both use self-attention" in out
+
+    def test_markdown_shows_differences(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "dynamic masking" in out
+
+    def test_markdown_shows_derivation(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "multi-head attention design" in out
+
+    def test_markdown_similar_paper_has_url_link(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "https://arxiv.org/abs/1706.03762" in out
+
+    def test_markdown_no_annotations_section_when_empty(self):
+        report = _sample_report()  # no annotations
+        out = self.gen.generate(report, fmt="markdown")
+        assert "### Reference Annotations" not in out
+
+
+class TestSimilarPaperAnnotationsInJSON:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_with_annotations()
+
+    def test_json_similar_paper_has_url(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert data["similar_papers"][0]["url"] == "https://arxiv.org/abs/1706.03762"
+
+    def test_json_similar_paper_has_overlap(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert "overlap" in data["similar_papers"][0]
+        assert "self-attention" in data["similar_papers"][0]["overlap"]
+
+    def test_json_similar_paper_has_differences(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert "differences" in data["similar_papers"][0]
+
+    def test_json_similar_paper_has_derivation(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert "derivation" in data["similar_papers"][0]
+
+    def test_json_similar_paper_no_annotations_when_none(self):
+        report = _sample_report()  # no annotations
+        data = json.loads(self.gen.generate(report, fmt="json"))
+        p = data["similar_papers"][0]
+        assert "overlap" not in p
+        assert "differences" not in p
+        assert "derivation" not in p
+

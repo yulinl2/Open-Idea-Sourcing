@@ -8,11 +8,13 @@ from open_idea_sourcing.novelty_evaluator import (
     NoveltyDimension,
     NoveltyEvaluator,
     NoveltyReport,
+    SimilarityAnnotation,
     _extract_field,
     _parse_decomposition_response,
     _parse_dimension_response,
     _parse_domain_references_response,
     _parse_numbered_list,
+    _parse_similar_paper_annotations_response,
     _parse_synthesis_response,
 )
 from open_idea_sourcing.paper_parser import ParsedPaper
@@ -639,3 +641,93 @@ class TestFindDomainReferencesMethod:
         result = evaluator._find_domain_references("content", "refs", {})
         assert isinstance(result, list)
         assert all(isinstance(r, DomainReference) for r in result)
+
+
+# ---------------------------------------------------------------------------
+# _parse_similar_paper_annotations_response
+# ---------------------------------------------------------------------------
+
+_ANNOTATION_RESPONSE = """\
+PAPER [arxiv-1904.06019]:
+OVERLAP: Both use mini-batch gradient descent and momentum optimisers.
+DIFFERENCES: The submitted paper targets image classification; the reference focuses on language models.
+DERIVATION: The learning-rate scheduling heuristic in the submitted paper appears adapted from Shallue et al. 2019.
+
+PAPER [bert2018]:
+OVERLAP: Both pre-train on large text corpora.
+DIFFERENCES: The submitted paper uses a custom tokeniser instead of WordPiece.
+DERIVATION: None identified.
+"""
+
+
+class TestParseSimilarPaperAnnotationsResponse:
+    def test_returns_list_of_similarity_annotations(self):
+        result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
+        assert isinstance(result, list)
+        assert all(isinstance(a, SimilarityAnnotation) for a in result)
+
+    def test_correct_number_of_annotations(self):
+        result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
+        assert len(result) == 2
+
+    def test_first_annotation_paper_id(self):
+        result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
+        assert result[0].paper_id == "arxiv-1904.06019"
+
+    def test_second_annotation_paper_id(self):
+        result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
+        assert result[1].paper_id == "bert2018"
+
+    def test_overlap_extracted(self):
+        result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
+        assert "mini-batch gradient descent" in result[0].overlap
+
+    def test_differences_extracted(self):
+        result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
+        assert "image classification" in result[0].differences
+
+    def test_derivation_extracted(self):
+        result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
+        assert "learning-rate scheduling" in result[0].derivation
+
+    def test_empty_response_returns_empty_list(self):
+        result = _parse_similar_paper_annotations_response("")
+        assert result == []
+
+    def test_malformed_blocks_skipped(self):
+        result = _parse_similar_paper_annotations_response(
+            "Some preamble without any PAPER markers."
+        )
+        assert result == []
+
+    def test_none_derivation_preserved(self):
+        result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
+        assert result[1].derivation == "None identified."
+
+
+class TestAnnotateSimilarPapersMethod:
+    def test_calls_llm_and_stores_in_raw(self):
+        evaluator = NoveltyEvaluator(llm=lambda _: _ANNOTATION_RESPONSE)
+        paper_ref = ReferencePaper(
+            id="arxiv-1904.06019",
+            title="Data Parallelism",
+            abstract="abstract",
+        )
+        similar = [SimilarityResult(paper=paper_ref, score=0.5)]
+        raw: dict = {}
+        result = evaluator._annotate_similar_papers("content", similar, raw)
+        assert "similar_paper_annotations" in raw
+        assert raw["similar_paper_annotations"] == _ANNOTATION_RESPONSE
+
+    def test_returns_list_of_similarity_annotations(self):
+        evaluator = NoveltyEvaluator(llm=lambda _: _ANNOTATION_RESPONSE)
+        paper_ref = ReferencePaper(
+            id="arxiv-1904.06019",
+            title="Data Parallelism",
+            abstract="abstract",
+        )
+        similar = [SimilarityResult(paper=paper_ref, score=0.5)]
+        result = evaluator._annotate_similar_papers("content", similar, {})
+        assert isinstance(result, list)
+        assert len(result) >= 1
+        assert isinstance(result[0], SimilarityAnnotation)
