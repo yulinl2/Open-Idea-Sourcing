@@ -244,6 +244,24 @@ class ReportGenerator:
                 lines.append(f"       out: {job.output_summary}")
             lines.append("")
 
+        if r.idea_decomposition:
+            d = r.idea_decomposition
+            lines += ["IDEA DECOMPOSITION", "-" * 70]
+            lines.append(f"  Core concept: {d.core_concept}")
+            if d.sub_ideas:
+                lines.append("  Sub-ideas:")
+                for i, item in enumerate(d.sub_ideas, 1):
+                    lines.append(f"    {i}. {item}")
+            if d.assumptions:
+                lines.append("  Assumptions:")
+                for i, item in enumerate(d.assumptions, 1):
+                    lines.append(f"    {i}. {item}")
+            if d.limitations:
+                lines.append("  Limitations:")
+                for i, item in enumerate(d.limitations, 1):
+                    lines.append(f"    {i}. {item}")
+            lines.append("")
+
         lines += [
             f"Paper  : {r.paper_title}",
             f"Verdict: {r.overall_verdict}  (confidence: {r.confidence})",
@@ -284,24 +302,6 @@ class ReportGenerator:
                         lines.append(f"    Differences: {ann.differences}")
                     if ann.derivation:
                         lines.append(f"    Derivation : {ann.derivation}")
-            lines.append("")
-
-        if r.idea_decomposition:
-            d = r.idea_decomposition
-            lines += ["IDEA DECOMPOSITION", "-" * 70]
-            lines.append(f"  Core concept: {d.core_concept}")
-            if d.sub_ideas:
-                lines.append("  Sub-ideas:")
-                for i, item in enumerate(d.sub_ideas, 1):
-                    lines.append(f"    {i}. {item}")
-            if d.assumptions:
-                lines.append("  Assumptions:")
-                for i, item in enumerate(d.assumptions, 1):
-                    lines.append(f"    {i}. {item}")
-            if d.limitations:
-                lines.append("  Limitations:")
-                for i, item in enumerate(d.limitations, 1):
-                    lines.append(f"    {i}. {item}")
             lines.append("")
 
         if r.domain_references:
@@ -461,6 +461,41 @@ class ReportGenerator:
                 )
             lines.append("")
 
+        if r.idea_decomposition:
+            d = r.idea_decomposition
+            lines += [
+                "## Idea Decomposition",
+                "",
+                f"**Core concept:** {d.core_concept}",
+                "",
+            ]
+            if d.sub_ideas:
+                lines.append("**Sub-ideas:**")
+                lines.append("")
+                for item in d.sub_ideas:
+                    lines.append(f"- {item}")
+                lines.append("")
+            if d.assumptions:
+                lines.append("**Assumptions:**")
+                lines.append("")
+                for item in d.assumptions:
+                    lines.append(f"- {item}")
+                lines.append("")
+            if d.limitations:
+                lines.append("**Limitations:**")
+                lines.append("")
+                for item in d.limitations:
+                    lines.append(f"- {item}")
+                lines.append("")
+            mindmap_diagram = _build_mindmap(d, r.paper_title)
+            if mindmap_diagram:
+                lines += [
+                    "### Idea Mind Map",
+                    "",
+                    mindmap_diagram,
+                    "",
+                ]
+
         lines += [
             f"**Overall verdict:** {ov} **{r.overall_verdict}** "
             f"(confidence: {r.confidence})",
@@ -540,41 +575,6 @@ class ReportGenerator:
                     else:
                         lines += ["No annotation available.", ""]
                     lines += ["</details>", ""]
-
-        if r.idea_decomposition:
-            d = r.idea_decomposition
-            lines += [
-                "## Idea Decomposition",
-                "",
-                f"**Core concept:** {d.core_concept}",
-                "",
-            ]
-            if d.sub_ideas:
-                lines.append("**Sub-ideas:**")
-                lines.append("")
-                for item in d.sub_ideas:
-                    lines.append(f"- {item}")
-                lines.append("")
-            if d.assumptions:
-                lines.append("**Assumptions:**")
-                lines.append("")
-                for item in d.assumptions:
-                    lines.append(f"- {item}")
-                lines.append("")
-            if d.limitations:
-                lines.append("**Limitations:**")
-                lines.append("")
-                for item in d.limitations:
-                    lines.append(f"- {item}")
-                lines.append("")
-            mindmap_diagram = _build_mindmap(d, r.paper_title)
-            if mindmap_diagram:
-                lines += [
-                    "### Idea Mind Map",
-                    "",
-                    mindmap_diagram,
-                    "",
-                ]
 
         if r.domain_references:
             lines += [

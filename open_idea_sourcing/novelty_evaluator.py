@@ -274,18 +274,20 @@ class NoveltyEvaluator:
         agent = f"LLM ({metadata.model})" if (metadata and metadata.model) else "LLM"
         run_start = _run_start if _run_start is not None else time.monotonic()
 
+        # Idea decomposition runs FIRST — it provides the structural context
+        # that informs all subsequent novelty analysis passes.
         t0 = time.monotonic()
-        dup = self._check_duplication(content, refs_text, raw)
+        idea_decomp = self._decompose_idea(content, raw)
         t1 = time.monotonic()
-        combo = self._check_combination(content, refs_text, raw)
+        dup = self._check_duplication(content, refs_text, raw)
         t2 = time.monotonic()
-        equiv = self._check_equivalence(content, refs_text, raw)
+        combo = self._check_combination(content, refs_text, raw)
         t3 = time.monotonic()
+        equiv = self._check_equivalence(content, refs_text, raw)
+        t4 = time.monotonic()
         overall, confidence, summary = self._synthesise(
             paper.title, dup, combo, equiv, raw
         )
-        t4 = time.monotonic()
-        idea_decomp = self._decompose_idea(content, raw)
         t5 = time.monotonic()
         domain_refs = self._find_domain_references(content, refs_text, raw)
         t6 = time.monotonic()
@@ -301,44 +303,44 @@ class NoveltyEvaluator:
         if metadata is not None:
             jobs: list[PipelineJob] = [
                 PipelineJob(
-                    name="Duplication check",
+                    name="Idea decomposition",
                     agent=agent,
                     offset_s=round(t0 - run_start, 3),
                     duration_s=round(t1 - t0, 3),
+                    input_summary="paper content",
+                    output_summary=f"{len(idea_decomp.sub_ideas)} sub-idea(s)",
+                ),
+                PipelineJob(
+                    name="Duplication check",
+                    agent=agent,
+                    offset_s=round(t1 - run_start, 3),
+                    duration_s=round(t2 - t1, 3),
                     input_summary=f"paper content + {refs_summary}",
                     output_summary=f"verdict={dup.verdict}",
                 ),
                 PipelineJob(
                     name="Combination check",
                     agent=agent,
-                    offset_s=round(t1 - run_start, 3),
-                    duration_s=round(t2 - t1, 3),
+                    offset_s=round(t2 - run_start, 3),
+                    duration_s=round(t3 - t2, 3),
                     input_summary=f"paper content + {refs_summary}",
                     output_summary=f"verdict={combo.verdict}",
                 ),
                 PipelineJob(
                     name="Equivalence check",
                     agent=agent,
-                    offset_s=round(t2 - run_start, 3),
-                    duration_s=round(t3 - t2, 3),
+                    offset_s=round(t3 - run_start, 3),
+                    duration_s=round(t4 - t3, 3),
                     input_summary=f"paper content + {refs_summary}",
                     output_summary=f"verdict={equiv.verdict}",
                 ),
                 PipelineJob(
                     name="Synthesis",
                     agent=agent,
-                    offset_s=round(t3 - run_start, 3),
-                    duration_s=round(t4 - t3, 3),
-                    input_summary="3 dimension results",
-                    output_summary=f"verdict={overall}, confidence={confidence}",
-                ),
-                PipelineJob(
-                    name="Idea decomposition",
-                    agent=agent,
                     offset_s=round(t4 - run_start, 3),
                     duration_s=round(t5 - t4, 3),
-                    input_summary="paper content",
-                    output_summary=f"{len(idea_decomp.sub_ideas)} sub-idea(s)",
+                    input_summary="3 dimension results",
+                    output_summary=f"verdict={overall}, confidence={confidence}",
                 ),
                 PipelineJob(
                     name="Domain references",

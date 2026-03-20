@@ -789,6 +789,10 @@ class TestIdeaDecompositionInText:
         out = self.gen.generate(report, fmt="text")
         assert "IDEA DECOMPOSITION" not in out
 
+    def test_text_idea_decomposition_before_verdict(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert out.index("IDEA DECOMPOSITION") < out.index("Paper  :")
+
 
 class TestIdeaDecompositionInMarkdown:
     def setup_method(self):
@@ -819,6 +823,10 @@ class TestIdeaDecompositionInMarkdown:
         report = _sample_report()
         out = self.gen.generate(report, fmt="markdown")
         assert "## Idea Decomposition" not in out
+
+    def test_markdown_idea_decomposition_before_verdict(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert out.index("## Idea Decomposition") < out.index("**Overall verdict:**")
 
 
 class TestMindMapInMarkdown:

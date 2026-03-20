@@ -102,11 +102,11 @@ _DOMAIN_REFS_RESPONSE = (
 def _make_full_llm():
     """LLM that returns appropriate canned responses for each pass."""
     responses_in_order = [
+        _DECOMP_RESPONSE,
         _DUP_RESPONSE,
         _COMBO_RESPONSE,
         _EQUIV_RESPONSE,
         _SYNTH_RESPONSE,
-        _DECOMP_RESPONSE,
         _DOMAIN_REFS_RESPONSE,
     ]
     call_idx = {"i": 0}
