@@ -72,6 +72,7 @@ _BUNDLED_REFERENCES = Path(__file__).resolve().parent / "data" / "references.jso
 
 from open_idea_sourcing import __version__
 from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator, PipelineJob, RunMetadata
+from open_idea_sourcing.online_search import OnlineReferenceSearch, generate_search_queries
 from open_idea_sourcing.paper_parser import PaperParser
 from open_idea_sourcing.reference_store import ReferenceStore
 from open_idea_sourcing.report_generator import ReportGenerator, suggest_filename
@@ -127,6 +128,30 @@ def _normalise_arxiv_url(url: str) -> str:
     if m:
         return f"{m.group(1)}/pdf/{m.group(2)}"
     return url
+
+
+def _extract_arxiv_id(source: str) -> str:
+    """Return the arXiv paper ID from an arXiv URL, or an empty string.
+
+    Supports both ``/abs/`` and ``/pdf/`` URL forms, with or without a
+    version suffix.
+
+    Examples
+    --------
+    >>> _extract_arxiv_id("https://arxiv.org/abs/2006.06138")
+    '2006.06138'
+    >>> _extract_arxiv_id("https://arxiv.org/abs/2006.06138v2")
+    '2006.06138v2'
+    >>> _extract_arxiv_id("https://arxiv.org/pdf/1706.03762")
+    '1706.03762'
+    >>> _extract_arxiv_id("/path/to/paper.pdf")
+    ''
+    """
+    m = re.match(
+        r"https?://arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5}(?:v\d+)?)",
+        source,
+    )
+    return m.group(1) if m else ""
 
 
 def _download_paper(url: str, dest_dir: str) -> Path:
@@ -355,6 +380,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Mutually exclusive with the positional paper argument."
         ),
     )
+    parser.add_argument(
+        "--no-online-search",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable automatic online reference search via the Semantic "
+            "Scholar API (enabled by default).  Use this flag when working "
+            "offline or when you want to rely solely on a local --references "
+            "file."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -447,6 +483,66 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                     f"Warning: reference file not found: {ref_path}", file=sys.stderr
                 )
 
+        # --- Build LLM (needed for query generation and novelty evaluation) ---
+        try:
+            llm = _build_llm(args.model)
+        except SystemExit as exc:
+            return _fail(str(exc.code), args.format)
+
+        # --- Stage 3 — Online reference search (Retrieve) ---
+        # This stage runs after parsing (Stage 1) and is positioned at the
+        # retrieval layer so that online results augment the reference store
+        # before TF-IDF similarity search.  LLM-generated conceptual queries
+        # are produced here; when decomposition is later extracted from
+        # evaluate() this step will consume those results instead.
+        online_papers_count = 0
+        online_duration = 0.0
+        search_queries: list[str] = []
+        arxiv_id = _extract_arxiv_id(paper_source)
+        if not args.no_online_search:
+            # Ask the LLM to digest the paper and produce conceptual search
+            # queries (core problem, proposed strategy, alternative approaches).
+            print(
+                "Generating conceptual search queries ...",
+                file=sys.stderr,
+            )
+            search_queries = generate_search_queries(paper.key_content(), llm)
+            if search_queries:
+                print(
+                    f"  Generated {len(search_queries)} quer"
+                    f"{'y' if len(search_queries) == 1 else 'ies'}: "
+                    + ", ".join(f'"{q}"' for q in search_queries),
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "  Query generation failed or returned no queries; "
+                    "falling back to title-based search.",
+                    file=sys.stderr,
+                )
+
+            print(
+                "Searching for related papers online (Semantic Scholar) ...",
+                file=sys.stderr,
+            )
+            t0 = time.monotonic()
+            online_searcher = OnlineReferenceSearch(max_results=args.top_k * 2)
+            online_papers = online_searcher.search(
+                paper.title,
+                paper.abstract,
+                arxiv_id=arxiv_id,
+                queries=search_queries or None,
+            )
+            for ref_paper in online_papers:
+                store.add(ref_paper)
+            online_papers_count = len(online_papers)
+            online_duration = round(time.monotonic() - t0, 2)
+            stage_runtimes["online_search"] = online_duration
+            print(
+                f"  Found {online_papers_count} related paper(s) online.",
+                file=sys.stderr,
+            )
+
         # --- Similarity search ---
         query = paper.key_content()
         t0 = time.monotonic()
@@ -474,7 +570,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             query_preview += "…"
 
         # Build early pipeline job records for pre-LLM stages
-        early_jobs = [
+        early_jobs: list[PipelineJob] = [
             PipelineJob(
                 name="Parse paper",
                 agent="PaperParser",
@@ -483,24 +579,53 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 input_summary=paper_path.name,
                 output_summary=f'"{paper.title}", {len(paper.full_text)} chars',
             ),
+        ]
+        if not args.no_online_search:
+            # Build a descriptive input summary for the pipeline log.
+            # Include the exact LLM-generated queries so they are visible in
+            # the report for debugging and transparency.
+            if search_queries:
+                _qword = "query" if len(search_queries) == 1 else "queries"
+                _queries_detail = "; ".join(f'"{q}"' for q in search_queries)
+                _llm_part = (
+                    f"{len(search_queries)} LLM {_qword}: {_queries_detail}"
+                )
+                _search_input = (
+                    f"arXiv:{arxiv_id} + {_llm_part}" if arxiv_id else _llm_part
+                )
+            elif arxiv_id:
+                _search_input = f"arXiv:{arxiv_id}"
+            else:
+                _search_input = f'title="{paper.title}"'
+            early_jobs.append(
+                PipelineJob(
+                    name="Online reference search",
+                    agent="SemanticScholar API",
+                    offset_s=round(stage_runtimes["parsing"], 3),
+                    duration_s=online_duration,
+                    input_summary=_search_input,
+                    output_summary=f"{online_papers_count} paper(s) fetched",
+                )
+            )
+        sim_offset = round(
+            stage_runtimes["parsing"] + stage_runtimes.get("online_search", 0.0),
+            3,
+        )
+        early_jobs.append(
             PipelineJob(
                 name="Similarity search",
                 agent="SimilaritySearch",
-                offset_s=round(stage_runtimes["parsing"], 3),
+                offset_s=sim_offset,
                 duration_s=sim_duration,
                 input_summary=(
                     f"TF-IDF cosine on {len(store)} ref(s); "
                     f"query: «{query_preview}»"
                 ),
                 output_summary=sim_output,
-            ),
-        ]
+            )
+        )
 
         # --- LLM evaluation ---
-        try:
-            llm = _build_llm(args.model)
-        except SystemExit as exc:
-            return _fail(str(exc.code), args.format)
         evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
         print("Running novelty evaluation ...", file=sys.stderr)
         t0 = time.monotonic()
