@@ -553,12 +553,17 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         ]
         if not args.no_online_search:
             # Build a descriptive input summary for the pipeline log.
-            if arxiv_id and search_queries:
-                _search_input = (
-                    f"arXiv:{arxiv_id} + {len(search_queries)} LLM queries"
+            # Include the exact LLM-generated queries so they are visible in
+            # the report for debugging and transparency.
+            if search_queries:
+                _qword = "query" if len(search_queries) == 1 else "queries"
+                _queries_detail = "; ".join(f'"{q}"' for q in search_queries)
+                _llm_part = (
+                    f"{len(search_queries)} LLM {_qword}: {_queries_detail}"
                 )
-            elif search_queries:
-                _search_input = f"{len(search_queries)} LLM queries"
+                _search_input = (
+                    f"arXiv:{arxiv_id} + {_llm_part}" if arxiv_id else _llm_part
+                )
             elif arxiv_id:
                 _search_input = f"arXiv:{arxiv_id}"
             else:
