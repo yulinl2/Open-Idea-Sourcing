@@ -893,22 +893,3 @@ class TestBundledReferencesLoadedByDefault:
         custom = str(tmp_path / "custom.json")
         args = _parse_args(["paper.txt", "--references", custom, "--format", "text"])
         assert args.references == custom
-
-    def test_save_references_default_is_bundled_file(self):
-        """--save-references defaults to the bundled data/references.json path."""
-        from review_paper import _parse_args, _BUNDLED_REFERENCES
-        args = _parse_args(["paper.txt", "--format", "text"])
-        assert args.save_references == str(_BUNDLED_REFERENCES)
-
-    def test_save_references_can_be_disabled(self, tmp_path):
-        """Passing --save-references '' disables saving."""
-        from review_paper import _parse_args
-        args = _parse_args(["paper.txt", "--save-references", "", "--format", "text"])
-        assert args.save_references == ""
-
-    def test_save_references_can_be_overridden(self, tmp_path):
-        """Passing --save-references with a custom path uses that path."""
-        from review_paper import _parse_args
-        custom = str(tmp_path / "my_refs.json")
-        args = _parse_args(["paper.txt", "--save-references", custom, "--format", "text"])
-        assert args.save_references == custom

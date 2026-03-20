@@ -311,16 +311,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--save-references",
-        metavar="FILE",
-        default=str(_BUNDLED_REFERENCES),
-        help=(
-            "Save the loaded reference store (bundled corpus + online search results) "
-            "to this JSON file after the run, growing the corpus over time.  "
-            "Defaults to data/references.json.  Pass an empty string ('') to disable."
-        ),
-    )
-    parser.add_argument(
         "--format",
         choices=["text", "markdown", "json", "pdf"],
         default="pdf",
@@ -573,13 +563,6 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         run_metadata.total_runtime_seconds = total_runtime
         run_metadata.stage_runtimes = stage_runtimes
         report.metadata = run_metadata
-
-        # --- Optionally save updated store ---
-        if args.save_references:
-            store.save(args.save_references)
-            print(
-                f"Reference store saved to: {args.save_references}", file=sys.stderr
-            )
 
         # --- Render and output report ---
         generator = ReportGenerator()
