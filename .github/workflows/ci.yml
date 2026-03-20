@@ -19,6 +19,10 @@ on:
         description: "Path to a JSON reference store to compare against (default: data/references.json — bundled baseline corpus)"
         required: false
         default: "data/references.json"
+      save_references:
+        description: "Save updated reference store here after the run (default: data/references.json — pass empty string to disable)"
+        required: false
+        default: "data/references.json"
       output_format:
         description: "Report format: text | markdown | json | pdf (default: markdown)"
         required: false
@@ -92,10 +96,12 @@ jobs:
           PAPER_URL: ${{ inputs.paper_url }}
           PAPERS_FILE: ${{ inputs.papers_file }}
           REFERENCES: ${{ inputs.references }}
+          SAVE_REFERENCES: ${{ inputs.save_references }}
           OUTPUT_FORMAT: ${{ inputs.output_format }}
           GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
           GH_PAPERS_FILE: ${{ github.event.inputs.papers_file }}
           GH_REFERENCES: ${{ github.event.inputs.references }}
+          GH_SAVE_REFERENCES: ${{ github.event.inputs.save_references }}
           GH_OUTPUT_FORMAT: ${{ github.event.inputs.output_format }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
@@ -103,6 +109,7 @@ jobs:
           PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"
           PAPERS_FILE="${PAPERS_FILE:-$GH_PAPERS_FILE}"
           REFERENCES="${REFERENCES:-$GH_REFERENCES}"
+          SAVE_REFERENCES="${SAVE_REFERENCES:-$GH_SAVE_REFERENCES}"
           OUTPUT_FORMAT="${OUTPUT_FORMAT:-$GH_OUTPUT_FORMAT}"
 
           mkdir -p reports
@@ -114,11 +121,18 @@ jobs:
             REFS_FLAG="--references $REFERENCES"
           fi
 
+          # Build optional --save-references flag; omit when empty to disable saving.
+          SAVE_REFS_FLAG=""
+          if [ -n "$SAVE_REFERENCES" ]; then
+            SAVE_REFS_FLAG="--save-references $SAVE_REFERENCES"
+          fi
+
           # URL takes precedence over batch file; batch file is relative to data/
           if [ -n "$PAPER_URL" ]; then
             # shellcheck disable=SC2086
             python review_paper.py "$PAPER_URL" \
               $REFS_FLAG \
+              $SAVE_REFS_FLAG \
               --format "${OUTPUT_FORMAT:-markdown}" \
               --reports-dir reports
           else
@@ -126,6 +140,7 @@ jobs:
             python review_paper.py \
               --papers-file "data/${PAPERS_FILE:-test_papers.ndjson}" \
               $REFS_FLAG \
+              $SAVE_REFS_FLAG \
               --format "${OUTPUT_FORMAT:-markdown}" \
               --reports-dir reports
           fi
