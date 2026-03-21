@@ -97,7 +97,7 @@ python review_paper.py --papers-file data/test_papers.ndjson --format markdown
 
 ---
 
-## Pipeline Architecture (v1.2.0)
+## Pipeline Architecture (v1.3.0)
 
 ```
 [Stage 1 — Ingest]
