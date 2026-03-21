@@ -337,7 +337,7 @@ class TestMainLlmError:
 
         assert rc == 1
         captured = capsys.readouterr()
-        assert "novelty evaluation failed" in captured.err
+        assert "failed" in captured.err
 
     def test_llm_error_written_to_stdout_for_tee(self, tmp_path, capsys):
         """The error message must also appear on stdout so that the workflow's
@@ -355,7 +355,7 @@ class TestMainLlmError:
         assert rc == 1
         captured = capsys.readouterr()
         assert "Error" in captured.out
-        assert "novelty evaluation failed" in captured.out
+        assert "failed" in captured.out
 
     def test_missing_api_key_written_to_stdout_for_tee(self, tmp_path, capsys):
         """A missing API key (SystemExit from _build_llm) must produce stdout

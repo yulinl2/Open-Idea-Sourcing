@@ -102,32 +102,32 @@ python review_paper.py --papers-file data/test_papers.ndjson --format markdown
 ```
 [Stage 1 — Ingest]
   Input:  paper URL / file path
-  Output: PaperDigest {title, abstract, full_text, source_url, arxiv_id}
+  Output: ParsedPaper {title, abstract, full_text, source_url}
   Agent:  PaperParser
 
-[Stage 2 — Understand]
-  Input:  PaperDigest
+[Stage 2 — Understand]  ← runs inside evaluate(); long-term: extract before Stage 3
+  Input:  ParsedPaper
   Output: IdeaDecomposition {core_concept, sub_ideas, assumptions, limitations}
   Agent:  LLM (decomposition prompt)
 
-[Stage 3 — Retrieve]       ← three sub-stages, each independently togglable
-  Input:  PaperDigest + IdeaDecomposition
+[Stage 3 — Retrieve]    ← four sub-stages, each independently togglable
+  Input:  ParsedPaper
   3a. BundledReferenceSearch  — TF-IDF over data/references.json
   3b. OnlineReferenceSearch   — Semantic Scholar: arXiv refs (depth) + LLM queries (breadth)
   3c. LLMQueryGenerator       — conceptual queries from paper content
-  Output: ReferenceStore (merged, deduplicated)
+  3d. DomainRefFinder         — LLM identifies key domain references ← moved from 5d
+  Output: ReferenceStore (merged, deduplicated) + list[DomainReference]
 
 [Stage 4 — Compare]
-  Input:  PaperDigest + top-K from ReferenceStore
+  Input:  ParsedPaper + top-K from ReferenceStore
   Output: list[SimilarityAnnotation] {paper, score, overlap, differences, derivation}
   Agent:  LLM (annotation prompt)
 
-[Stage 5 — Evaluate]       ← three independent passes
-  Input:  PaperDigest + IdeaDecomposition + list[SimilarityAnnotation]
-  5a. DuplicationCheck    → {verdict, explanation}
-  5b. CombinationCheck    → {verdict, explanation}
-  5c. EquivalenceCheck    → {verdict, explanation}
-  5d. DomainRefFinder     → list[DomainReference]   (→ Stage 3d in future)
+[Stage 5 — Evaluate]    ← three independent passes
+  Input:  ParsedPaper + IdeaDecomposition + list[SimilarityAnnotation]
+  5a. DuplicationCheck  → {verdict, explanation}
+  5b. CombinationCheck  → {verdict, explanation}
+  5c. EquivalenceCheck  → {verdict, explanation}
   Agent:  LLM (dimension prompts)
 
 [Stage 6 — Synthesize]
@@ -141,6 +141,15 @@ python review_paper.py --papers-file data/test_papers.ndjson --format markdown
   Agent:  ReportGenerator
 ```
 
+**Remaining gaps vs. ideal long-term architecture:**
+
+| Gap | Impact | Status |
+|---|---|---|
+| Stage 2 (IdeaDecomposition) still inside `evaluate()` | Can't pass decomposition context to query generation at Stage 3c | Deferred — next major refactor |
+| Stage 4 (Annotation) runs after Synthesis, not before Stage 5 | Evaluation passes don't receive per-paper evidence context | Deferred — next major refactor |
+| Evidence IDs not yet in evaluation prompts | Verdicts are not explicitly citation-linked | Highest-priority scientific unlock |
+| `evaluate()` still monolithic | Can't swap/skip individual passes; test isolation limited | Deferred — extract `Pipeline` class |
+
 **Key design principles (long-term direction):**
 
 | Principle | Why |
@@ -149,7 +158,8 @@ python review_paper.py --papers-file data/test_papers.ndjson --format markdown
 | **LLM prompts are data, not code** | Independently versioned, A/B testable, diffable in git |
 | **LLM protocol is injected** | Any model (OpenAI, Anthropic, local) slots in without changing pipeline code |
 | **Each retrieval sub-stage independently togglable** | `--no-online-search` etc.; useful for debugging and ablation |
-| **Evidence IDs in every LLM output** | Machine-readable citation linking; enables audit trail in report *(in progress)* |
+| **Evidence IDs in every LLM output** | Machine-readable citation linking; enables evidence audit trail in report *(in progress)* |
+| **PipelineContext as shared bus** | Replace 8+ function params with one context object; easy to inspect mid-run |
 
 ---
 
@@ -159,8 +169,8 @@ python review_paper.py --papers-file data/test_papers.ndjson --format markdown
 open_idea_sourcing/
 ├── __init__.py           Package version
 ├── paper_parser.py       Stage 1 — parse PDF/text → ParsedPaper
-├── novelty_evaluator.py  Stages 2, 4, 5, 6 — LLM evaluation pipeline
-├── online_search.py      Stage 3b — Semantic Scholar API client + LLM query generation
+├── novelty_evaluator.py  Stages 2, 4, 5, 6 — LLM evaluation pipeline; exposes find_domain_references (3d)
+├── online_search.py      Stage 3b+3c — Semantic Scholar API client + LLM query generation
 ├── reference_store.py    Reference corpus (load, save, add, iterate)
 ├── similarity_search.py  Stage 3a — TF-IDF cosine similarity
 └── report_generator.py   Stage 7 — Markdown / JSON / PDF rendering

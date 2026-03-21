@@ -64,8 +64,10 @@ The `release.yml` workflow will:
 
 ### Changed
 - `--save-references` removed; the bundled corpus is now the persistent default store.
-- `evaluate()` LLM call order: decomposition → duplication → combination → equivalence → synthesis → domain references → per-paper annotation.
-- Pipeline Job Log Gantt diagram groups pre-LLM stages (parse, online search, similarity) separately from LLM evaluation stages.
+- `evaluate()` LLM call order: decomposition → duplication → combination → equivalence → synthesis → per-paper annotation.
+- **DomainRefFinder moved to Stage 3d (Retrieve)**: `NoveltyEvaluator.find_domain_references()` is now a public method called from `review_paper.py` after similarity search, before the evaluation passes. It is classified as a *retrieval* task (contextualising the paper in its field), not an evaluation pass. Pipeline Job Log records it in the retrieval group.
+- `evaluate()` accepts `domain_references` + `_domain_references_raw` optional parameters; when provided the internal call is skipped and the caller's PipelineJob is recorded instead (backward-compatible).
+- Pipeline Job Log Gantt diagram groups pre-LLM stages (parse, online search, similarity, domain refs) separately from LLM evaluation stages.
 - Similarity search pipeline job now reports TF-IDF query preview and top-match titles with scores.
 
 ---

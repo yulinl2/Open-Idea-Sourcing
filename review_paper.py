@@ -569,6 +569,34 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         if len(query_words) > 15:
             query_preview += "…"
 
+        # Create the evaluator here so Stage 3d can use it for domain refs.
+        evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
+
+        # --- Stage 3d — Domain reference finder (Retrieve) ---
+        # Domain reference finding is a *retrieval* task: it contextualises
+        # the paper in its field using the top-matched references as context.
+        # Per the ideal architecture it belongs at Stage 3 (Retrieve), not
+        # Stage 5 (Evaluate), because it enriches the retrieval context rather
+        # than producing a novelty verdict.  Running it here means all five
+        # evaluation passes (5a–5c + synthesis) receive the domain context.
+        print("Finding domain references ...", file=sys.stderr)
+        t0 = time.monotonic()
+        _dr_raw: dict[str, str] = {}
+        try:
+            domain_refs = evaluator.find_domain_references(
+                paper.key_content(),
+                NoveltyEvaluator._format_references(similar),
+                _dr_raw,
+            )
+        except RuntimeError as exc:
+            return _fail(f"domain reference finding failed: {exc}", args.format)
+        dr_duration = round(time.monotonic() - t0, 2)
+        stage_runtimes["domain_references"] = dr_duration
+        print(
+            f"  Found {len(domain_refs)} domain reference(s).",
+            file=sys.stderr,
+        )
+
         # Build early pipeline job records for pre-LLM stages
         early_jobs: list[PipelineJob] = [
             PipelineJob(
@@ -624,9 +652,21 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 output_summary=sim_output,
             )
         )
+        # Domain references PipelineJob is recorded here at Stage 3d
+        # (not inside evaluate() where it used to sit at Stage 5d).
+        dr_offset = round(sim_offset + stage_runtimes["similarity"], 3)
+        early_jobs.append(
+            PipelineJob(
+                name="Domain references",
+                agent=f"LLM ({args.model})",
+                offset_s=dr_offset,
+                duration_s=dr_duration,
+                input_summary=f"paper content + {len(similar)} similar paper(s)",
+                output_summary=f"{len(domain_refs)} domain reference(s)",
+            )
+        )
 
         # --- LLM evaluation ---
-        evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
         print("Running novelty evaluation ...", file=sys.stderr)
         t0 = time.monotonic()
 
@@ -678,6 +718,8 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 similar_papers=similar,
                 metadata=run_metadata,
                 _run_start=run_start,
+                domain_references=domain_refs,
+                _domain_references_raw=_dr_raw,
             )
         except RuntimeError as exc:
             return _fail(f"novelty evaluation failed: {exc}", args.format)

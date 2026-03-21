@@ -237,12 +237,47 @@ class NoveltyEvaluator:
     # Public API
     # ------------------------------------------------------------------
 
+    def find_domain_references(
+        self,
+        content: str,
+        refs_text: str,
+        raw: dict[str, str],
+    ) -> list[DomainReference]:
+        """Identify key domain references for a paper (Stage 3d — Retrieve).
+
+        This is a retrieval task — it contextualises the paper in its field
+        using LLM analysis of the paper content and top-matched references.
+        It belongs at Stage 3 (Retrieve), not Stage 5 (Evaluate), because it
+        enriches the context used by the evaluation passes rather than
+        producing a novelty verdict itself.
+
+        Parameters
+        ----------
+        content:
+            Key content of the paper (e.g. ``paper.key_content()``).
+        refs_text:
+            Formatted string of top-matched reference papers (e.g. from
+            :meth:`_format_references`).
+        raw:
+            Mutable dict into which the raw LLM response is stored under
+            the key ``"domain_references"`` for report transparency.
+
+        Returns
+        -------
+        list[DomainReference]
+            LLM-identified key references contextualising the paper in its
+            field.
+        """
+        return self._find_domain_references(content, refs_text, raw)
+
     def evaluate(
         self,
         paper: ParsedPaper,
         similar_papers: Optional[list[SimilarityResult]] = None,
         metadata: Optional[RunMetadata] = None,
         _run_start: Optional[float] = None,
+        domain_references: Optional[list[DomainReference]] = None,
+        _domain_references_raw: Optional[dict[str, str]] = None,
     ) -> NoveltyReport:
         """Run all evaluation passes and return a :class:`NoveltyReport`.
 
@@ -261,6 +296,18 @@ class NoveltyEvaluator:
             ``time.monotonic()`` value from the very start of the run,
             used to compute per-job offset timestamps.  If *None*, the
             start of this call is used as the reference point.
+        domain_references:
+            Pre-computed domain references (Stage 3d result).  When
+            supplied the internal ``_find_domain_references`` LLM call is
+            skipped and its :class:`PipelineJob` entry is omitted from
+            ``metadata.jobs`` (the caller is responsible for recording
+            that job).  Pass *None* to run the call internally (default,
+            backward-compatible behaviour).
+        _domain_references_raw:
+            Raw LLM response dict from an external
+            :meth:`find_domain_references` call.  Merged into
+            ``report.raw_llm_responses`` so the JSON output stays
+            complete even when domain references were pre-computed.
         """
         similar_papers = similar_papers or []
         # Apply threshold and top-k filtering
@@ -289,8 +336,19 @@ class NoveltyEvaluator:
             paper.title, dup, combo, equiv, raw
         )
         t5 = time.monotonic()
-        domain_refs = self._find_domain_references(content, refs_text, raw)
-        t6 = time.monotonic()
+
+        # Domain references: when pre-computed at Stage 3d (by the caller),
+        # skip the internal LLM call entirely and merge the caller's raw
+        # response dict so report.raw_llm_responses remains complete.
+        if domain_references is not None:
+            domain_refs = domain_references
+            if _domain_references_raw:
+                raw.update(_domain_references_raw)
+            t6 = t5  # domain refs time is accounted for at Stage 3d
+        else:
+            # Backward-compatible internal call (Stage 5d position).
+            domain_refs = self._find_domain_references(content, refs_text, raw)
+            t6 = time.monotonic()
 
         # Annotate each similar paper with overlap/differences/derivation.
         # Only runs when similar papers exist (avoids an unnecessary LLM call).
@@ -342,15 +400,20 @@ class NoveltyEvaluator:
                     input_summary="3 dimension results",
                     output_summary=f"verdict={overall}, confidence={confidence}",
                 ),
-                PipelineJob(
+            ]
+            # Domain references PipelineJob is only added here when the call
+            # was made internally (i.e. domain_references was not pre-computed
+            # at Stage 3d).  When pre-computed, the caller adds the job entry
+            # to the early_jobs list instead.
+            if domain_references is None:
+                jobs.append(PipelineJob(
                     name="Domain references",
                     agent=agent,
                     offset_s=round(t5 - run_start, 3),
                     duration_s=round(t6 - t5, 3),
                     input_summary=f"paper content + {refs_summary}",
                     output_summary=f"{len(domain_refs)} domain reference(s)",
-                ),
-            ]
+                ))
             if similar_papers:
                 jobs.append(PipelineJob(
                     name="Reference annotation",
