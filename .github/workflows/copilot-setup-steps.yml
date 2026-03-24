@@ -28,5 +28,7 @@ jobs:
           python-version-file: ".python-version"
           cache: "pip"
 
-      - name: Install dependencies
-        run: python -m pip install -r requirements.txt
+      - name: Install dependencies into .venv
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
