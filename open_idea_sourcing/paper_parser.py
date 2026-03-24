@@ -31,6 +31,7 @@ class ParsedPaper:
     abstract: str
     full_text: str
     sections: list[PaperSection] = field(default_factory=list)
+    authors: list[str] = field(default_factory=list)
 
     def key_content(self, max_chars: int = 6000) -> str:
         """Return the most informative slice of the paper for LLM prompts.
@@ -95,11 +96,13 @@ class PaperParser:
         title = self._extract_title(text)
         abstract = self._extract_abstract(text)
         sections = self._extract_sections(text)
+        authors = self._extract_authors(text, title)
         return ParsedPaper(
             title=title,
             abstract=abstract,
             full_text=text,
             sections=sections,
+            authors=authors,
         )
 
     # ------------------------------------------------------------------
@@ -113,13 +116,118 @@ class PaperParser:
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
 
+    # Keywords that signal we have left the title area.
+    _NON_TITLE_RE = re.compile(
+        r"(?i)\b(abstract|introduction|university|institute|department|"
+        r"laboratory|school|faculty|college|email|@|\bphd\b|\bdr\b)\b"
+    )
+
     @staticmethod
     def _extract_title(text: str) -> str:
-        for line in text.splitlines():
-            line = line.strip()
-            if line:
-                return line
-        return ""
+        """Return the paper title, joining continuation lines when needed.
+
+        Many PDF-extracted papers split the title across two or three short
+        lines (e.g. "Conformal Inference" / "of Counterfactuals and …").
+        We join consecutive non-empty lines that look like title continuation
+        (start with a lowercase letter or a short common connector word) up
+        to a maximum of three lines.
+        """
+        lines: list[str] = []
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                if lines:
+                    break  # blank line after the title area — stop
+                continue
+
+            # Stop if we hit something that clearly isn't title text.
+            if PaperParser._NON_TITLE_RE.search(line):
+                break
+
+            if not lines:
+                lines.append(line)
+                continue
+
+            # A continuation line typically starts with a lowercase letter or
+            # a connector word ("of", "for", "via", "with", "and", "in", etc.)
+            # or looks like a subtitle (starts with "—", ":", or a dash).
+            first_char = line[0] if line else ""
+            is_continuation = (
+                first_char.islower()
+                or first_char in ("-", "—", ":")
+                or re.match(
+                    r"(?i)^(of|for|via|with|and|in|on|a|an|the|to|from|by|at)\b",
+                    line,
+                )
+            )
+            if is_continuation and len(lines) < 3:
+                lines.append(line)
+            else:
+                break
+
+        return " ".join(lines) if lines else ""
+
+    @staticmethod
+    def _extract_authors(text: str, title: str) -> list[str]:
+        """Heuristically extract author names from the paper header.
+
+        Authors typically appear on the lines immediately after the title,
+        before institutional affiliations and the abstract.  We identify
+        them as lines that:
+
+        * consist of 2–5 words each starting with a capital letter (or an
+          initial like "J."), allowing accented characters
+        * do not contain digits, email addresses, or institutional keywords
+        * appear within the first 30 lines of the document
+        """
+        # A name token is a capitalised word (with optional accents / hyphens)
+        # or a single letter followed by a period (initial, e.g. "J.").
+        # We use a broad Latin-extended range rather than a long explicit list.
+        _NAME_TOKEN = re.compile(
+            r"^[\u0041-\u005A\u00C0-\u00D6\u00D8-\u00DE]"  # uppercase first char
+            r"[\u0061-\u007A\u00C0-\u00FF'\-]+$"            # lowercase rest
+            r"|^[A-Z]\.$"                                    # single initial
+        )
+        _STOP = re.compile(
+            r"(?i)\b(university|institute|department|laboratory|school|"
+            r"faculty|college|abstract|introduction|@|\.edu|\.com|\.org)\b"
+        )
+        # Maximum number of words in a person-name line (handles "van den Berg").
+        _MAX_NAME_WORDS = 5
+
+        title_lines = {ln.strip() for ln in title.split(" ")}
+        candidates: list[str] = []
+        title_consumed = False
+
+        for raw_line in text.splitlines()[:30]:
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            # Skip until we've passed the title.
+            if not title_consumed:
+                if line in title or title in line or any(tl in line for tl in title_lines if len(tl) > 3):
+                    title_consumed = True
+                continue
+
+            # Skip institutional affiliation lines but keep scanning for more authors.
+            if _STOP.search(line):
+                continue
+
+            # Stop at section headings / numbered sections.
+            if re.match(r"^\d+[\.\)]\s", line):
+                break
+
+            # Check if this looks like a name line.
+            words = line.split()
+            if 2 <= len(words) <= _MAX_NAME_WORDS and all(_NAME_TOKEN.match(w) for w in words):
+                # Reject overly long "names" — real names rarely exceed 60 chars.
+                if len(line) <= 60:
+                    candidates.append(line)
+                    if len(candidates) >= 8:
+                        break
+
+        return candidates
 
     def _extract_abstract(self, text: str) -> str:
         m = self._ABSTRACT_RE.search(text)

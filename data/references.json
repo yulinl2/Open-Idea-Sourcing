@@ -14,16 +14,5 @@
     "year": 2019,
     "venue": "JMLR",
     "url": "https://arxiv.org/abs/1904.06019"
-  },
-  {
-    "id": "user-paper-001",
-    "title": "A custom reference paper",
-    "abstract": "Custom abstract content.",
-    "authors": [
-      "Test Author"
-    ],
-    "year": 2022,
-    "venue": "NeurIPS",
-    "url": "https://example.com/user-paper-001"
   }
 ]

@@ -410,8 +410,10 @@ class TestFetchReferences:
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
             searcher._fetch_references("arXiv:2006.06138")
 
-        assert "arXiv%3A2006.06138" in captured_url["url"] or \
-               "arXiv:2006.06138" in captured_url["url"]
+        assert "arXiv:2006.06138" in captured_url["url"], (
+            f"Expected literal 'arXiv:2006.06138' (colon unencoded) in URL, "
+            f"got: {captured_url['url']}"
+        )
         assert "/references" in captured_url["url"]
         assert _SEMANTIC_SCHOLAR_PAPER_URL in captured_url["url"]
 
@@ -420,6 +422,16 @@ class TestFetchReferences:
         with patch("urllib.request.urlopen", side_effect=OSError("timeout")):
             papers = searcher._fetch_references("arXiv:2006.06138")
         assert papers == []
+
+    def test_network_error_recorded_in_last_errors(self):
+        """HTTP/network errors should be captured in last_errors."""
+        searcher = OnlineReferenceSearch()
+        # We test _fetch_references directly rather than going through search()
+        # so _last_errors is not cleared first — errors accumulate as-is.
+        with patch("urllib.request.urlopen", side_effect=OSError("timeout")):
+            searcher._fetch_references("arXiv:2006.06138")
+        assert len(searcher.last_errors) >= 1
+        assert "references" in searcher.last_errors[0]
 
     def test_invalid_json_returns_empty_list(self):
         mock_resp = _make_mock_response(b"not json")
@@ -771,3 +783,26 @@ class TestOnlineReferenceSearchWithQueries:
             searcher.search("My Fallback Title", queries=None)
 
         assert "My Fallback Title" in issued_queries
+
+    def test_last_errors_cleared_on_each_search_call(self):
+        """last_errors from a previous call must not bleed into the next."""
+        searcher = OnlineReferenceSearch(max_results=5)
+        # First call: inject an error.
+        with patch("urllib.request.urlopen", side_effect=OSError("rate limit")):
+            searcher.search("Title A", queries=["q1"])
+        assert len(searcher.last_errors) >= 1
+
+        # Second call: successful — errors from first call must be gone.
+        good_body = self._make_search_response(["p1"])
+        with patch("urllib.request.urlopen", return_value=_make_mock_response(good_body)):
+            searcher.search("Title B", queries=["q2"])
+        assert searcher.last_errors == []
+
+    def test_last_errors_records_query_failure_message(self):
+        """Query HTTP errors should be recorded with identifying info."""
+        searcher = OnlineReferenceSearch(max_results=5)
+        with patch("urllib.request.urlopen", side_effect=OSError("Connection refused")):
+            searcher.search("Test Paper", queries=["causal inference"])
+        assert len(searcher.last_errors) >= 1
+        # The error entry should identify which query failed.
+        assert any("causal inference" in e for e in searcher.last_errors)

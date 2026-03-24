@@ -599,15 +599,18 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         )
 
         # Build early pipeline job records for pre-LLM stages
-        # --- PaperParser job detail (title, abstract, section list) ---
+        # --- PaperParser job detail (title, abstract, authors, section list) ---
         _abstract_preview = (
             (paper.abstract[:500] + "…") if len(paper.abstract) > 500 else paper.abstract
         ) or "*(not extracted)*"
+        _authors_line = ", ".join(paper.authors) if paper.authors else "*(not extracted)*"
         _sections_list = "\n".join(
             f"- {s.title}" for s in paper.sections[:20]
         ) or "*(no sections detected)*"
         _parse_detail_parts = [
             f"**Title:** {paper.title}",
+            "",
+            f"**Authors:** {_authors_line}",
             "",
             f"**Abstract:** {_abstract_preview}",
             "",
@@ -647,13 +650,20 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 f"{i + 1}. **{p.title}** ({p.year or '—'})"
                 for i, p in enumerate(online_papers)
             ) if online_papers else "*(none fetched)*"
-            _online_detail = "\n".join([
+            _online_detail_parts = [
                 "**Queries used:**",
                 _q_lines,
                 "",
                 f"**Fetched papers ({online_papers_count}):**",
                 _fetched_lines,
-            ])
+            ]
+            # Surface any HTTP / network errors so the user can tell why 0 papers
+            # were returned (e.g. rate limiting, network unavailable).
+            _search_errors = online_searcher.last_errors if not args.no_online_search else []
+            if _search_errors:
+                _error_lines = "\n".join(f"- ⚠️ {e}" for e in _search_errors)
+                _online_detail_parts += ["", "**Errors encountered:**", _error_lines]
+            _online_detail = "\n".join(_online_detail_parts)
 
             early_jobs.append(
                 PipelineJob(

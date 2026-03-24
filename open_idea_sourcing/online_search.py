@@ -192,6 +192,18 @@ class OnlineReferenceSearch:
     ) -> None:
         self._max_results = max_results
         self._timeout = timeout
+        self._last_errors: list[str] = []
+
+    @property
+    def last_errors(self) -> list[str]:
+        """HTTP or parse errors collected during the most recent :meth:`search` call.
+
+        Each entry is a short human-readable string (e.g.
+        ``"references: HTTP 429 Too Many Requests"``).  The list is cleared at
+        the start of every :meth:`search` call.  Callers can inspect this to
+        surface rate-limit or network problems in the pipeline job log.
+        """
+        return list(self._last_errors)
 
     # ------------------------------------------------------------------
     # Public API
@@ -244,6 +256,7 @@ class OnlineReferenceSearch:
             then keyword matches), capped at *max_results*.
         """
         results: dict[str, ReferencePaper] = {}
+        self._last_errors = []
 
         # Phase 1: paper-specific references (depth — papers the authors cited).
         if arxiv_id:
@@ -279,7 +292,10 @@ class OnlineReferenceSearch:
             Semantic Scholar paper identifier.  Use ``"arXiv:XXXX.XXXXX"`` for
             arXiv papers.  Other formats (e.g. bare S2 paper hash) also work.
         """
-        paper_id_encoded = urllib.parse.quote(semantic_paper_id, safe="")
+        # RFC 3986 allows colons in URI path segments unencoded; Semantic
+        # Scholar's paper-lookup endpoint expects the literal "arXiv:XXXX.XXXXX"
+        # form in the path (e.g. /paper/arXiv:2006.06138/references).
+        paper_id_encoded = urllib.parse.quote(semantic_paper_id, safe=":")
         params = urllib.parse.urlencode(
             {
                 "fields": _REFERENCE_FIELDS,
@@ -294,6 +310,8 @@ class OnlineReferenceSearch:
             with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # noqa: S310
                 raw = resp.read()
         except Exception as exc:
+            err_msg = f"references: {exc}"
+            self._last_errors.append(err_msg)
             print(
                 f"  [online_search] references request failed: {exc}",
                 file=sys.stderr,
@@ -328,7 +346,8 @@ class OnlineReferenceSearch:
         try:
             with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # noqa: S310
                 raw = resp.read()
-        except Exception:
+        except Exception as exc:
+            self._last_errors.append(f"query '{query[:40]}': {exc}")
             return []
         try:
             data: dict[str, Any] = json.loads(raw)
