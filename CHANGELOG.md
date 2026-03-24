@@ -49,15 +49,29 @@ The `release.yml` workflow will:
   - Results are merged, deduplicated, and added to the reference store before TF-IDF similarity search.
 - `generate_search_queries(paper_content, llm)` free function — separated from the search engine so query generation and retrieval can be swapped or ablated independently.
 - `--no-online-search` CLI flag — opt out when working offline or debugging with a fixed reference corpus.
-- `_extract_arxiv_id(source)` helper in `review_paper.py` — extracts the arXiv ID from the paper URL and passes it to `OnlineReferenceSearch.search(arxiv_id=...)`.
-- Pipeline Job Log now includes an **Online reference search** entry showing the exact arXiv ID and LLM-generated query strings (e.g. `arXiv:2006.06138 + 4 LLM queries: "conformal prediction coverage"; ...`).
+- `_extract_arxiv_id(source)` helper in `review_paper.py` — extracts the arXiv ID from the paper URL (including `.pdf`-suffixed variants) and passes it to `OnlineReferenceSearch.search(arxiv_id=...)`.
+- Pipeline Job Log detail sections — collapsible `<details>` blocks below each agent's table:
+  - *PaperParser*: extracted title, abstract excerpt, and full section list.
+  - *SemanticScholar API*: numbered query list and all fetched paper titles/years.
+  - *SimilaritySearch*: query excerpt (code block) and all matches with cosine scores.
+- `PipelineJob.detail: str = ""` field — optional extended Markdown content; empty string suppresses the detail block.
 
 ### Changed
 
 - **DomainRefFinder moved to Stage 3d (Retrieve)**: `NoveltyEvaluator.find_domain_references()` is now a public method called from `review_paper.py` after similarity search, before the evaluation passes. It is classified as a *retrieval* task (contextualising the paper in its field), not an evaluation pass. Pipeline Job Log records it in the retrieval group.
 - `evaluate()` accepts `domain_references` + `_domain_references_raw` optional parameters; when provided the internal call is skipped and the caller's PipelineJob is recorded instead (backward-compatible).
 - Pipeline Job Log Gantt diagram groups pre-LLM stages (parse, online search, similarity, domain refs) separately from LLM evaluation stages.
-- Similarity search pipeline job now reports TF-IDF query preview and top-match titles with scores.
+- Similarity search pipeline job input cell shortened to `TF-IDF cosine on N ref(s)` (full results in detail section).
+- Pipeline Job Log Online reference search input cell shortened to `arXiv:{id} + N LLM queries` (full query list in detail section).
+- **Source blockquote removed** from the report header — the paper URL was duplicated between the blockquote and Run Metadata → Configuration → Input; blockquote removed.
+- **Domain references** redesigned from a dense table to a **numbered list**: each entry has a clickable title (Semantic Scholar search link), inline authors + year, and relevance text in a collapsible `<details>` block.
+- **Reference annotations** format changed from prose paragraphs inside `<details>` to an **inline 2-column comparison table** (`Dimension | Notes`) rendered immediately visible — Overlap, Differences, and Derivation are scannable side-by-side.
+
+### Fixed
+
+- `_extract_field()` regex now handles `**FIELD:**` markdown-bold format that LLMs sometimes emit (using `(?:\*\*)?` exact-asterisk groups). This resolves three visible symptoms: "0 sub-idea(s)" in the Pipeline Job Log, double labels in Idea Decomposition (`**Core concept:** **CORE_CONCEPT:** …`), and wrong dimension verdicts (❓ UNCLEAR when the LLM returned e.g. `**VERDICT: LOW**`).
+- arXiv PDF URLs with `.pdf` suffix (e.g. `https://arxiv.org/pdf/1706.03762.pdf`) now correctly extract the arXiv ID for depth-signal retrieval.
+- Semantic Scholar User-Agent header now derives from `__version__` instead of the hard-coded `open-idea-sourcing/1.0`.
 
 ---
 
