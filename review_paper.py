@@ -134,7 +134,7 @@ def _extract_arxiv_id(source: str) -> str:
     """Return the arXiv paper ID from an arXiv URL, or an empty string.
 
     Supports both ``/abs/`` and ``/pdf/`` URL forms, with or without a
-    version suffix.
+    version suffix, and with or without a trailing ``.pdf`` extension.
 
     Examples
     --------
@@ -144,11 +144,13 @@ def _extract_arxiv_id(source: str) -> str:
     '2006.06138v2'
     >>> _extract_arxiv_id("https://arxiv.org/pdf/1706.03762")
     '1706.03762'
+    >>> _extract_arxiv_id("https://arxiv.org/pdf/1706.03762.pdf")
+    '1706.03762'
     >>> _extract_arxiv_id("/path/to/paper.pdf")
     ''
     """
     m = re.match(
-        r"https?://arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5}(?:v\d+)?)",
+        r"https?://arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5}(?:v\d+)?)(?:\.pdf)?",
         source,
     )
     return m.group(1) if m else ""
@@ -500,12 +502,11 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         search_queries: list[str] = []
         arxiv_id = _extract_arxiv_id(paper_source)
         if not args.no_online_search:
-            # Ask the LLM to digest the paper and produce conceptual search
-            # queries (core problem, proposed strategy, alternative approaches).
             print(
                 "Generating conceptual search queries ...",
                 file=sys.stderr,
             )
+            t0 = time.monotonic()
             search_queries = generate_search_queries(paper.key_content(), llm)
             if search_queries:
                 print(
@@ -525,7 +526,6 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 "Searching for related papers online (Semantic Scholar) ...",
                 file=sys.stderr,
             )
-            t0 = time.monotonic()
             online_searcher = OnlineReferenceSearch(max_results=args.top_k * 2)
             online_papers = online_searcher.search(
                 paper.title,
@@ -585,7 +585,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         try:
             domain_refs = evaluator.find_domain_references(
                 paper.key_content(),
-                NoveltyEvaluator._format_references(similar),
+                NoveltyEvaluator.format_references(similar),
                 _dr_raw,
             )
         except RuntimeError as exc:
@@ -636,7 +636,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 )
             )
         sim_offset = round(
-            stage_runtimes["parsing"] + stage_runtimes.get("online_search", 0.0),
+            stage_runtimes["parsing"] + online_duration,
             3,
         )
         early_jobs.append(

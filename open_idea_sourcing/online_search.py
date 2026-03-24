@@ -46,6 +46,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Callable
 
+from . import __version__
 from .reference_store import ReferencePaper
 
 # Type alias for an LLM callable (matches novelty_evaluator.LLMCallable)
@@ -98,7 +99,7 @@ _DEFAULT_LIMIT = 10
 _DEFAULT_TIMEOUT = 15  # seconds
 
 _USER_AGENT = (
-    "open-idea-sourcing/1.0 (academic novelty evaluator; "
+    f"open-idea-sourcing/{__version__} (academic novelty evaluator; "
     "https://github.com/yulinl2/Open-Idea-Sourcing)"
 )
 

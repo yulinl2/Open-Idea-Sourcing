@@ -318,12 +318,12 @@ class TestNoveltyEvaluator:
         assert report.overall_verdict == "NOT_NOVEL"
 
     def test_format_references_empty(self):
-        text = NoveltyEvaluator._format_references([])
+        text = NoveltyEvaluator.format_references([])
         assert "No reference papers provided" in text
 
     def test_format_references_shows_title(self):
         similar = [SimilarityResult(paper=SAMPLE_REFERENCE, score=0.9)]
-        text = NoveltyEvaluator._format_references(similar)
+        text = NoveltyEvaluator.format_references(similar)
         assert "Attention Is All You Need" in text
         assert "0.90" in text
 

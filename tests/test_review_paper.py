@@ -56,6 +56,12 @@ class TestExtractArxivId:
     def test_abs_url_with_version(self):
         assert _extract_arxiv_id("https://arxiv.org/abs/2006.06138v2") == "2006.06138v2"
 
+    def test_pdf_url_with_dot_pdf_suffix_returns_id(self):
+        assert _extract_arxiv_id("https://arxiv.org/pdf/1706.03762.pdf") == "1706.03762"
+
+    def test_pdf_url_with_version_and_dot_pdf_suffix_returns_id(self):
+        assert _extract_arxiv_id("https://arxiv.org/pdf/2006.06138v2.pdf") == "2006.06138v2"
+
     def test_non_arxiv_url_returns_empty(self):
         assert _extract_arxiv_id("https://example.com/paper.pdf") == ""
 

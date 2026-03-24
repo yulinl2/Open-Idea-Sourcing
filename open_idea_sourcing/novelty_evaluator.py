@@ -257,7 +257,7 @@ class NoveltyEvaluator:
             Key content of the paper (e.g. ``paper.key_content()``).
         refs_text:
             Formatted string of top-matched reference papers (e.g. from
-            :meth:`_format_references`).
+            :meth:`format_references`).
         raw:
             Mutable dict into which the raw LLM response is stored under
             the key ``"domain_references"`` for report transparency.
@@ -315,7 +315,7 @@ class NoveltyEvaluator:
             p for p in similar_papers if p.score >= self._threshold
         ][: self._top_k]
         content = paper.key_content()
-        refs_text = self._format_references(similar_papers)
+        refs_text = self.format_references(similar_papers)
         raw: dict[str, str] = {}
         refs_summary = f"{len(similar_papers)} reference paper(s)"
         agent = f"LLM ({metadata.model})" if (metadata and metadata.model) else "LLM"
@@ -523,7 +523,7 @@ class NoveltyEvaluator:
         """
         prompt = _SIMILAR_PAPERS_ANNOTATION_PROMPT.format(
             paper_content=content,
-            reference_papers=self._format_references(similar),
+            reference_papers=self.format_references(similar),
         )
         response = self._llm(prompt)
         raw["similar_paper_annotations"] = response
@@ -553,7 +553,7 @@ class NoveltyEvaluator:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _format_references(similar: list[SimilarityResult]) -> str:
+    def format_references(similar: list[SimilarityResult]) -> str:
         if not similar:
             return "No reference papers provided."
         lines = []
