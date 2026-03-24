@@ -1,18 +1,15 @@
 [
   {
     "id": "arxiv-1904.06019",
-    "title": "Measuring the Effects of Data Parallelism on Neural Network Training",
-    "abstract": "We study the relationship between training speed and the number of workers in synchronous data-parallel neural network training. We examine factors that affect the relationship between batch size and the number of gradient steps required to reach a target error. We find that all neural networks in our study contain a regime where batch size can be scaled without degrading model quality, but this 'perfect scaling' regime ends at a critical batch size. We also find that beyond the critical batch size, larger batches are less compute efficient. We characterize the boundaries of perfect scaling as a function of dataset, model architecture, and optimizer, shedding light on the factors that limit the benefit of additional parallelism.",
+    "title": "Conformalized Quantile Regression",
+    "abstract": "We develop a general framework for distribution-free predictive inference, with the goal of producing predictive intervals that have finite-sample marginal coverage guarantees. Our approach is based on combining conformal prediction with quantile regression, allowing us to construct prediction intervals that adapt to heteroscedasticity in the data. The resulting algorithm, conformalized quantile regression (CQR), enjoys both the finite-sample coverage guarantee of conformal prediction and the statistical efficiency of quantile regression. We compare CQR to other baseline predictive intervals on both simulated and real data sets.",
     "authors": [
-      "Christopher J. Shallue",
-      "Jaehoon Lee",
-      "Joseph Antognini",
-      "Jascha Sohl-Dickstein",
-      "Roy Frostig",
-      "George E. Dahl"
+      "Yaniv Romano",
+      "Evan Patterson",
+      "Emmanuel J. Candes"
     ],
     "year": 2019,
-    "venue": "JMLR",
+    "venue": "NeurIPS",
     "url": "https://arxiv.org/abs/1904.06019"
   }
 ]
