@@ -499,6 +499,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         # evaluate() this step will consume those results instead.
         online_papers_count = 0
         online_duration = 0.0
+        online_papers: list = []
         search_queries: list[str] = []
         arxiv_id = _extract_arxiv_id(paper_source)
         if not args.no_online_search:
@@ -598,6 +599,23 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         )
 
         # Build early pipeline job records for pre-LLM stages
+        # --- PaperParser job detail (title, abstract, section list) ---
+        _abstract_preview = (
+            (paper.abstract[:500] + "…") if len(paper.abstract) > 500 else paper.abstract
+        ) or "*(not extracted)*"
+        _sections_list = "\n".join(
+            f"- {s.title}" for s in paper.sections[:20]
+        ) or "*(no sections detected)*"
+        _parse_detail_parts = [
+            f"**Title:** {paper.title}",
+            "",
+            f"**Abstract:** {_abstract_preview}",
+            "",
+            f"**Sections ({len(paper.sections)}):**",
+            _sections_list,
+        ]
+        _parse_detail = "\n".join(_parse_detail_parts)
+
         early_jobs: list[PipelineJob] = [
             PipelineJob(
                 name="Parse paper",
@@ -606,25 +624,37 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 duration_s=parse_duration,
                 input_summary=paper_path.name,
                 output_summary=f'"{paper.title}", {len(paper.full_text)} chars',
+                detail=_parse_detail,
             ),
         ]
         if not args.no_online_search:
-            # Build a descriptive input summary for the pipeline log.
-            # Include the exact LLM-generated queries so they are visible in
-            # the report for debugging and transparency.
-            if search_queries:
-                _qword = "query" if len(search_queries) == 1 else "queries"
-                _queries_detail = "; ".join(f'"{q}"' for q in search_queries)
-                _llm_part = (
-                    f"{len(search_queries)} LLM {_qword}: {_queries_detail}"
-                )
-                _search_input = (
-                    f"arXiv:{arxiv_id} + {_llm_part}" if arxiv_id else _llm_part
-                )
+            # Short table cell summary (queries in detail section below).
+            _qword = "query" if len(search_queries) == 1 else "queries"
+            if arxiv_id and search_queries:
+                _search_input = f"arXiv:{arxiv_id} + {len(search_queries)} LLM {_qword}"
+            elif search_queries:
+                _search_input = f"{len(search_queries)} LLM {_qword}"
             elif arxiv_id:
                 _search_input = f"arXiv:{arxiv_id}"
             else:
                 _search_input = f'title="{paper.title}"'
+
+            # Detail section: full query list + fetched paper titles.
+            _q_lines = "\n".join(
+                f"{i + 1}. {q}" for i, q in enumerate(search_queries)
+            ) if search_queries else "*(none generated)*"
+            _fetched_lines = "\n".join(
+                f"{i + 1}. **{p.title}** ({p.year or '—'})"
+                for i, p in enumerate(online_papers)
+            ) if online_papers else "*(none fetched)*"
+            _online_detail = "\n".join([
+                "**Queries used:**",
+                _q_lines,
+                "",
+                f"**Fetched papers ({online_papers_count}):**",
+                _fetched_lines,
+            ])
+
             early_jobs.append(
                 PipelineJob(
                     name="Online reference search",
@@ -633,23 +663,40 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                     duration_s=online_duration,
                     input_summary=_search_input,
                     output_summary=f"{online_papers_count} paper(s) fetched",
+                    detail=_online_detail,
                 )
             )
         sim_offset = round(
             stage_runtimes["parsing"] + online_duration,
             3,
         )
+
+        # Similarity search detail: full list of matched papers with scores.
+        _sim_rows = "\n".join(
+            f"| {r.score:.3f} | {r.paper.title} | {r.paper.year or '—'} |"
+            for r in similar
+        ) if similar else "| — | *(no matches)* | — |"
+        _sim_detail = "\n".join([
+            f"**Query (key content excerpt):**",
+            "```",
+            query[:300] + ("…" if len(query) > 300 else ""),
+            "```",
+            "",
+            f"**All matches ({len(similar)}):**",
+            "| Score | Title | Year |",
+            "|------:|-------|------|",
+            _sim_rows,
+        ])
+
         early_jobs.append(
             PipelineJob(
                 name="Similarity search",
                 agent="SimilaritySearch",
                 offset_s=sim_offset,
                 duration_s=sim_duration,
-                input_summary=(
-                    f"TF-IDF cosine on {len(store)} ref(s); "
-                    f"query: «{query_preview}»"
-                ),
+                input_summary=f"TF-IDF cosine on {len(store)} ref(s)",
                 output_summary=sim_output,
+                detail=_sim_detail,
             )
         )
         # Domain references PipelineJob is recorded here at Stage 3d

@@ -45,6 +45,9 @@ class PipelineJob:
         Brief description of the input, e.g. ``"paper content + 3 refs"``.
     output_summary:
         Brief description of the output, e.g. ``"verdict=HIGH"``.
+    detail:
+        Optional extended Markdown content rendered below the job table as a
+        collapsible ``<details>`` block.  Empty string means no detail section.
     """
 
     name: str
@@ -53,6 +56,7 @@ class PipelineJob:
     duration_s: float
     input_summary: str
     output_summary: str
+    detail: str = ""
 
 
 @dataclass
@@ -769,10 +773,15 @@ def _extract_field(text: str, field_name: str, default: str = "") -> str:
     When the field is present but has an empty value the *default* is
     returned, which mirrors the "field not found" behaviour and lets
     callers supply a meaningful fallback in both cases.
+
+    The regex also accepts Markdown-bold-wrapped field names (e.g.
+    ``**FIELD_NAME:**``) because LLMs sometimes format their structured
+    output with bold markers around the label.
     """
     escaped_field_name = _re.escape(field_name)
     pattern = _re.compile(
-        rf"(?:^|\n)(?i:{escaped_field_name}):[^\S\n]*(.*?)(?=\n[A-Z_]{{2,}}:|\Z)",
+        rf"(?:^|\n)(?:\*\*)?(?i:{escaped_field_name})(?:\*\*)?:(?:\*\*)?[^\S\n]*(.*?)"
+        rf"(?=\n(?:\*\*)?[A-Z_]{{2,}}(?:\*\*)?:|\Z)",
         _re.DOTALL,
     )
     m = pattern.search(text)
