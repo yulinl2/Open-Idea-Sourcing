@@ -1,14 +1,15 @@
 [
   {
     "id": "arxiv-1904.06019",
-    "title": "Conformalized Quantile Regression",
-    "abstract": "We develop a general framework for distribution-free predictive inference, with the goal of producing predictive intervals that have finite-sample marginal coverage guarantees. Our approach is based on combining conformal prediction with quantile regression, allowing us to construct prediction intervals that adapt to heteroscedasticity in the data. The resulting algorithm, conformalized quantile regression (CQR), enjoys both the finite-sample coverage guarantee of conformal prediction and the statistical efficiency of quantile regression. We compare CQR to other baseline predictive intervals on both simulated and real data sets.",
+    "title": "Conformal Prediction Under Covariate Shift",
+    "abstract": "We extend conformal prediction to the setting where the test and training data are drawn from different distributions. Standard conformal prediction requires exchangeability, and so it breaks down in the presence of covariate shift. Our approach uses a weighted version of the conformal score that corrects for the distributional shift, yielding valid marginal coverage guarantees under covariate shift.",
     "authors": [
-      "Yaniv Romano",
-      "Evan Patterson",
-      "Emmanuel J. Candes"
+      "Ryan J. Tibshirani",
+      "Rina Foygel Barber",
+      "Emmanuel J. Candes",
+      "Aaditya Ramdas"
     ],
-    "year": 2019,
+    "year": 2020,
     "venue": "NeurIPS",
     "url": "https://arxiv.org/abs/1904.06019"
   }
