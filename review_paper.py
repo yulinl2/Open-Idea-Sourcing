@@ -537,12 +537,34 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             except SystemExit as exc:
                 return _fail(str(exc.code), args.format)
 
+        # Build evaluator before Stage 3 so it is available for Stage 2 and Stage 3d.
+        evaluator = NoveltyEvaluator(
+            llm=llm,
+            top_k_similar=args.top_k,
+            decomposition_llm=decomposition_llm,
+            decomposition_model=decomposition_model if decomposition_llm else "",
+        )
+
+        # --- Stage 2 — Idea decomposition (Understand) ---
+        # Running decomposition before retrieval means the structured concept
+        # tree is available to inform Stage 3c LLM query generation, which
+        # surfaces conceptually equivalent prior art more reliably.
+        print("Decomposing paper idea ...", file=sys.stderr)
+        t0_decomp = time.monotonic()
+        _decomp_raw: dict[str, str] = {}
+        try:
+            idea_decomp = evaluator.decompose_idea(content=paper.key_content(), raw=_decomp_raw)
+        except RuntimeError as exc:
+            return _fail(f"idea decomposition failed: {exc}", args.format)
+        decomp_duration = round(time.monotonic() - t0_decomp, 2)
+        stage_runtimes["decomposition"] = decomp_duration
+
         # --- Stage 3 — Online reference search (Retrieve) ---
-        # This stage runs after parsing (Stage 1) and is positioned at the
-        # retrieval layer so that online results augment the reference store
-        # before TF-IDF similarity search.  LLM-generated conceptual queries
-        # are produced here; when decomposition is later extracted from
-        # evaluate() this step will consume those results instead.
+        # This stage runs after Stage 2 (idea decomposition) and is positioned
+        # at the retrieval layer so that online results augment the reference
+        # store before TF-IDF similarity search.  LLM-generated conceptual
+        # queries are derived from the pre-computed idea decomposition so that
+        # conceptually equivalent prior art is surfaced more reliably.
         online_papers_count = 0
         online_duration = 0.0
         online_papers: list = []
@@ -554,7 +576,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             t0 = time.monotonic()
-            search_queries = generate_search_queries(paper.key_content(), llm)
+            search_queries = generate_search_queries(paper.key_content(), llm, decomposition=idea_decomp)
             if search_queries:
                 print(
                     f"  Generated {len(search_queries)} quer"
@@ -616,14 +638,6 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         if len(query_words) > 15:
             query_preview += "…"
 
-        # Create the evaluator here so Stage 3d can use it for domain refs.
-        evaluator = NoveltyEvaluator(
-            llm=llm,
-            top_k_similar=args.top_k,
-            decomposition_llm=decomposition_llm,
-            decomposition_model=decomposition_model if decomposition_llm else "",
-        )
-
         # --- Stage 3d — Domain reference finder (Retrieve) ---
         # Domain reference finding is a *retrieval* task: it contextualises
         # the paper in its field using the top-matched references as context.
@@ -681,6 +695,17 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 detail=_parse_detail,
             ),
         ]
+        decomp_agent_label = f"LLM ({decomposition_model or args.model})"
+        early_jobs.append(
+            PipelineJob(
+                name="Idea decomposition",
+                agent=decomp_agent_label,
+                offset_s=round(parse_duration, 3),
+                duration_s=decomp_duration,
+                input_summary="paper content",
+                output_summary=f"{len(idea_decomp.sub_ideas)} sub-idea(s)",
+            )
+        )
         if not args.no_online_search:
             # Short table cell summary (queries in detail section below).
             _qword = "query" if len(search_queries) == 1 else "queries"
@@ -720,7 +745,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 PipelineJob(
                     name="Online reference search",
                     agent="SemanticScholar API",
-                    offset_s=round(stage_runtimes["parsing"], 3),
+                    offset_s=round(stage_runtimes["parsing"] + decomp_duration, 3),
                     duration_s=online_duration,
                     input_summary=_search_input,
                     output_summary=f"{online_papers_count} paper(s) fetched",
@@ -728,7 +753,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 )
             )
         sim_offset = round(
-            stage_runtimes["parsing"] + online_duration,
+            stage_runtimes["parsing"] + decomp_duration + online_duration,
             3,
         )
 
@@ -832,6 +857,8 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 _run_start=run_start,
                 domain_references=domain_refs,
                 _domain_references_raw=_dr_raw,
+                idea_decomposition=idea_decomp,
+                _idea_decomposition_raw=_decomp_raw,
             )
         except RuntimeError as exc:
             return _fail(f"novelty evaluation failed: {exc}", args.format)

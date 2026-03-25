@@ -303,6 +303,40 @@ class NoveltyEvaluator:
         """
         return self._find_domain_references(content, refs_text, raw)
 
+    def decompose_idea(
+        self,
+        content: str,
+        raw: "dict[str, str] | None" = None,
+    ) -> "IdeaDecomposition":
+        """Stage 2 — Understand: decompose the paper's core idea into components.
+
+        Runs the idea decomposition pass using ``self._decomposition_llm`` so
+        that a stronger reasoning model (e.g. o4-mini) can be used specifically
+        for this step.  Call this *before* online retrieval (Stage 3) so the
+        structured concept tree is available to inform LLM query generation and
+        surface conceptually equivalent prior art more reliably.
+
+        Parameters
+        ----------
+        content:
+            Key content of the paper (e.g. ``paper.key_content()``).
+        raw:
+            Optional mutable dict into which the raw LLM response is stored
+            under the key ``"idea_decomposition"``.  Pass the same dict you
+            will later supply as ``_idea_decomposition_raw`` to
+            :meth:`evaluate` so that ``report.raw_llm_responses`` stays
+            complete.
+
+        Returns
+        -------
+        IdeaDecomposition
+            Structured decomposition with core concept, sub-ideas, assumptions,
+            limitations, and optional concept tree.
+        """
+        if raw is None:
+            raw = {}
+        return self._decompose_idea(content, raw)
+
     def evaluate(
         self,
         paper: ParsedPaper,
@@ -311,6 +345,8 @@ class NoveltyEvaluator:
         _run_start: Optional[float] = None,
         domain_references: Optional[list[DomainReference]] = None,
         _domain_references_raw: Optional[dict[str, str]] = None,
+        idea_decomposition: "IdeaDecomposition | None" = None,
+        _idea_decomposition_raw: "dict[str, str] | None" = None,
     ) -> NoveltyReport:
         """Run all evaluation passes and return a :class:`NoveltyReport`.
 
@@ -341,6 +377,16 @@ class NoveltyEvaluator:
             :meth:`find_domain_references` call.  Merged into
             ``report.raw_llm_responses`` so the JSON output stays
             complete even when domain references were pre-computed.
+        idea_decomposition:
+            Pre-computed idea decomposition (Stage 2 result).  When supplied
+            the internal ``_decompose_idea`` LLM call is skipped and its
+            :class:`PipelineJob` entry is omitted from ``metadata.jobs`` (the
+            caller is responsible for recording that job).  Pass *None* to run
+            the call internally (default, backward-compatible behaviour).
+        _idea_decomposition_raw:
+            Raw LLM response dict from an external :meth:`decompose_idea`
+            call.  Merged into ``report.raw_llm_responses`` so the JSON
+            output stays complete even when decomposition was pre-computed.
         """
         similar_papers = similar_papers or []
         # Apply threshold and top-k filtering
@@ -357,11 +403,19 @@ class NoveltyEvaluator:
         decomp_agent = f"LLM ({decomp_model_label})" if decomp_model_label else "LLM"
         run_start = _run_start if _run_start is not None else time.monotonic()
 
-        # Idea decomposition runs FIRST — it provides the structural context
-        # that informs all subsequent novelty analysis passes.
+        # Idea decomposition: when pre-computed by the caller (Stage 2 ran
+        # before retrieval), skip the internal LLM call and merge the caller's
+        # raw response so report.raw_llm_responses stays complete.
         t0 = time.monotonic()
-        idea_decomp = self._decompose_idea(content, raw)
-        t1 = time.monotonic()
+        if idea_decomposition is not None:
+            idea_decomp = idea_decomposition
+            if _idea_decomposition_raw:
+                raw.update(_idea_decomposition_raw)
+            t1 = t0  # decomposition time is accounted for by the caller
+        else:
+            # Backward-compatible internal call.
+            idea_decomp = self._decompose_idea(content, raw)
+            t1 = time.monotonic()
 
         # Build a compact decomposition context string to include in the
         # downstream analysis prompts so that the LLM has the structured
@@ -403,15 +457,21 @@ class NoveltyEvaluator:
             t7 = time.monotonic()
 
         if metadata is not None:
-            jobs: list[PipelineJob] = [
-                PipelineJob(
+            jobs: list[PipelineJob] = []
+            # Idea decomposition PipelineJob is only added here when the call
+            # was made internally (i.e. idea_decomposition was not pre-computed
+            # at Stage 2).  When pre-computed, the caller adds the job entry
+            # to the early_jobs list instead.
+            if idea_decomposition is None:
+                jobs.append(PipelineJob(
                     name="Idea decomposition",
                     agent=decomp_agent,
                     offset_s=round(t0 - run_start, 3),
                     duration_s=round(t1 - t0, 3),
                     input_summary="paper content",
                     output_summary=f"{len(idea_decomp.sub_ideas)} sub-idea(s)",
-                ),
+                ))
+            jobs.extend([
                 PipelineJob(
                     name="Duplication check",
                     agent=agent,
@@ -444,7 +504,7 @@ class NoveltyEvaluator:
                     input_summary="3 dimension results",
                     output_summary=f"verdict={overall}, confidence={confidence}",
                 ),
-            ]
+            ])
             # Domain references PipelineJob is only added here when the call
             # was made internally (i.e. domain_references was not pre-computed
             # at Stage 3d).  When pre-computed, the caller adds the job entry
@@ -611,7 +671,7 @@ class NoveltyEvaluator:
         for i, r in enumerate(similar, 1):
             p = r.paper
             lines.append(
-                f"{i}. [{p.id}] {p.title} "
+                f"REF-{i} [{p.id}]: {p.title} "
                 f"({p.year or 'year unknown'}) — similarity {r.score:.2f}\n"
                 f"   Abstract: {p.abstract[:300]}"
             )
@@ -688,8 +748,9 @@ INSTRUCTIONS:
 - Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = paper is NOT a duplicate).
 - Then write EXPLANATION: one or two paragraphs. Where possible, reference specific
   nodes from the concept tree above to ground your claims.
-- Then write REFERENCES: comma-separated IDs of papers that are duplicated
-  (or "none").
+  When citing a reference in EXPLANATION, use its REF-N label (e.g., 'This paper duplicates REF-2 by ...').
+- Then write REFERENCES: list the REF-N labels of cited papers (e.g., 'REF-1, REF-3'),
+  or "none".
 """
 
 _COMBINATION_PROMPT = """You are a rigorous academic novelty reviewer.
@@ -714,7 +775,9 @@ INSTRUCTIONS:
 - Then write EXPLANATION: one or two paragraphs describing which components
   come from which prior works, and whether the combination adds value.
   Trace each branch of the concept tree above to its likely prior-art source.
-- Then write REFERENCES: comma-separated IDs of source papers (or "none").
+  When citing a reference in EXPLANATION, use its REF-N label (e.g., 'REF-3 introduced ...').
+- Then write REFERENCES: list the REF-N labels of source papers (e.g., 'REF-1, REF-3'),
+  or "none".
 """
 
 _EQUIVALENCE_PROMPT = """You are a rigorous academic novelty reviewer.
@@ -739,7 +802,9 @@ INSTRUCTIONS:
 - Then write EXPLANATION: describe any equivalences found, citing the
   established method. Inspect the Method branches in the concept tree above
   carefully for re-derivations or renamings.
-- Then write REFERENCES: comma-separated IDs of equivalent papers (or "none").
+  When citing a reference in EXPLANATION, use its REF-N label (e.g., 'REF-1 is mathematically equivalent to ...').
+- Then write REFERENCES: list the REF-N labels of equivalent papers (e.g., 'REF-2, REF-4'),
+  or "none".
 """
 
 _SYNTHESIS_PROMPT = """You are a senior programme-committee member.
@@ -766,6 +831,7 @@ CONFIDENCE: <HIGH|MEDIUM|LOW>
 SUMMARY: two to four sentences explaining the overall conclusion and the
 main reasons behind it. Ground your summary in specific elements from the
 concept tree and dimension analyses above.
+When making claims in SUMMARY, cite specific references using their REF-N labels where relevant.
 """
 
 _IDEA_DECOMPOSITION_PROMPT = """You are an expert research analyst.

@@ -44,10 +44,13 @@ import re
 import sys
 import urllib.parse
 import urllib.request
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
 
 from . import __version__
 from .reference_store import ReferencePaper
+
+if TYPE_CHECKING:
+    from .novelty_evaluator import IdeaDecomposition
 
 # Type alias for an LLM callable (matches novelty_evaluator.LLMCallable)
 LLMCallable = Callable[[str], str]
@@ -86,6 +89,36 @@ Paper content:
 {content}
 """
 
+_QUERY_GENERATION_PROMPT_WITH_DECOMP = """\
+You are analyzing an academic paper to generate search queries for finding \
+related work in Semantic Scholar.
+
+A structured decomposition of the paper's core idea is provided below. \
+Use it to generate queries that are conceptually precise — targeting the \
+same problem space, methodology, and alternative approaches identified in \
+the decomposition.
+
+Your task is to generate **4–6 short search queries** (2–6 words each) \
+optimised for Semantic Scholar's semantic search. Include queries for:
+   - The core concept / central problem
+   - The proposed approach derived from the decomposition
+   - Alternative solution approaches to the same problem
+
+Structured decomposition:
+{decomposition_context}
+
+Paper content:
+{content}
+
+Respond with ONLY a valid JSON object in this exact format (no extra text):
+{{
+  "central_problem": "<one-sentence statement of the core problem>",
+  "proposed_approach": "<one-sentence description of the paper's method>",
+  "alternative_approaches": ["<approach 1>", "<approach 2>"],
+  "queries": ["<query 1>", "<query 2>", "<query 3>", "<query 4>"]
+}}
+"""
+
 _SEMANTIC_SCHOLAR_PAPER_URL = (
     "https://api.semanticscholar.org/graph/v1/paper"
 )
@@ -104,11 +137,22 @@ _USER_AGENT = (
 )
 
 
+def _summarise_decomposition(decomposition: "IdeaDecomposition") -> str:
+    """Compact text summary of a decomposition for query generation."""
+    parts = []
+    if decomposition.core_concept:
+        parts.append(f"Core concept: {decomposition.core_concept}")
+    if decomposition.sub_ideas:
+        parts.append("Key components: " + "; ".join(decomposition.sub_ideas[:5]))
+    return "\n".join(parts)
+
+
 def generate_search_queries(
     paper_content: str,
     llm: LLMCallable,
     *,
     max_queries: int = 6,
+    decomposition: "IdeaDecomposition | None" = None,
 ) -> list[str]:
     """Ask an LLM to generate conceptual search queries for a paper.
 
@@ -126,6 +170,12 @@ def generate_search_queries(
         Callable that accepts a prompt string and returns the LLM response.
     max_queries:
         Maximum number of queries to return (excess are silently dropped).
+    decomposition:
+        Optional pre-computed :class:`~.novelty_evaluator.IdeaDecomposition`
+        from Stage 2.  When provided and has a ``core_concept``, the
+        decomposition-aware prompt is used so that queries are derived from
+        the structured concept tree rather than the raw paper text alone.
+        Falls back to the standard prompt when *None* (backward compatible).
 
     Returns
     -------
@@ -134,7 +184,13 @@ def generate_search_queries(
         (LLM failure, malformed response, etc.) so that callers can fall
         back to title-based search gracefully.
     """
-    prompt = _QUERY_GENERATION_PROMPT.format(content=paper_content)
+    if decomposition is not None and decomposition.core_concept:
+        prompt = _QUERY_GENERATION_PROMPT_WITH_DECOMP.format(
+            decomposition_context=_summarise_decomposition(decomposition),
+            content=paper_content,
+        )
+    else:
+        prompt = _QUERY_GENERATION_PROMPT.format(content=paper_content)
     try:
         response = llm(prompt)
     except Exception as exc:  # noqa: BLE001
