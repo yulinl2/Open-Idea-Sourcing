@@ -119,6 +119,22 @@ class NoveltyDimension:
 
 
 @dataclass
+class ConceptNode:
+    """A node in a hierarchical concept tree.
+
+    Attributes
+    ----------
+    label:
+        Human-readable text label for this concept.
+    children:
+        Child concept nodes representing sub-concepts of this node.
+    """
+
+    label: str
+    children: list["ConceptNode"] = field(default_factory=list)
+
+
+@dataclass
 class IdeaDecomposition:
     """Structured decomposition of the paper's core idea.
 
@@ -127,17 +143,27 @@ class IdeaDecomposition:
     core_concept:
         One-sentence description of the central contribution.
     sub_ideas:
-        Key component ideas or sub-contributions.
+        Key component ideas or sub-contributions (flat list).
     assumptions:
         Underlying assumptions the work makes.
     limitations:
         Acknowledged or implicit limitations of the approach.
+    concept_tree:
+        Optional hierarchical breakdown of the core idea into nested
+        technical components.  Replaces/supplements the flat *sub_ideas*
+        list with recursive depth when the LLM provides tree-structured
+        output.
+    implementation_steps:
+        Ordered list of practical steps needed to implement the proposed
+        approach (the "implementation roadmap").
     """
 
     core_concept: str
     sub_ideas: list[str] = field(default_factory=list)
     assumptions: list[str] = field(default_factory=list)
     limitations: list[str] = field(default_factory=list)
+    concept_tree: Optional["ConceptNode"] = None
+    implementation_steps: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -330,11 +356,13 @@ class NoveltyEvaluator:
         t0 = time.monotonic()
         idea_decomp = self._decompose_idea(content, raw)
         t1 = time.monotonic()
-        dup = self._check_duplication(content, refs_text, raw)
+        # Dimension checks receive the decomposition for evidence-backed verdicts:
+        # each check can cite specific named components from the decomposition.
+        dup = self._check_duplication(content, refs_text, raw, idea_decomp=idea_decomp)
         t2 = time.monotonic()
-        combo = self._check_combination(content, refs_text, raw)
+        combo = self._check_combination(content, refs_text, raw, idea_decomp=idea_decomp)
         t3 = time.monotonic()
-        equiv = self._check_equivalence(content, refs_text, raw)
+        equiv = self._check_equivalence(content, refs_text, raw, idea_decomp=idea_decomp)
         t4 = time.monotonic()
         overall, confidence, summary = self._synthesise(
             paper.title, dup, combo, equiv, raw
@@ -447,11 +475,14 @@ class NoveltyEvaluator:
     # ------------------------------------------------------------------
 
     def _check_duplication(
-        self, content: str, refs_text: str, raw: dict[str, str]
+        self, content: str, refs_text: str, raw: dict[str, str],
+        idea_decomp: Optional["IdeaDecomposition"] = None,
     ) -> NoveltyDimension:
         """Detect whether the paper directly duplicates existing work."""
+        decomp_ctx = _format_decomp_context(idea_decomp) if idea_decomp else "(not available)"
         prompt = _DUPLICATION_PROMPT.format(
-            paper_content=content, reference_papers=refs_text
+            paper_content=content, reference_papers=refs_text,
+            decomposition_context=decomp_ctx,
         )
         response = self._llm(prompt)
         raw["duplication"] = response
@@ -464,11 +495,14 @@ class NoveltyEvaluator:
         )
 
     def _check_combination(
-        self, content: str, refs_text: str, raw: dict[str, str]
+        self, content: str, refs_text: str, raw: dict[str, str],
+        idea_decomp: Optional["IdeaDecomposition"] = None,
     ) -> NoveltyDimension:
         """Detect whether the paper is merely a combination of prior works."""
+        decomp_ctx = _format_decomp_context(idea_decomp) if idea_decomp else "(not available)"
         prompt = _COMBINATION_PROMPT.format(
-            paper_content=content, reference_papers=refs_text
+            paper_content=content, reference_papers=refs_text,
+            decomposition_context=decomp_ctx,
         )
         response = self._llm(prompt)
         raw["combination"] = response
@@ -481,11 +515,14 @@ class NoveltyEvaluator:
         )
 
     def _check_equivalence(
-        self, content: str, refs_text: str, raw: dict[str, str]
+        self, content: str, refs_text: str, raw: dict[str, str],
+        idea_decomp: Optional["IdeaDecomposition"] = None,
     ) -> NoveltyDimension:
         """Detect methodological equivalence to known methods."""
+        decomp_ctx = _format_decomp_context(idea_decomp) if idea_decomp else "(not available)"
         prompt = _EQUIVALENCE_PROMPT.format(
-            paper_content=content, reference_papers=refs_text
+            paper_content=content, reference_papers=refs_text,
+            decomposition_context=decomp_ctx,
         )
         response = self._llm(prompt)
         raw["equivalence"] = response
@@ -582,6 +619,9 @@ known or referenced work. Direct duplication means the core ideas,
 methods, or results are essentially identical to prior art, even if the
 wording or framing differ.
 
+DECOMPOSED IDEA STRUCTURE (cite specific components by name in your analysis):
+{decomposition_context}
+
 SUBMITTED PAPER:
 {paper_content}
 
@@ -591,7 +631,8 @@ REFERENCE PAPERS (most similar by text):
 INSTRUCTIONS:
 - Respond with a structured analysis.
 - Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = paper is NOT a duplicate).
-- Then write EXPLANATION: one or two paragraphs.
+- Then write EXPLANATION: one or two paragraphs. Where applicable, name
+  specific decomposed components that have clear prior-art equivalents.
 - Then write REFERENCES: comma-separated IDs of papers that are duplicated
   (or "none").
 """
@@ -603,6 +644,9 @@ of existing works without a unifying contribution. Identify the individual
 components, trace each to its origin, and assess whether their combination
 constitutes a genuine insight.
 
+DECOMPOSED IDEA STRUCTURE (cite specific components by name in your analysis):
+{decomposition_context}
+
 SUBMITTED PAPER:
 {paper_content}
 
@@ -612,8 +656,8 @@ REFERENCE PAPERS (most similar by text):
 INSTRUCTIONS:
 - Respond with a structured analysis.
 - Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = not a simple combination).
-- Then write EXPLANATION: one or two paragraphs describing which components
-  come from which prior works, and whether the combination adds value.
+- Then write EXPLANATION: one or two paragraphs describing which decomposed
+  components come from which prior works, and whether the combination adds value.
 - Then write REFERENCES: comma-separated IDs of source papers (or "none").
 """
 
@@ -624,6 +668,9 @@ subtly equivalent to well-established methodologies, even if the notation,
 framing, or application domain differ. Look for mathematical equivalences,
 algorithmic re-derivations, or conceptual renamings.
 
+DECOMPOSED IDEA STRUCTURE (cite specific components by name in your analysis):
+{decomposition_context}
+
 SUBMITTED PAPER:
 {paper_content}
 
@@ -633,8 +680,8 @@ REFERENCE PAPERS (most similar by text):
 INSTRUCTIONS:
 - Respond with a structured analysis.
 - Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = no equivalence found).
-- Then write EXPLANATION: describe any equivalences found, citing the
-  established method.
+- Then write EXPLANATION: describe any equivalences found, naming the specific
+  decomposed component and the established method it maps to.
 - Then write REFERENCES: comma-separated IDs of equivalent papers (or "none").
 """
 
@@ -662,7 +709,8 @@ main reasons behind it.
 
 _IDEA_DECOMPOSITION_PROMPT = """You are an expert research analyst.
 
-TASK: Decompose the following paper's core idea into its fundamental components.
+TASK: Decompose the following paper's core idea into its fundamental technical
+components and produce a practical implementation roadmap.
 
 SUBMITTED PAPER:
 {paper_content}
@@ -671,6 +719,16 @@ INSTRUCTIONS:
 Respond with the following structured fields.
 
 CORE_CONCEPT: One sentence describing the central contribution or idea.
+
+CONCEPT_TREE:
+<Root concept label (usually the paper's main method or system name)>
+  <Primary technical component 1>
+    <Sub-component 1a>
+    <Sub-component 1b>
+  <Primary technical component 2>
+    <Sub-component 2a>
+(Use 2-space indentation per level.  Include 3–5 primary components and
+go at least 2 levels deep where the paper provides sufficient detail.)
 
 SUB_IDEAS:
 1. <first key component or sub-contribution>
@@ -684,6 +742,11 @@ ASSUMPTIONS:
 LIMITATIONS:
 1. <first acknowledged or implicit limitation>
 2. <additional limitations as needed>
+
+IMPLEMENTATION_ROADMAP:
+1. <first concrete step to implement the proposed approach>
+2. <second step>
+3. <additional ordered steps as needed — typically 4–6 steps total>
 """
 
 _DOMAIN_REFERENCES_PROMPT = """You are an expert research librarian.
@@ -802,22 +865,106 @@ def _parse_numbered_list(text: str) -> list[str]:
     return items
 
 
+def _parse_concept_tree_text(text: str) -> "ConceptNode | None":
+    """Parse an indented text hierarchy into a :class:`ConceptNode` tree.
+
+    The first non-blank line becomes the root label.  Indented child lines
+    are nested at the appropriate depth.  The indent unit (spaces per level)
+    is auto-detected from the first indented line; it falls back to 2 when
+    the text has no indented lines.
+
+    Returns ``None`` when *text* is blank or contains only whitespace.
+
+    Example input::
+
+        Dynamic Masking Transformer
+          Attention Module
+            Dynamic masking layer
+            Softmax attention
+          Integration Layer
+            Standard Transformer blocks
+
+    Produces a root node ``"Dynamic Masking Transformer"`` with two
+    children ``"Attention Module"`` and ``"Integration Layer"``, each with
+    their own children.
+    """
+    lines = [l for l in text.splitlines() if l.strip()]
+    if not lines:
+        return None
+
+    # Auto-detect indent unit from the first indented line.
+    indent_unit = 2
+    for line in lines[1:]:
+        if line.startswith(" "):
+            indent_unit = len(line) - len(line.lstrip(" "))
+            break
+
+    root = ConceptNode(label=lines[0].strip())
+    # Stack entries: (depth_level, node); root is depth 0.
+    stack: list[tuple[int, "ConceptNode"]] = [(0, root)]
+
+    for line in lines[1:]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        n_spaces = len(line) - len(line.lstrip(" "))
+        depth = max(1, round(n_spaces / indent_unit)) if indent_unit else 1
+
+        node = ConceptNode(label=stripped)
+        # Pop the stack until we reach a node whose depth is *less than* this
+        # node's depth — that node becomes the new parent.
+        while len(stack) > 1 and stack[-1][0] >= depth:
+            stack.pop()
+        stack[-1][1].children.append(node)
+        stack.append((depth, node))
+
+    return root
+
+
+def _format_decomp_context(decomp: "IdeaDecomposition") -> str:
+    """Format an :class:`IdeaDecomposition` as a compact context block.
+
+    Used to inject the structural breakdown of the paper into evaluation
+    prompts so that verdicts can cite specific named components.
+    """
+    parts = [f"Core concept: {decomp.core_concept}"]
+    if decomp.sub_ideas:
+        parts.append("Key components:")
+        for item in decomp.sub_ideas:
+            parts.append(f"  • {item}")
+    if decomp.assumptions:
+        parts.append("Key assumptions:")
+        for item in decomp.assumptions:
+            parts.append(f"  • {item}")
+    return "\n".join(parts)
+
+
 def _parse_decomposition_response(text: str) -> "IdeaDecomposition":
     """Extract an :class:`IdeaDecomposition` from an LLM response.
 
     Falls back gracefully: if ``CORE_CONCEPT`` is missing the full
     response text is used; if a list section is missing it defaults to
-    an empty list.
+    an empty list; if ``CONCEPT_TREE`` is missing or unparseable the
+    ``concept_tree`` field is ``None``.
     """
     core_concept = _extract_field(text, "CORE_CONCEPT", default=text.strip())
+    concept_tree_raw = _extract_field(text, "CONCEPT_TREE", default="")
     sub_ideas_raw = _extract_field(text, "SUB_IDEAS", default="")
     assumptions_raw = _extract_field(text, "ASSUMPTIONS", default="")
     limitations_raw = _extract_field(text, "LIMITATIONS", default="")
+    implementation_raw = _extract_field(text, "IMPLEMENTATION_ROADMAP", default="")
+    concept_tree = (
+        _parse_concept_tree_text(concept_tree_raw)
+        if concept_tree_raw.strip()
+        else None
+    )
     return IdeaDecomposition(
         core_concept=core_concept,
         sub_ideas=_parse_numbered_list(sub_ideas_raw),
         assumptions=_parse_numbered_list(assumptions_raw),
         limitations=_parse_numbered_list(limitations_raw),
+        concept_tree=concept_tree,
+        implementation_steps=_parse_numbered_list(implementation_raw),
     )
 
 

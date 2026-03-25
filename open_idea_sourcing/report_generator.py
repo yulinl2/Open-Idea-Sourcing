@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .novelty_evaluator import (
     IdeaDecomposition,
+    ConceptNode,
     DomainReference,
     SimilarityAnnotation,
     NoveltyReport,
@@ -259,7 +260,11 @@ class ReportGenerator:
             d = r.idea_decomposition
             lines += ["IDEA DECOMPOSITION", "-" * 70]
             lines.append(f"  Core concept: {d.core_concept}")
-            if d.sub_ideas:
+            if d.concept_tree:
+                lines.append("  Concept tree:")
+                for tree_line in _render_concept_tree_ascii(d.concept_tree).splitlines():
+                    lines.append(f"    {tree_line}")
+            elif d.sub_ideas:
                 lines.append("  Sub-ideas:")
                 for i, item in enumerate(d.sub_ideas, 1):
                     lines.append(f"    {i}. {item}")
@@ -270,6 +275,10 @@ class ReportGenerator:
             if d.limitations:
                 lines.append("  Limitations:")
                 for i, item in enumerate(d.limitations, 1):
+                    lines.append(f"    {i}. {item}")
+            if d.implementation_steps:
+                lines.append("  Implementation roadmap:")
+                for i, item in enumerate(d.implementation_steps, 1):
                     lines.append(f"    {i}. {item}")
             lines.append("")
 
@@ -490,6 +499,15 @@ class ReportGenerator:
                 f"**Core concept:** {d.core_concept}",
                 "",
             ]
+            if d.concept_tree:
+                lines += [
+                    "### Concept Tree",
+                    "",
+                    "```",
+                    _render_concept_tree_ascii(d.concept_tree),
+                    "```",
+                    "",
+                ]
             if d.sub_ideas:
                 lines.append("**Sub-ideas:**")
                 lines.append("")
@@ -508,14 +526,11 @@ class ReportGenerator:
                 for item in d.limitations:
                     lines.append(f"- {item}")
                 lines.append("")
-            mindmap_diagram = _build_mindmap(d, r.paper_title)
-            if mindmap_diagram:
-                lines += [
-                    "### Idea Mind Map",
-                    "",
-                    mindmap_diagram,
-                    "",
-                ]
+            if d.implementation_steps:
+                lines += ["**Implementation Roadmap:**", ""]
+                for i, item in enumerate(d.implementation_steps, 1):
+                    lines.append(f"{i}. {item}")
+                lines.append("")
 
         lines += [
             f"**Overall verdict:** {ov} **{r.overall_verdict}** "
@@ -709,12 +724,16 @@ class ReportGenerator:
             }
         if r.idea_decomposition:
             d = r.idea_decomposition
-            data["idea_decomposition"] = {
+            decomp_data: dict = {
                 "core_concept": d.core_concept,
                 "sub_ideas": d.sub_ideas,
                 "assumptions": d.assumptions,
                 "limitations": d.limitations,
+                "implementation_steps": d.implementation_steps,
             }
+            if d.concept_tree:
+                decomp_data["concept_tree"] = _concept_node_to_dict(d.concept_tree)
+            data["idea_decomposition"] = decomp_data
         if r.domain_references:
             data["domain_references"] = [
                 {
@@ -762,65 +781,44 @@ def _build_gantt(metadata: RunMetadata, paper_title: str = "") -> str:
     return "\n".join(lines)
 
 
+
 # ---------------------------------------------------------------------------
-# Idea mind map (Mermaid)
+# Concept tree — ASCII art renderer
 # ---------------------------------------------------------------------------
 
-def _build_mindmap(decomp: IdeaDecomposition, paper_title: str = "") -> str:
-    """Return a Mermaid ``mindmap`` diagram for *decomp*.
+def _render_concept_tree_ascii(root: "ConceptNode") -> str:
+    """Render a :class:`ConceptNode` tree as an ASCII-art string.
 
-    The mind map places the core concept at the root and branches out to
-    sub-ideas, assumptions, and limitations.
+    The root label appears on the first line with no connector.  Child nodes
+    are rendered with ``├──`` / ``└──`` connectors (``│`` continuation lines
+    for non-last branches), matching the output style of the Unix ``tree``
+    command.
 
-    Returns an empty string when there are no branches so callers can
-    omit the section entirely rather than rendering a bare root circle.
+    Example output::
+
+        Dynamic Masking Transformer
+        ├── Attention Module
+        │   ├── Dynamic masking layer
+        │   └── Softmax attention
+        └── Integration Layer
+            └── Standard Transformer blocks
     """
-    has_branches = bool(
-        decomp.sub_ideas or decomp.assumptions or decomp.limitations
-    )
-    if not has_branches:
-        return ""
+    lines: list[str] = [root.label]
 
-    root_label = paper_title or decomp.core_concept
+    def _recurse(node: "ConceptNode", prefix: str) -> None:
+        for i, child in enumerate(node.children):
+            is_last = i == len(node.children) - 1
+            connector = "└── " if is_last else "├── "
+            lines.append(prefix + connector + child.label)
+            _recurse(child, prefix + ("    " if is_last else "│   "))
 
-    _MAX_NODE_LEN = 60  # chars; longer text breaks GitHub's Mermaid renderer
-
-    def _safe(text: str) -> str:
-        """Sanitise text for a Mermaid mindmap node label.
-
-        * Removes shape-control characters ``()[]{}"#`` that Mermaid
-          interprets as node-shape markers.
-        * Replaces backticks with single quotes.
-        * Truncates long items with an ellipsis so nodes stay readable;
-          LLM-generated items are often full sentences that would cause
-          the renderer to silently drop all branches.
-        """
-        _remove_table = str.maketrans("", "", '()[]{}\"#')
-        text = text.translate(_remove_table).replace("`", "'")
-        if len(text) > _MAX_NODE_LEN:
-            text = text[:_MAX_NODE_LEN].rstrip() + "…"
-        return text
-
-    lines = [
-        "```mermaid",
-        "mindmap",
-        f"  root(({_safe(root_label)}))",
-    ]
-
-    if decomp.sub_ideas:
-        lines.append("    Sub-ideas")
-        for item in decomp.sub_ideas:
-            lines.append(f"      {_safe(item)}")
-
-    if decomp.assumptions:
-        lines.append("    Assumptions")
-        for item in decomp.assumptions:
-            lines.append(f"      {_safe(item)}")
-
-    if decomp.limitations:
-        lines.append("    Limitations")
-        for item in decomp.limitations:
-            lines.append(f"      {_safe(item)}")
-
-    lines.append("```")
+    _recurse(root, "")
     return "\n".join(lines)
+
+
+def _concept_node_to_dict(node: "ConceptNode") -> dict:
+    """Recursively convert a :class:`ConceptNode` to a JSON-serialisable dict."""
+    result: dict = {"label": node.label}
+    if node.children:
+        result["children"] = [_concept_node_to_dict(c) for c in node.children]
+    return result

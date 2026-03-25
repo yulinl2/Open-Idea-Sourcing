@@ -35,6 +35,34 @@ The `release.yml` workflow will:
 
 ## [Unreleased]
 
+---
+
+## [2.0.0] — 2026-03-25
+
+### Added
+
+**Deep concept tree (Stage 2 — Understand)**
+- `ConceptNode` dataclass (`label: str`, `children: list[ConceptNode]`) — the building block of a recursive, hierarchical concept breakdown.
+- `IdeaDecomposition.concept_tree: ConceptNode | None` — an optional hierarchical breakdown of the paper's core idea. Parsed from a new `CONCEPT_TREE:` field in the LLM decomposition response.
+- `IdeaDecomposition.implementation_steps: list[str]` — ordered practical steps needed to reproduce the proposed approach. Parsed from a new `IMPLEMENTATION_ROADMAP:` field in the LLM decomposition response.
+- `_parse_concept_tree_text()` — parses indented text into a `ConceptNode` hierarchy; auto-detects the indent unit from the first indented line.
+- `_render_concept_tree_ascii()` in `report_generator` — renders a `ConceptNode` tree as ASCII art with `├──` / `└──` / `│` connectors (Unix `tree`-style), wrapped in a fenced code block in Markdown reports.
+- `_concept_node_to_dict()` in `report_generator` — recursively serialises a `ConceptNode` to a JSON-compatible dict (included under `idea_decomposition.concept_tree` in JSON output).
+
+**Evidence-backed evaluation (Stage 5 — Evaluate)**
+- `_format_decomp_context()` — formats an `IdeaDecomposition` as a compact context block listing the core concept and key component names.
+- Dimension prompts (`_DUPLICATION_PROMPT`, `_COMBINATION_PROMPT`, `_EQUIVALENCE_PROMPT`) now include a `DECOMPOSED IDEA STRUCTURE` section so the LLM can cite specific named components in its verdict, grounding each judgement in the paper's actual technical elements.
+- `_check_duplication()`, `_check_combination()`, `_check_equivalence()` each accept an optional `idea_decomp` parameter; when supplied the decomposition context is injected into the prompt.
+- `evaluate()` automatically passes the freshly-computed `IdeaDecomposition` into each dimension check.
+
+### Changed
+
+- **Idea decomposition prompt** (`_IDEA_DECOMPOSITION_PROMPT`) expanded to request a `CONCEPT_TREE` (2-space-indented hierarchy, ≥2 levels deep) and an `IMPLEMENTATION_ROADMAP` (4–6 ordered steps), replacing the flat sub-ideas-only format.
+- **Markdown `## Idea Decomposition` section** restructured: a new `### Concept Tree` subsection renders the ASCII tree in a fenced code block, followed by the flat sub-ideas / assumptions / limitations lists, followed by a numbered `**Implementation Roadmap:**` section. The Mermaid mindmap is removed entirely.
+- **Text report** now renders the concept tree inline (indented under `Concept tree:`) and lists implementation steps under `Implementation roadmap:`.
+- **JSON output** adds `idea_decomposition.concept_tree` (recursive `{label, children}` structure) and `idea_decomposition.implementation_steps` (list of strings).
+- **Mermaid mindmap removed** — `_build_mindmap()` and its Mermaid `mindmap` diagram are replaced by the ASCII concept tree renderer, which renders correctly in all Markdown contexts (no Mermaid renderer required).
+
 ### Fixed
 
 **Paper parser**

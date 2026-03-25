@@ -3,6 +3,7 @@
 import pytest
 
 from open_idea_sourcing.novelty_evaluator import (
+    ConceptNode,
     DomainReference,
     IdeaDecomposition,
     NoveltyDimension,
@@ -10,6 +11,8 @@ from open_idea_sourcing.novelty_evaluator import (
     NoveltyReport,
     SimilarityAnnotation,
     _extract_field,
+    _format_decomp_context,
+    _parse_concept_tree_text,
     _parse_decomposition_response,
     _parse_dimension_response,
     _parse_domain_references_response,
@@ -84,13 +87,24 @@ _SYNTH_RESPONSE = (
 )
 _DECOMP_RESPONSE = (
     "CORE_CONCEPT: A dynamic masking extension of the Transformer attention mechanism.\n"
+    "CONCEPT_TREE:\n"
+    "Dynamic Masking Transformer\n"
+    "  Attention Module\n"
+    "    Dynamic masking layer\n"
+    "    Softmax attention\n"
+    "  Integration Layer\n"
+    "    Standard Transformer blocks\n"
     "SUB_IDEAS:\n"
     "1. Dynamic attention masking\n"
     "2. Integration with standard Transformer blocks\n"
     "ASSUMPTIONS:\n"
     "1. Input sequences are tokenised uniformly\n"
     "LIMITATIONS:\n"
-    "1. Only evaluated on NLP benchmarks"
+    "1. Only evaluated on NLP benchmarks\n"
+    "IMPLEMENTATION_ROADMAP:\n"
+    "1. Implement dynamic masking module\n"
+    "2. Integrate with standard Transformer architecture\n"
+    "3. Evaluate on NLP benchmarks\n"
 )
 _DOMAIN_REFS_RESPONSE = (
     "REFERENCES:\n"
@@ -450,6 +464,165 @@ class TestNoveltyEvaluatorJobLog:
 
 
 # ---------------------------------------------------------------------------
+# ConceptNode dataclass
+# ---------------------------------------------------------------------------
+
+class TestConceptNode:
+    def test_label_stored(self):
+        node = ConceptNode(label="Root")
+        assert node.label == "Root"
+
+    def test_children_default_empty(self):
+        node = ConceptNode(label="Root")
+        assert node.children == []
+
+    def test_children_set(self):
+        child = ConceptNode(label="Child")
+        root = ConceptNode(label="Root", children=[child])
+        assert len(root.children) == 1
+        assert root.children[0].label == "Child"
+
+    def test_nested_tree(self):
+        tree = ConceptNode(
+            label="Root",
+            children=[
+                ConceptNode(
+                    label="A",
+                    children=[ConceptNode(label="A1"), ConceptNode(label="A2")],
+                ),
+                ConceptNode(label="B"),
+            ],
+        )
+        assert tree.children[0].label == "A"
+        assert tree.children[0].children[0].label == "A1"
+        assert tree.children[1].label == "B"
+
+    def test_leaf_has_no_children(self):
+        leaf = ConceptNode(label="Leaf")
+        assert leaf.children == []
+
+    def test_each_child_is_concept_node(self):
+        root = ConceptNode(
+            label="Root",
+            children=[ConceptNode(label="C1"), ConceptNode(label="C2")],
+        )
+        for child in root.children:
+            assert isinstance(child, ConceptNode)
+
+
+# ---------------------------------------------------------------------------
+# _parse_concept_tree_text
+# ---------------------------------------------------------------------------
+
+class TestParseConceptTreeText:
+    def test_returns_none_for_empty_string(self):
+        assert _parse_concept_tree_text("") is None
+
+    def test_returns_none_for_whitespace_only(self):
+        assert _parse_concept_tree_text("   \n  \n") is None
+
+    def test_single_line_becomes_root(self):
+        root = _parse_concept_tree_text("My Concept")
+        assert root is not None
+        assert root.label == "My Concept"
+        assert root.children == []
+
+    def test_root_label_stripped(self):
+        root = _parse_concept_tree_text("  Root Label  ")
+        assert root.label == "Root Label"
+
+    def test_two_level_tree(self):
+        text = "Root\n  Child A\n  Child B"
+        root = _parse_concept_tree_text(text)
+        assert root.label == "Root"
+        assert len(root.children) == 2
+        assert root.children[0].label == "Child A"
+        assert root.children[1].label == "Child B"
+
+    def test_three_level_tree(self):
+        text = "Root\n  A\n    A1\n    A2\n  B"
+        root = _parse_concept_tree_text(text)
+        assert root.children[0].label == "A"
+        assert len(root.children[0].children) == 2
+        assert root.children[0].children[0].label == "A1"
+        assert root.children[1].label == "B"
+        assert root.children[1].children == []
+
+    def test_auto_detects_two_space_indent(self):
+        text = "Root\n  Child"
+        root = _parse_concept_tree_text(text)
+        assert root.children[0].label == "Child"
+
+    def test_auto_detects_four_space_indent(self):
+        text = "Root\n    Child\n        Grandchild"
+        root = _parse_concept_tree_text(text)
+        assert root.children[0].label == "Child"
+        assert root.children[0].children[0].label == "Grandchild"
+
+    def test_full_example_tree(self):
+        text = (
+            "Dynamic Masking Transformer\n"
+            "  Attention Module\n"
+            "    Dynamic masking layer\n"
+            "    Softmax attention\n"
+            "  Integration Layer\n"
+            "    Standard Transformer blocks\n"
+        )
+        root = _parse_concept_tree_text(text)
+        assert root.label == "Dynamic Masking Transformer"
+        assert len(root.children) == 2
+        assert root.children[0].label == "Attention Module"
+        assert len(root.children[0].children) == 2
+        assert root.children[1].label == "Integration Layer"
+        assert len(root.children[1].children) == 1
+
+    def test_returns_concept_node_instance(self):
+        root = _parse_concept_tree_text("Root\n  Child")
+        assert isinstance(root, ConceptNode)
+
+    def test_blank_lines_ignored(self):
+        text = "Root\n\n  Child A\n\n  Child B"
+        root = _parse_concept_tree_text(text)
+        assert len(root.children) == 2
+
+    def test_child_labels_stripped(self):
+        text = "Root\n    Child with spaces   "
+        root = _parse_concept_tree_text(text)
+        assert root.children[0].label == "Child with spaces"
+
+
+# ---------------------------------------------------------------------------
+# _format_decomp_context
+# ---------------------------------------------------------------------------
+
+class TestFormatDecompContext:
+    def test_includes_core_concept(self):
+        d = IdeaDecomposition(core_concept="A novel method.")
+        ctx = _format_decomp_context(d)
+        assert "A novel method." in ctx
+
+    def test_includes_sub_ideas(self):
+        d = IdeaDecomposition(core_concept="Core.", sub_ideas=["Component A", "Component B"])
+        ctx = _format_decomp_context(d)
+        assert "Component A" in ctx
+        assert "Component B" in ctx
+
+    def test_includes_assumptions(self):
+        d = IdeaDecomposition(core_concept="Core.", assumptions=["Linear data assumption"])
+        ctx = _format_decomp_context(d)
+        assert "Linear data assumption" in ctx
+
+    def test_no_sub_ideas_no_components_section(self):
+        d = IdeaDecomposition(core_concept="Core.")
+        ctx = _format_decomp_context(d)
+        assert "Key components:" not in ctx
+
+    def test_returns_string(self):
+        d = IdeaDecomposition(core_concept="Core.")
+        assert isinstance(_format_decomp_context(d), str)
+
+
+# ---------------------------------------------------------------------------
 # IdeaDecomposition dataclass
 # ---------------------------------------------------------------------------
 
@@ -459,6 +632,14 @@ class TestIdeaDecomposition:
         assert d.sub_ideas == []
         assert d.assumptions == []
         assert d.limitations == []
+
+    def test_concept_tree_defaults_to_none(self):
+        d = IdeaDecomposition(core_concept="A new method.")
+        assert d.concept_tree is None
+
+    def test_implementation_steps_defaults_to_empty(self):
+        d = IdeaDecomposition(core_concept="A new method.")
+        assert d.implementation_steps == []
 
     def test_fields_stored(self):
         d = IdeaDecomposition(
@@ -471,6 +652,19 @@ class TestIdeaDecomposition:
         assert d.sub_ideas == ["A", "B"]
         assert d.assumptions == ["X"]
         assert d.limitations == ["Y"]
+
+    def test_concept_tree_stored(self):
+        tree = ConceptNode(label="Root", children=[ConceptNode(label="Child")])
+        d = IdeaDecomposition(core_concept="Core.", concept_tree=tree)
+        assert d.concept_tree is not None
+        assert d.concept_tree.label == "Root"
+
+    def test_implementation_steps_stored(self):
+        d = IdeaDecomposition(
+            core_concept="Core.",
+            implementation_steps=["Step 1", "Step 2"],
+        )
+        assert d.implementation_steps == ["Step 1", "Step 2"]
 
 
 # ---------------------------------------------------------------------------
@@ -535,6 +729,40 @@ class TestParseDecompositionResponse:
         assert "Dynamic attention masking" in d.sub_ideas
         assert "Input sequences are tokenised uniformly" in d.assumptions
         assert "Only evaluated on NLP benchmarks" in d.limitations
+
+    def test_parses_concept_tree(self):
+        d = _parse_decomposition_response(_DECOMP_RESPONSE)
+        assert d.concept_tree is not None
+        assert isinstance(d.concept_tree, ConceptNode)
+        assert d.concept_tree.label == "Dynamic Masking Transformer"
+
+    def test_concept_tree_has_children(self):
+        d = _parse_decomposition_response(_DECOMP_RESPONSE)
+        assert len(d.concept_tree.children) >= 1
+
+    def test_concept_tree_child_has_grandchildren(self):
+        d = _parse_decomposition_response(_DECOMP_RESPONSE)
+        # "Attention Module" should have "Dynamic masking layer" and "Softmax attention"
+        attention = d.concept_tree.children[0]
+        assert len(attention.children) >= 1
+
+    def test_parses_implementation_steps(self):
+        d = _parse_decomposition_response(_DECOMP_RESPONSE)
+        assert len(d.implementation_steps) == 3
+        assert "dynamic masking module" in d.implementation_steps[0].lower()
+
+    def test_missing_concept_tree_is_none(self):
+        response = (
+            "CORE_CONCEPT: Simple idea.\n"
+            "SUB_IDEAS:\n1. Only idea\n"
+        )
+        d = _parse_decomposition_response(response)
+        assert d.concept_tree is None
+
+    def test_missing_implementation_steps_defaults_empty(self):
+        response = "CORE_CONCEPT: Simple idea.\nSUB_IDEAS:\n1. Only idea\n"
+        d = _parse_decomposition_response(response)
+        assert d.implementation_steps == []
 
     def test_missing_core_concept_falls_back_to_full_text(self):
         d = _parse_decomposition_response("Some random text without fields.")
