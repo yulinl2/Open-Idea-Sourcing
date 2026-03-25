@@ -35,19 +35,43 @@ The `release.yml` workflow will:
 
 ## [Unreleased]
 
+---
+
+## [2.0.0] — 2026-03-25
+
+### Added
+
+**Deep concept-tree decomposition**
+- New `ConceptNode` dataclass (`label: str`, `children: list[ConceptNode]`) — a recursive tree structure that captures the full logical hierarchy of a paper's ideas at multiple levels of abstraction.
+- `IdeaDecomposition` gains an optional `concept_tree: ConceptNode | None` field.  When present it is the primary decomposition artefact; the legacy flat `sub_ideas` / `assumptions` / `limitations` lists remain as a fallback.
+- Updated LLM decomposition prompt (`_IDEA_DECOMPOSITION_PROMPT`) to request a deep, typed tree (category tags: `Problem:`, `Method:`, `Theory:`, `Evidence:`, `Limitation:`; target depth 3–5 levels) rather than a flat list.
+- `_parse_concept_tree_text()` — robust indented-text parser that auto-detects the indent unit from the first indented line, strips `Root:` prefixes and list bullets, and builds a `ConceptNode` tree from any 2-space or 4-space indented LLM response.
+- `_parse_decomposition_response()` now extracts a `CONCEPT_TREE:` field from the LLM response and attaches the parsed tree to the returned `IdeaDecomposition`.
+
+**ASCII concept-tree rendering (replaces Mermaid mindmap)**
+- `_render_concept_tree_ascii()` in `report_generator.py` renders a `ConceptNode` tree using `├──` / `└──` / `│` prefix characters (classic `tree`-command style) inside a fenced code block — no renderer dependency, readable on all platforms.
+- The `## Idea Decomposition` report section now shows `### Concept Tree` (ASCII tree in a code block) when `concept_tree` is set, and falls back to the flat lists when it is not.
+- Removed the `_build_mindmap` function and all Mermaid `mindmap` output — the Mermaid renderer on GitHub does not support the `mindmap` type reliably.
+
+**Methodological similarity signal**
+- `_SIMILAR_PAPERS_ANNOTATION_PROMPT` updated to explicitly instruct the LLM to look past terminology, notation, and framing differences and identify genuine methodological connections — shared algorithms, equivalent mathematical constructs, inherited problem formulations.
+- Report section **"Reference Annotations"** renamed to **"Methodological Analysis"** and the overlap column renamed to **"Methodological overlap"** to reflect that the LLM assessment goes beyond keyword matching.
+- Similarity table header in the report changed from `Score` to `Retrieval score`, with an explanatory note that TF-IDF cosine is used for *retrieval* only; the LLM analysis is the primary novelty signal.
+
 ### Fixed
 
-**Paper parser**
+**Paper parser (from v1.3.0 unreleased)**
 - `ParsedPaper` gains an `authors: list[str]` field; `PaperParser._extract_authors()` heuristically extracts author names (capitalised-word lines between the title and institutional affiliations).
-- `_extract_title()` now joins continuation lines (lines starting with a lowercase letter or connector word such as "of", "for", "via") so multi-line PDF titles are reconstructed correctly (e.g. "Conformal Inference" + "of Counterfactuals …" → full title).
+- `_extract_title()` now joins continuation lines (lines starting with a lowercase letter or connector word such as "of", "for", "via") so multi-line PDF titles are reconstructed correctly.
 - PaperParser Pipeline Job Log detail section now shows an **Authors** field.
 
-**Online reference search**
+**Online reference search (from v1.3.0 unreleased)**
 - Fixed URL encoding bug in `OnlineReferenceSearch._fetch_references`: `urllib.parse.quote(safe="")` encoded the colon in `arXiv:XXXX.XXXXX` to `%3A`. Semantic Scholar's API expects the literal colon; changed to `safe=":"`.
-- `OnlineReferenceSearch` now records HTTP / network errors in `self._last_errors` (accessible via `.last_errors` property). The SemanticScholar API Pipeline Job Log detail section surfaces these errors (e.g. HTTP 429 rate-limit) so users can tell why 0 papers were fetched.
+- `OnlineReferenceSearch` now records HTTP / network errors in `self._last_errors` (accessible via `.last_errors` property). The SemanticScholar API Pipeline Job Log detail section surfaces these errors so users can tell why 0 papers were fetched.
 
-**Reference corpus**
-- Removed placeholder "A custom reference paper" (`user-paper-001`) from `data/references.json`; it was a test stub that poisoned similarity search with a zero-score result for every evaluation run.
+**Reference corpus (from v1.3.0 unreleased)**
+- Removed placeholder "A custom reference paper" (`user-paper-001`) from `data/references.json`; it was a test stub that poisoned similarity search with a zero-score result.
+- Added "Conformal Prediction Under Covariate Shift" (Tibshirani et al., 2020; arXiv:1904.06019) to the bundled reference corpus.
 
 ---
 
@@ -134,7 +158,8 @@ The `release.yml` workflow will:
 ---
 
 <!-- Links are auto-maintained — update when a new version is tagged -->
-[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.3.0...v2.0.0
 [1.3.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.0.0...v1.1.0

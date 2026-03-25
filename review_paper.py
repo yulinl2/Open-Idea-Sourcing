@@ -700,9 +700,9 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             query[:300] + ("…" if len(query) > 300 else ""),
             "```",
             "",
-            f"**All matches ({len(similar)}):**",
-            "| Score | Title | Year |",
-            "|------:|-------|------|",
+            f"**All matches ({len(similar)}) — retrieval score = TF-IDF cosine similarity:**",
+            "| Retrieval score | Title | Year |",
+            "|----------------:|-------|------|",
             _sim_rows,
         ])
 
