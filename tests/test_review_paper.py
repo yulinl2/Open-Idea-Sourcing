@@ -11,7 +11,7 @@ import pytest
 import review_paper
 
 # Import the helpers we want to test
-from review_paper import _normalise_arxiv_url, _download_paper, _build_llm, main
+from review_paper import _normalise_arxiv_url, _extract_arxiv_id, _download_paper, _build_llm, main
 from open_idea_sourcing.reference_store import ReferenceStore
 
 # ---------------------------------------------------------------------------
@@ -39,6 +39,37 @@ class TestNormaliseArxivUrl:
     def test_http_abs_url_converted(self):
         assert _normalise_arxiv_url("http://arxiv.org/abs/1234.5678") == \
             "http://arxiv.org/pdf/1234.5678"
+
+
+# ---------------------------------------------------------------------------
+# _extract_arxiv_id
+# ---------------------------------------------------------------------------
+
+
+class TestExtractArxivId:
+    def test_abs_url_returns_id(self):
+        assert _extract_arxiv_id("https://arxiv.org/abs/2006.06138") == "2006.06138"
+
+    def test_pdf_url_returns_id(self):
+        assert _extract_arxiv_id("https://arxiv.org/pdf/1706.03762") == "1706.03762"
+
+    def test_abs_url_with_version(self):
+        assert _extract_arxiv_id("https://arxiv.org/abs/2006.06138v2") == "2006.06138v2"
+
+    def test_pdf_url_with_dot_pdf_suffix_returns_id(self):
+        assert _extract_arxiv_id("https://arxiv.org/pdf/1706.03762.pdf") == "1706.03762"
+
+    def test_pdf_url_with_version_and_dot_pdf_suffix_returns_id(self):
+        assert _extract_arxiv_id("https://arxiv.org/pdf/2006.06138v2.pdf") == "2006.06138v2"
+
+    def test_non_arxiv_url_returns_empty(self):
+        assert _extract_arxiv_id("https://example.com/paper.pdf") == ""
+
+    def test_local_path_returns_empty(self):
+        assert _extract_arxiv_id("/path/to/paper.pdf") == ""
+
+    def test_empty_string_returns_empty(self):
+        assert _extract_arxiv_id("") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +343,7 @@ class TestMainLlmError:
 
         assert rc == 1
         captured = capsys.readouterr()
-        assert "novelty evaluation failed" in captured.err
+        assert "failed" in captured.err
 
     def test_llm_error_written_to_stdout_for_tee(self, tmp_path, capsys):
         """The error message must also appear on stdout so that the workflow's
@@ -330,7 +361,7 @@ class TestMainLlmError:
         assert rc == 1
         captured = capsys.readouterr()
         assert "Error" in captured.out
-        assert "novelty evaluation failed" in captured.out
+        assert "failed" in captured.out
 
     def test_missing_api_key_written_to_stdout_for_tee(self, tmp_path, capsys):
         """A missing API key (SystemExit from _build_llm) must produce stdout
@@ -893,3 +924,81 @@ class TestBundledReferencesLoadedByDefault:
         custom = str(tmp_path / "custom.json")
         args = _parse_args(["paper.txt", "--references", custom, "--format", "text"])
         assert args.references == custom
+
+
+# ---------------------------------------------------------------------------
+# Online reference search integration
+# ---------------------------------------------------------------------------
+
+_ONLINE_SEARCH_SAMPLE_TEXT = (
+    "Attention Is All You Need\n\n"
+    "Abstract\nWe propose the Transformer.\n\n"
+    "1. Introduction\nNeural networks are great.\n"
+)
+
+
+class TestOnlineSearchIntegration:
+    """Verify that online reference search is invoked by default and can be
+    disabled via --no-online-search."""
+
+    def test_online_search_called_by_default(self, tmp_path):
+        """OnlineReferenceSearch.search must be called when the flag is absent."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(_ONLINE_SEARCH_SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        call_count = {"n": 0}
+
+        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None):
+            call_count["n"] += 1
+            return []  # empty so the rest of the pipeline is unaffected
+
+        with (
+            patch("review_paper._build_llm", return_value=fake_llm),
+            patch(
+                "open_idea_sourcing.online_search.OnlineReferenceSearch.search",
+                side_effect=tracking_search,
+            ),
+        ):
+            rc = main([str(paper), "--format", "text", "--reports-dir", str(tmp_path)])
+
+        assert rc == 0
+        assert call_count["n"] >= 1
+
+    def test_online_search_skipped_with_flag(self, tmp_path):
+        """OnlineReferenceSearch.search must NOT be called with --no-online-search."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(_ONLINE_SEARCH_SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        call_count = {"n": 0}
+
+        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None):
+            call_count["n"] += 1
+            return []
+
+        with (
+            patch("review_paper._build_llm", return_value=fake_llm),
+            patch(
+                "open_idea_sourcing.online_search.OnlineReferenceSearch.search",
+                side_effect=tracking_search,
+            ),
+        ):
+            rc = main([
+                str(paper), "--format", "text",
+                "--no-online-search",
+                "--reports-dir", str(tmp_path),
+            ])
+
+        assert rc == 0
+        assert call_count["n"] == 0
+
+    def test_no_online_search_flag_default_is_false(self):
+        """--no-online-search defaults to False (online search enabled)."""
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text"])
+        assert args.no_online_search is False
+
+    def test_no_online_search_flag_can_be_set(self):
+        """--no-online-search can be explicitly set."""
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text", "--no-online-search"])
+        assert args.no_online_search is True

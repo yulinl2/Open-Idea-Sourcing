@@ -1,29 +1,16 @@
 [
   {
     "id": "arxiv-1904.06019",
-    "title": "Measuring the Effects of Data Parallelism on Neural Network Training",
-    "abstract": "We study the relationship between training speed and the number of workers in synchronous data-parallel neural network training. We examine factors that affect the relationship between batch size and the number of gradient steps required to reach a target error. We find that all neural networks in our study contain a regime where batch size can be scaled without degrading model quality, but this 'perfect scaling' regime ends at a critical batch size. We also find that beyond the critical batch size, larger batches are less compute efficient. We characterize the boundaries of perfect scaling as a function of dataset, model architecture, and optimizer, shedding light on the factors that limit the benefit of additional parallelism.",
+    "title": "Conformal Prediction Under Covariate Shift",
+    "abstract": "We extend conformal prediction to the setting where the test and training data are drawn from different distributions. Standard conformal prediction requires exchangeability, and so it breaks down in the presence of covariate shift. Our approach uses a weighted version of the conformal score that corrects for the distributional shift, yielding valid marginal coverage guarantees under covariate shift.",
     "authors": [
-      "Christopher J. Shallue",
-      "Jaehoon Lee",
-      "Joseph Antognini",
-      "Jascha Sohl-Dickstein",
-      "Roy Frostig",
-      "George E. Dahl"
+      "Ryan J. Tibshirani",
+      "Rina Foygel Barber",
+      "Emmanuel J. Candes",
+      "Aaditya Ramdas"
     ],
-    "year": 2019,
-    "venue": "JMLR",
-    "url": "https://arxiv.org/abs/1904.06019"
-  },
-  {
-    "id": "user-paper-001",
-    "title": "A custom reference paper",
-    "abstract": "Custom abstract content.",
-    "authors": [
-      "Test Author"
-    ],
-    "year": 2022,
+    "year": 2020,
     "venue": "NeurIPS",
-    "url": "https://example.com/user-paper-001"
+    "url": "https://arxiv.org/abs/1904.06019"
   }
 ]

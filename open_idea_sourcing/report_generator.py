@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .novelty_evaluator import (
@@ -61,6 +62,16 @@ blockquote { border-left: 4px solid #aaa; margin: 0; padding: 6px 16px; color: #
 code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
 pre code { display: block; padding: 10px; }
 """
+
+
+def _escape_table_cell(text: str) -> str:
+    """Sanitise *text* for embedding in a Markdown table cell.
+
+    Replaces literal newlines with a space (multi-line values break table
+    rows) and escapes pipe characters so they are not interpreted as column
+    delimiters.
+    """
+    return text.replace('\n', ' ').replace('|', r'\|')
 
 
 @lru_cache(maxsize=None)
@@ -328,19 +339,6 @@ class ReportGenerator:
             "",
         ]
 
-        # --- Paper metainfo block ---
-        input_source = r.metadata.input_source if r.metadata else ""
-        if input_source:
-            # If the source looks like a URL, turn it into a clickable link.
-            if input_source.startswith("http://") or input_source.startswith("https://"):
-                source_display = f"[{input_source}]({input_source})"
-            else:
-                source_display = f"`{input_source}`"
-            lines += [
-                f"> **Source:** {source_display}",
-                "",
-            ]
-
         if r.metadata:
             m = r.metadata
             lines += ["## Run Metadata", ""]
@@ -438,14 +436,37 @@ class ReportGenerator:
                 _build_gantt(r.metadata, r.paper_title),
                 "",
             ]
-            # Group jobs by agent; each new agent gets a bold section header.
-            # None is used as the sentinel for "no group opened yet" so that the
-            # first iteration always opens a header (even when first agent is "").
+            # Group jobs by agent; each new agent gets a bold section header +
+            # its own table.  After the table, render collapsible detail sections
+            # for any job that has extended content.
             current_agent: str | None = None
+            current_group: list[tuple[int, object]] = []
+
+            def _flush_group(group: list, lines: list) -> None:
+                """Render one agent-group's table then its detail sections."""
+                for idx, job in group:
+                    lines.append(
+                        f"| {idx} | {job.name} "
+                        f"| {job.offset_s:.2f} | {job.duration_s:.2f} "
+                        f"| {job.input_summary} | {job.output_summary} |"
+                    )
+                # Detail sections (collapsible) rendered after the table.
+                for idx, job in group:
+                    if job.detail:
+                        lines += [
+                            "",
+                            "<details>",
+                            f"<summary>📋 {job.name} — details</summary>",
+                            "",
+                            job.detail,
+                            "",
+                            "</details>",
+                        ]
+
             for i, job in enumerate(r.metadata.jobs, 1):
                 if job.agent != current_agent:
-                    # Close the previous group's table (if any) and open a new one.
                     if current_agent is not None:
+                        _flush_group(current_group, lines)
                         lines.append("")
                     lines += [
                         f"**{job.agent}**",
@@ -454,11 +475,10 @@ class ReportGenerator:
                         "|---|-----|----------:|-------------:|-------|--------|",
                     ]
                     current_agent = job.agent
-                lines.append(
-                    f"| {i} | {job.name} "
-                    f"| {job.offset_s:.2f} | {job.duration_s:.2f} "
-                    f"| {job.input_summary} | {job.output_summary} |"
-                )
+                    current_group = []
+                current_group.append((i, job))
+            if current_group:
+                _flush_group(current_group, lines)
             lines.append("")
 
         if r.idea_decomposition:
@@ -560,37 +580,60 @@ class ReportGenerator:
                     lines += [
                         f"**[{res.score:.2f}] {title_link}{year_str}**",
                         "",
-                        "<details>",
-                        "<summary>Comparative annotation</summary>",
-                        "",
                     ]
                     ann = annotations_by_id.get(p.id)
                     if ann and (ann.overlap or ann.differences or ann.derivation):
+                        # Render as a compact two-column comparison table so each
+                        # dimension is scannable side-by-side (apple-to-apple).
+                        lines += [
+                            "| Dimension | Notes |",
+                            "|-----------|-------|",
+                        ]
                         if ann.overlap:
-                            lines += [f"**Overlap:** {ann.overlap}", ""]
+                            lines.append(
+                                f"| **Overlap** | {_escape_table_cell(ann.overlap)} |"
+                            )
                         if ann.differences:
-                            lines += [f"**Differences:** {ann.differences}", ""]
+                            lines.append(
+                                f"| **Differences** | {_escape_table_cell(ann.differences)} |"
+                            )
                         if ann.derivation:
-                            lines += [f"**Derivation:** {ann.derivation}", ""]
+                            lines.append(
+                                f"| **Derivation** | {_escape_table_cell(ann.derivation)} |"
+                            )
+                        lines.append("")
                     else:
-                        lines += ["No annotation available.", ""]
-                    lines += ["</details>", ""]
+                        lines += ["*No annotation available.*", ""]
 
         if r.domain_references:
             lines += [
                 "## Main Domain References",
                 "",
-                "| Title | Authors | Year | Relevance |",
-                "|-------|---------|------|-----------|",
             ]
-            for ref in r.domain_references:
-                title = ref.title.replace("|", "\\|")
-                authors = ref.authors.replace("|", "\\|")
-                relevance = ref.relevance.replace("|", "\\|")
-                lines.append(
-                    f"| {title} | {authors} | {ref.year or '—'} | {relevance} |"
+            for i, ref in enumerate(r.domain_references, 1):
+                # Build a clickable Semantic Scholar search link from the title.
+                _ss_url = (
+                    f"https://www.semanticscholar.org/search?q={quote_plus(ref.title)}"
+                    "&sort=Relevance"
                 )
-            lines.append("")
+                year_str = f", {ref.year}" if ref.year else ""
+                authors_str = f"*{ref.authors}*" if ref.authors else ""
+                title_clean = ref.title.strip('"').strip("'")
+                lines += [
+                    f"{i}. **[{title_clean}]({_ss_url})**{year_str}",
+                ]
+                if authors_str:
+                    lines.append(f"   {authors_str}")
+                if ref.relevance:
+                    lines += [
+                        "   <details>",
+                        "   <summary>Why this matters</summary>",
+                        "",
+                        f"   {ref.relevance}",
+                        "",
+                        "   </details>",
+                    ]
+                lines.append("")
 
         return "\n".join(lines)
 

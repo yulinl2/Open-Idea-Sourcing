@@ -1040,20 +1040,24 @@ class TestPaperMetainfoBlock:
         self.gen = ReportGenerator()
 
     def test_markdown_shows_source_url_as_link(self):
+        """Source URL is no longer shown in a blockquote — it lives in the
+        Run Metadata Configuration table under the 'Input' field."""
         report = _sample_report()
         report.metadata = _sample_metadata()
         report.metadata.input_source = "https://arxiv.org/abs/1234.5678"
         out = self.gen.generate(report, fmt="markdown")
-        assert "**Source:**" in out
-        assert "[https://arxiv.org/abs/1234.5678]" in out
+        # Source is shown in the Configuration table, not as a blockquote.
+        assert "**Source:**" not in out
+        assert "https://arxiv.org/abs/1234.5678" in out
 
     def test_markdown_shows_file_source_as_code(self):
+        """File source is surfaced in the Configuration table, not a blockquote."""
         report = _sample_report()
         report.metadata = _sample_metadata()
         report.metadata.input_source = "my_paper.pdf"
         out = self.gen.generate(report, fmt="markdown")
-        assert "**Source:**" in out
-        assert "`my_paper.pdf`" in out
+        assert "**Source:**" not in out
+        assert "my_paper.pdf" in out
 
     def test_markdown_no_source_block_when_no_metadata(self):
         report = _sample_report()
@@ -1207,13 +1211,14 @@ class TestSimilarPaperAnnotationsInMarkdown:
         out = self.gen.generate(self.report, fmt="markdown")
         assert "### Reference Annotations" in out
 
-    def test_markdown_annotations_wrapped_in_details(self):
+    def test_markdown_annotations_use_comparison_table(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        # Annotation blocks are collapsible
+        # Annotations now render as inline comparison tables, not <details> blocks.
         ann_pos = out.index("### Reference Annotations")
         section = out[ann_pos:]
-        assert "<details>" in section
-        assert "Comparative annotation" in section
+        assert "| Dimension | Notes |" in section
+        assert "**Overlap**" in section
+        assert "**Differences**" in section
 
     def test_markdown_shows_overlap(self):
         out = self.gen.generate(self.report, fmt="markdown")

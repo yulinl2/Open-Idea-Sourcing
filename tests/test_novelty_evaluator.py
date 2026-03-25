@@ -179,6 +179,63 @@ class TestExtractField:
         expl = _extract_field(text, "EXPLANATION")
         assert "REFERENCES" not in expl
 
+    def test_handles_markdown_bold_wrapped_fields(self):
+        """Fields wrapped in ``**...**`` should still be parsed correctly.
+
+        LLMs sometimes return ``**FIELD:** value`` or ``**FIELD:**\\nvalue``
+        instead of the plain ``FIELD: value`` format the prompt requests.
+        """
+        text = (
+            "**VERDICT:** HIGH\n"
+            "**EXPLANATION:** The paper is novel.\n"
+            "**REFERENCES:** none"
+        )
+        assert _extract_field(text, "VERDICT") == "HIGH"
+        assert "novel" in _extract_field(text, "EXPLANATION")
+
+    def test_bold_wrapped_field_does_not_bleed_into_next(self):
+        """A bold-wrapped field terminator must stop the preceding field."""
+        text = (
+            "**VERDICT:** LOW\n"
+            "**EXPLANATION:** Fine.\n"
+            "**REFERENCES:** p1"
+        )
+        expl = _extract_field(text, "EXPLANATION")
+        assert "REFERENCES" not in expl
+
+    def test_bold_wrapped_multiline_list_field(self):
+        """Bold-wrapped label with a numbered list value should parse fully."""
+        text = (
+            "**CORE_CONCEPT:** Central idea here.\n"
+            "**SUB_IDEAS:**\n"
+            "1. First sub-idea\n"
+            "2. Second sub-idea\n"
+            "**ASSUMPTIONS:**\n"
+            "1. Assumes linearity"
+        )
+        sub_ideas_raw = _extract_field(text, "SUB_IDEAS")
+        from open_idea_sourcing.novelty_evaluator import _parse_numbered_list
+        items = _parse_numbered_list(sub_ideas_raw)
+        assert items == ["First sub-idea", "Second sub-idea"]
+
+    def test_full_decomp_with_bold_wrapped_fields(self):
+        """_parse_decomposition_response should correctly parse bold-wrapped LLM output."""
+        text = (
+            "**CORE_CONCEPT:** A conformal inference approach for ITE estimation.\n"
+            "**SUB_IDEAS:**\n"
+            "1. Coverage guarantees in finite samples\n"
+            "2. Doubly robust property\n"
+            "**ASSUMPTIONS:**\n"
+            "1. Potential outcome framework\n"
+            "**LIMITATIONS:**\n"
+            "1. Requires accurate propensity estimation"
+        )
+        d = _parse_decomposition_response(text)
+        assert "conformal" in d.core_concept.lower()
+        assert len(d.sub_ideas) == 2
+        assert len(d.assumptions) == 1
+        assert len(d.limitations) == 1
+
 
 class TestParseDimensionResponse:
     def test_parses_all_fields(self):
@@ -318,12 +375,12 @@ class TestNoveltyEvaluator:
         assert report.overall_verdict == "NOT_NOVEL"
 
     def test_format_references_empty(self):
-        text = NoveltyEvaluator._format_references([])
+        text = NoveltyEvaluator.format_references([])
         assert "No reference papers provided" in text
 
     def test_format_references_shows_title(self):
         similar = [SimilarityResult(paper=SAMPLE_REFERENCE, score=0.9)]
-        text = NoveltyEvaluator._format_references(similar)
+        text = NoveltyEvaluator.format_references(similar)
         assert "Attention Is All You Need" in text
         assert "0.90" in text
 
