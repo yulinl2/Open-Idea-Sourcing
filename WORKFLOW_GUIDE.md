@@ -191,7 +191,7 @@ make test-quiet    # summary only
 Tests stub the LLM and mock all HTTP calls — no API key or internet required.
 
 ```
-417 passed in 2.4s
+429 passed in 2.4s
 ```
 
 ---
