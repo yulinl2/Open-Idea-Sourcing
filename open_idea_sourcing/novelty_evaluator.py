@@ -11,6 +11,12 @@ This module orchestrates three analysis passes using an LLM:
 Each pass is implemented as a prompt sent to a *callable* LLM backend so
 that the class can be used with any provider (OpenAI, local models, stubs)
 and is straightforward to test without live API calls.
+
+v2.0.0 adds deep concept-tree decomposition: instead of a flat list of
+sub-ideas, assumptions, and limitations, the LLM produces a *hierarchical*
+``ConceptNode`` tree that makes the logical relationships between ideas
+explicit.  The tree is rendered as ASCII art in the report (à la the
+``tree`` command) so that the full structure is immediately scannable.
 """
 
 from __future__ import annotations
@@ -119,6 +125,26 @@ class NoveltyDimension:
 
 
 @dataclass
+class ConceptNode:
+    """A node in a hierarchical concept tree.
+
+    The tree captures the logical structure of a paper's ideas at multiple
+    levels of abstraction — problem, method, evidence, implementation, etc.
+
+    Attributes
+    ----------
+    label:
+        Human-readable label for this concept node, typically in the form
+        ``"Category: description"`` (e.g. ``"Problem: ITE uncertainty"``).
+    children:
+        Ordered child nodes representing sub-concepts or supporting details.
+    """
+
+    label: str
+    children: list["ConceptNode"] = field(default_factory=list)
+
+
+@dataclass
 class IdeaDecomposition:
     """Structured decomposition of the paper's core idea.
 
@@ -127,17 +153,24 @@ class IdeaDecomposition:
     core_concept:
         One-sentence description of the central contribution.
     sub_ideas:
-        Key component ideas or sub-contributions.
+        Key component ideas or sub-contributions (legacy flat list; populated
+        when the LLM response does not include a full concept tree).
     assumptions:
-        Underlying assumptions the work makes.
+        Underlying assumptions the work makes (legacy flat list).
     limitations:
-        Acknowledged or implicit limitations of the approach.
+        Acknowledged or implicit limitations of the approach (legacy flat list).
+    concept_tree:
+        Optional hierarchical concept tree that captures the full logical
+        structure of the paper's ideas (Problem → Method → Evidence, etc.).
+        When present this is the primary decomposition artefact; the flat
+        lists above serve as a compact fallback.
     """
 
     core_concept: str
     sub_ideas: list[str] = field(default_factory=list)
     assumptions: list[str] = field(default_factory=list)
     limitations: list[str] = field(default_factory=list)
+    concept_tree: ConceptNode | None = None
 
 
 @dataclass
@@ -660,17 +693,49 @@ SUMMARY: two to four sentences explaining the overall conclusion and the
 main reasons behind it.
 """
 
-_IDEA_DECOMPOSITION_PROMPT = """You are an expert research analyst.
+_IDEA_DECOMPOSITION_PROMPT = """You are an expert research analyst specialising in deep technical dissection of academic papers.
 
-TASK: Decompose the following paper's core idea into its fundamental components.
+TASK: Produce a deep, hierarchical concept tree that captures the full logical structure of the paper — the scientific problem it addresses, the method it proposes, how the method works at each level of detail, and the evidence it provides.  This tree is the primary artefact used by all downstream analysis stages, so depth and precision matter more than brevity.
 
 SUBMITTED PAPER:
 {paper_content}
 
 INSTRUCTIONS:
-Respond with the following structured fields.
+1. Start with a one-sentence CORE_CONCEPT field.
+2. Then emit a CONCEPT_TREE field.  Use 2-space indentation to show hierarchy.
+   The root line must start with "Root:" followed by the paper's title or core concept.
+   Each child line must start with a category tag followed by a colon and a concise description.
+   Suggested top-level categories (adapt as needed):
+     Problem:    — the scientific problem, gap, or pain point being addressed
+     Method:     — the proposed approach or algorithm
+     Theory:     — theoretical contributions, proofs, guarantees
+     Evidence:   — empirical/experimental support
+     Limitation: — acknowledged constraints or open questions
+   Sub-levels should break each category into finer components, sub-algorithms,
+   key assumptions, implementation steps, hyper-parameters, datasets, metrics, etc.
+   Aim for 3–5 levels of nesting where the paper provides enough detail.
+3. Also provide flat SUB_IDEAS, ASSUMPTIONS, and LIMITATIONS lists as fallback.
 
-CORE_CONCEPT: One sentence describing the central contribution or idea.
+EXAMPLE OUTPUT FORMAT:
+CORE_CONCEPT: <one sentence describing the central contribution>
+
+CONCEPT_TREE:
+Root: <paper title or core concept>
+  Problem: <top-level problem statement>
+    Gap: <specific gap in existing work>
+    Goal: <what the method achieves>
+  Method: <high-level method name>
+    Component 1: <description>
+      Sub-component: <finer detail>
+    Component 2: <description>
+    Implementation: <key implementation note>
+  Theory: <theoretical result>
+    Assumption: <key assumption>
+    Guarantee: <what is proven>
+  Evidence: <overall empirical story>
+    Benchmark: <dataset or benchmark>
+    Result: <key quantitative result>
+  Limitation: <main limitation>
 
 SUB_IDEAS:
 1. <first key component or sub-contribution>
@@ -707,17 +772,14 @@ REFERENCES:
 2. TITLE: <paper title> | AUTHORS: <author(s)> | YEAR: <year> | RELEVANCE: <why this reference matters>
 """
 
-_SIMILAR_PAPERS_ANNOTATION_PROMPT = """You are an expert research analyst.
+_SIMILAR_PAPERS_ANNOTATION_PROMPT = """You are an expert research analyst with deep knowledge of the scientific domain.
 
-TASK: For each similar reference paper listed below, write a concise comparative
-annotation against the submitted paper. Describe shared aspects, key differences,
-and any elements in the submitted paper that appear derived from or inspired by
-that reference. Every claim should be grounded in the paper content provided.
+TASK: For each reference paper listed below, write a *methodological* comparative annotation against the submitted paper.  Your analysis must go beyond surface-level textual similarity and identify genuine methodological connections — shared algorithms, equivalent mathematical constructs, inherited problem formulations, or reused proofs — even when the papers use different terminology, notation, or application domains.
 
 SUBMITTED PAPER:
 {paper_content}
 
-SIMILAR REFERENCE PAPERS (ranked by TF-IDF cosine similarity score):
+CANDIDATE REFERENCE PAPERS (retrieved by keyword matching — methodological relevance may be higher or lower than retrieval order suggests):
 {reference_papers}
 
 INSTRUCTIONS:
@@ -725,9 +787,9 @@ Respond with one block per reference paper, in the order listed.
 Use the paper ID exactly as shown in brackets.
 
 PAPER [<id>]:
-OVERLAP: <1–2 sentences on shared methods, concepts, or results between the submitted paper and this reference>
-DIFFERENCES: <1–2 sentences on what distinguishes the submitted paper from this reference>
-DERIVATION: <1 sentence on what in the submitted paper appears derived from or inspired by this reference, or "None identified">
+OVERLAP: <1–2 sentences on shared methods, mathematical constructs, or problem formulations between the submitted paper and this reference — look past terminology differences>
+DIFFERENCES: <1–2 sentences on what genuinely distinguishes the submitted paper from this reference in terms of method, scope, or theoretical contribution>
+DERIVATION: <1 sentence on what in the submitted paper appears derived from or directly enabled by this reference, or "None identified">
 """
 
 
@@ -802,22 +864,101 @@ def _parse_numbered_list(text: str) -> list[str]:
     return items
 
 
+def _parse_concept_tree_text(text: str) -> "ConceptNode | None":
+    """Parse an indented text block into a :class:`ConceptNode` tree.
+
+    Expected input format (2-space indentation; first line is the root)::
+
+        Root: Core concept of the paper
+          Problem: The scientific problem being addressed
+            Gap: Specific gap in existing work
+            Goal: What the method achieves
+          Method: High-level method name
+            Component 1: description
+              Sub-component: finer detail
+            Implementation: key implementation note
+          Evidence: Overall empirical story
+            Benchmark: dataset or benchmark
+            Result: key quantitative result
+
+    The root line may be prefixed with ``Root:`` (case-insensitive) — if so
+    the prefix is stripped and the remainder is used as the root label.
+
+    The indent unit is auto-detected from the first indented line.  When no
+    indented lines are present, the single root line becomes a leaf node.
+
+    Returns ``None`` when *text* is empty or contains only blank lines.
+    """
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return None
+
+    # Auto-detect indent unit from the first indented line.
+    indent_unit: int | None = None
+    for line in lines[1:]:
+        stripped = line.lstrip(" \t")
+        indent = len(line) - len(stripped)
+        if indent > 0:
+            indent_unit = indent
+            break
+    if indent_unit is None:
+        indent_unit = 2  # default when there is only a single root line
+
+    def _clean_label(raw: str) -> str:
+        """Strip leading list markers and ``Root:`` prefix from a label."""
+        raw = raw.strip()
+        # Strip leading "- " or "* " bullet markers
+        raw = _re.sub(r"^[-*]\s+", "", raw)
+        # Strip "Root:" prefix (case-insensitive)
+        raw = _re.sub(r"(?i)^root:\s*", "", raw)
+        return raw.strip()
+
+    root_label = _clean_label(lines[0])
+    root = ConceptNode(label=root_label)
+
+    # Stack stores (indent_level, node) pairs.
+    stack: list[tuple[int, ConceptNode]] = [(0, root)]
+
+    for line in lines[1:]:
+        stripped = line.lstrip(" \t")
+        if not stripped:
+            continue
+        indent = len(line) - len(stripped)
+        level = max(1, (indent // indent_unit))
+
+        label = _clean_label(stripped)
+        node = ConceptNode(label=label)
+
+        # Pop the stack until we find the correct parent level.
+        while len(stack) > 1 and stack[-1][0] >= level:
+            stack.pop()
+
+        stack[-1][1].children.append(node)
+        stack.append((level, node))
+
+    return root
+
+
 def _parse_decomposition_response(text: str) -> "IdeaDecomposition":
     """Extract an :class:`IdeaDecomposition` from an LLM response.
 
     Falls back gracefully: if ``CORE_CONCEPT`` is missing the full
     response text is used; if a list section is missing it defaults to
-    an empty list.
+    an empty list.  When a ``CONCEPT_TREE`` field is present it is parsed
+    into a :class:`ConceptNode` tree and attached to the result.
     """
     core_concept = _extract_field(text, "CORE_CONCEPT", default=text.strip())
     sub_ideas_raw = _extract_field(text, "SUB_IDEAS", default="")
     assumptions_raw = _extract_field(text, "ASSUMPTIONS", default="")
     limitations_raw = _extract_field(text, "LIMITATIONS", default="")
+    concept_tree_raw = _extract_field(text, "CONCEPT_TREE", default="")
+    concept_tree = _parse_concept_tree_text(concept_tree_raw) if concept_tree_raw.strip() else None
     return IdeaDecomposition(
         core_concept=core_concept,
         sub_ideas=_parse_numbered_list(sub_ideas_raw),
         assumptions=_parse_numbered_list(assumptions_raw),
         limitations=_parse_numbered_list(limitations_raw),
+        concept_tree=concept_tree,
     )
 
 

@@ -25,6 +25,7 @@ from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .novelty_evaluator import (
+    ConceptNode,
     IdeaDecomposition,
     DomainReference,
     SimilarityAnnotation,
@@ -490,32 +491,36 @@ class ReportGenerator:
                 f"**Core concept:** {d.core_concept}",
                 "",
             ]
-            if d.sub_ideas:
-                lines.append("**Sub-ideas:**")
-                lines.append("")
-                for item in d.sub_ideas:
-                    lines.append(f"- {item}")
-                lines.append("")
-            if d.assumptions:
-                lines.append("**Assumptions:**")
-                lines.append("")
-                for item in d.assumptions:
-                    lines.append(f"- {item}")
-                lines.append("")
-            if d.limitations:
-                lines.append("**Limitations:**")
-                lines.append("")
-                for item in d.limitations:
-                    lines.append(f"- {item}")
-                lines.append("")
-            mindmap_diagram = _build_mindmap(d, r.paper_title)
-            if mindmap_diagram:
+            # Prefer the hierarchical concept tree when available.
+            if d.concept_tree is not None:
                 lines += [
-                    "### Idea Mind Map",
+                    "### Concept Tree",
                     "",
-                    mindmap_diagram,
+                    "```",
+                    _render_concept_tree_ascii(d.concept_tree),
+                    "```",
                     "",
                 ]
+            else:
+                # Fall back to flat lists when no tree was produced.
+                if d.sub_ideas:
+                    lines.append("**Sub-ideas:**")
+                    lines.append("")
+                    for item in d.sub_ideas:
+                        lines.append(f"- {item}")
+                    lines.append("")
+                if d.assumptions:
+                    lines.append("**Assumptions:**")
+                    lines.append("")
+                    for item in d.assumptions:
+                        lines.append(f"- {item}")
+                    lines.append("")
+                if d.limitations:
+                    lines.append("**Limitations:**")
+                    lines.append("")
+                    for item in d.limitations:
+                        lines.append(f"- {item}")
+                    lines.append("")
 
         lines += [
             f"**Overall verdict:** {ov} **{r.overall_verdict}** "
@@ -551,12 +556,14 @@ class ReportGenerator:
             lines += [
                 "## Most Similar Reference Papers",
                 "",
-                "> **Scoring method:** TF-IDF cosine similarity (0–1). "
-                "Higher scores indicate greater textual overlap between "
-                "the paper's key content and the reference.",
+                "> **Retrieval method:** TF-IDF cosine similarity (0–1) used to "
+                "retrieve candidate references — a higher score means greater "
+                "keyword overlap.  See the **Methodological Analysis** below for "
+                "an LLM-based assessment of genuine methodological connections, "
+                "which may differ from the retrieval order.",
                 "",
-                "| Score | Title | Year |",
-                "|-------|-------|------|",
+                "| Retrieval score | Title | Year |",
+                "|-----------------|-------|------|",
             ]
             for res in r.similar_papers:
                 p = res.paper
@@ -571,7 +578,7 @@ class ReportGenerator:
                 annotations_by_id = {
                     a.paper_id: a for a in r.similar_paper_annotations
                 }
-                lines += ["### Reference Annotations", ""]
+                lines += ["### Methodological Analysis", ""]
                 for res in r.similar_papers:
                     p = res.paper
                     year_str = f" ({p.year})" if p.year else ""
@@ -579,7 +586,7 @@ class ReportGenerator:
                         f"[{p.title}]({p.url})" if p.url else p.title
                     )
                     lines += [
-                        f"**[{res.score:.2f}] {title_link}{year_str}**",
+                        f"**{title_link}{year_str}**",
                         "",
                     ]
                     ann = annotations_by_id.get(p.id)
@@ -592,7 +599,7 @@ class ReportGenerator:
                         ]
                         if ann.overlap:
                             lines.append(
-                                f"| **Overlap** | {_escape_table_cell(ann.overlap)} |"
+                                f"| **Methodological overlap** | {_escape_table_cell(ann.overlap)} |"
                             )
                         if ann.differences:
                             lines.append(
@@ -763,64 +770,39 @@ def _build_gantt(metadata: RunMetadata, paper_title: str = "") -> str:
 
 
 # ---------------------------------------------------------------------------
-# Idea mind map (Mermaid)
+# Concept tree — ASCII rendering
 # ---------------------------------------------------------------------------
 
-def _build_mindmap(decomp: IdeaDecomposition, paper_title: str = "") -> str:
-    """Return a Mermaid ``mindmap`` diagram for *decomp*.
+def _render_concept_tree_ascii(root: "ConceptNode") -> str:
+    """Render a :class:`ConceptNode` tree as an ASCII tree string.
 
-    The mind map places the core concept at the root and branches out to
-    sub-ideas, assumptions, and limitations.
+    Uses the classic ``tree``-command style with ``├──``, ``└──``, and ``│``
+    prefix characters so the hierarchy is immediately scannable::
 
-    Returns an empty string when there are no branches so callers can
-    omit the section entirely rather than rendering a bare root circle.
+        Root concept
+        ├── Problem: description
+        │   ├── Gap: specific gap
+        │   └── Metric: target metric
+        ├── Method: high-level approach
+        │   ├── Component 1: detail
+        │   └── Implementation: note
+        └── Evidence: overall story
+            ├── Empirical: result
+            └── Theoretical: guarantee
+
+    The root node label is printed on the first line with no prefix.
     """
-    has_branches = bool(
-        decomp.sub_ideas or decomp.assumptions or decomp.limitations
-    )
-    if not has_branches:
-        return ""
+    output_lines: list[str] = [root.label]
 
-    root_label = paper_title or decomp.core_concept
+    def _recurse(node: "ConceptNode", prefix: str) -> None:
+        children = node.children
+        for i, child in enumerate(children):
+            is_last = i == len(children) - 1
+            connector = "└── " if is_last else "├── "
+            output_lines.append(prefix + connector + child.label)
+            extension = "    " if is_last else "│   "
+            _recurse(child, prefix + extension)
 
-    _MAX_NODE_LEN = 60  # chars; longer text breaks GitHub's Mermaid renderer
+    _recurse(root, "")
+    return "\n".join(output_lines)
 
-    def _safe(text: str) -> str:
-        """Sanitise text for a Mermaid mindmap node label.
-
-        * Removes shape-control characters ``()[]{}"#`` that Mermaid
-          interprets as node-shape markers.
-        * Replaces backticks with single quotes.
-        * Truncates long items with an ellipsis so nodes stay readable;
-          LLM-generated items are often full sentences that would cause
-          the renderer to silently drop all branches.
-        """
-        _remove_table = str.maketrans("", "", '()[]{}\"#')
-        text = text.translate(_remove_table).replace("`", "'")
-        if len(text) > _MAX_NODE_LEN:
-            text = text[:_MAX_NODE_LEN].rstrip() + "…"
-        return text
-
-    lines = [
-        "```mermaid",
-        "mindmap",
-        f"  root(({_safe(root_label)}))",
-    ]
-
-    if decomp.sub_ideas:
-        lines.append("    Sub-ideas")
-        for item in decomp.sub_ideas:
-            lines.append(f"      {_safe(item)}")
-
-    if decomp.assumptions:
-        lines.append("    Assumptions")
-        for item in decomp.assumptions:
-            lines.append(f"      {_safe(item)}")
-
-    if decomp.limitations:
-        lines.append("    Limitations")
-        for item in decomp.limitations:
-            lines.append(f"      {_safe(item)}")
-
-    lines.append("```")
-    return "\n".join(lines)

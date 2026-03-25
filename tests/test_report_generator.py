@@ -112,7 +112,7 @@ class TestReportGeneratorMarkdown:
 
     def test_markdown_contains_table_for_similar_papers(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        assert "| Score |" in out
+        assert "| Retrieval score |" in out
         assert "0.92" in out
 
     def test_markdown_references_formatted(self):
@@ -123,7 +123,7 @@ class TestReportGeneratorMarkdown:
         report = _sample_report()
         report.similar_papers = []
         out = self.gen.generate(report, fmt="markdown")
-        assert "| Score |" not in out
+        assert "| Retrieval score |" not in out
 
 
 class TestReportGeneratorJSON:
@@ -733,8 +733,8 @@ class TestPipelineJobsInJSON:
 # Idea Decomposition rendering
 # ---------------------------------------------------------------------------
 
-from open_idea_sourcing.novelty_evaluator import IdeaDecomposition, DomainReference
-from open_idea_sourcing.report_generator import _build_mindmap
+from open_idea_sourcing.novelty_evaluator import IdeaDecomposition, DomainReference, ConceptNode
+from open_idea_sourcing.report_generator import _render_concept_tree_ascii
 
 
 def _sample_decomposition() -> IdeaDecomposition:
@@ -840,70 +840,72 @@ class TestIdeaDecompositionInMarkdown:
         assert out.index("## Idea Decomposition") < out.index("**Overall verdict:**")
 
 
-class TestMindMapInMarkdown:
+class TestConceptTreeInMarkdown:
     def setup_method(self):
         self.gen = ReportGenerator()
         self.report = _sample_report_enriched()
 
-    def test_markdown_contains_mindmap_section(self):
-        out = self.gen.generate(self.report, fmt="markdown")
-        assert "### Idea Mind Map" in out
-
-    def test_markdown_contains_mermaid_mindmap_block(self):
-        out = self.gen.generate(self.report, fmt="markdown")
-        assert "mindmap" in out
-
-    def test_markdown_mindmap_has_root_node(self):
-        out = self.gen.generate(self.report, fmt="markdown")
-        assert "root((" in out
-
-    def test_markdown_mindmap_no_section_when_no_decomposition(self):
-        report = _sample_report()
-        out = self.gen.generate(report, fmt="markdown")
-        assert "mindmap" not in out
-
-    def test_build_mindmap_contains_sub_ideas(self):
-        d = _sample_decomposition()
-        diagram = _build_mindmap(d, "Test Paper")
-        assert "Dynamic attention masking" in diagram
-        assert "Standard Transformer integration" in diagram
-
-    def test_build_mindmap_contains_assumptions(self):
-        d = _sample_decomposition()
-        diagram = _build_mindmap(d, "Test Paper")
-        assert "Uniform tokenisation" in diagram
-
-    def test_build_mindmap_contains_limitations(self):
-        d = _sample_decomposition()
-        diagram = _build_mindmap(d, "Test Paper")
-        assert "NLP benchmarks" in diagram
-
-    def test_build_mindmap_uses_paper_title_as_root(self):
-        d = _sample_decomposition()
-        diagram = _build_mindmap(d, "My Paper Title")
-        assert "My Paper Title" in diagram
-
-    def test_build_mindmap_falls_back_to_core_concept_when_no_title(self):
-        d = _sample_decomposition()
-        diagram = _build_mindmap(d)
-        assert "dynamic masking" in diagram.lower()
-
-    def test_build_mindmap_escapes_parens(self):
-        import re
-        d = IdeaDecomposition(
-            core_concept="Method (improved)",
-            sub_ideas=["Component (A)"],
+    def _report_with_tree(self) -> "NoveltyReport":
+        report = _sample_report_enriched()
+        root = ConceptNode(
+            label="A dynamic masking extension of Transformer attention.",
+            children=[
+                ConceptNode(label="Problem: Attention lacks dynamic context", children=[
+                    ConceptNode(label="Gap: Static masks miss position-aware patterns"),
+                ]),
+                ConceptNode(label="Method: Dynamic masking layer", children=[
+                    ConceptNode(label="Component: Learned mask predictor"),
+                    ConceptNode(label="Implementation: Integrated into standard Transformer blocks"),
+                ]),
+                ConceptNode(label="Evidence: NLP benchmark evaluation", children=[
+                    ConceptNode(label="Limitation: Only evaluated on NLP benchmarks only"),
+                ]),
+            ],
         )
-        diagram = _build_mindmap(d, "Paper (v2)")
-        # Strip the mandatory root((...)) wrapper, then verify no raw parens remain
-        # in the content lines (which would break Mermaid node syntax).
-        content_lines = [
-            line for line in diagram.splitlines()
-            if "root((" not in line
-        ]
-        for line in content_lines:
-            assert "(" not in line, f"Unexpected '(' in line: {line!r}"
-            assert ")" not in line, f"Unexpected ')' in line: {line!r}"
+        report.idea_decomposition.concept_tree = root
+        return report
+
+    def test_markdown_contains_concept_tree_section_when_tree_present(self):
+        report = self._report_with_tree()
+        out = self.gen.generate(report, fmt="markdown")
+        assert "### Concept Tree" in out
+
+    def test_markdown_concept_tree_rendered_as_code_block(self):
+        report = self._report_with_tree()
+        out = self.gen.generate(report, fmt="markdown")
+        # The ASCII tree is wrapped in a fenced code block.
+        assert "```" in out
+        assert "├──" in out or "└──" in out
+
+    def test_markdown_concept_tree_contains_root_label(self):
+        report = self._report_with_tree()
+        out = self.gen.generate(report, fmt="markdown")
+        assert "dynamic masking" in out.lower()
+
+    def test_markdown_concept_tree_contains_child_labels(self):
+        report = self._report_with_tree()
+        out = self.gen.generate(report, fmt="markdown")
+        assert "Problem:" in out
+        assert "Method:" in out
+        assert "Evidence:" in out
+
+    def test_markdown_no_concept_tree_section_when_none(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "### Concept Tree" not in out
+
+    def test_markdown_falls_back_to_flat_lists_when_no_tree(self):
+        # _sample_report_enriched() has no concept_tree, so flat lists are shown.
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "- Dynamic attention masking" in out
+        assert "- Uniform tokenisation" in out
+        assert "- Evaluated on NLP benchmarks only" in out
+
+    def test_markdown_flat_lists_hidden_when_tree_present(self):
+        report = self._report_with_tree()
+        out = self.gen.generate(report, fmt="markdown")
+        # Flat list items should not appear when concept_tree is present.
+        assert "- Dynamic attention masking" not in out
+        assert "**Sub-ideas:**" not in out
 
 
 class TestDomainReferencesInText:
@@ -1122,16 +1124,62 @@ class TestPipelineJobTableGrouping:
 
 
 # ---------------------------------------------------------------------------
-# Mind map: hide when no branches / truncate long items
+# Concept tree: ASCII rendering unit tests
 # ---------------------------------------------------------------------------
 
-class TestMindMapEmptyBranches:
+class TestRenderConceptTreeAscii:
+    def test_single_root_no_children(self):
+        root = ConceptNode(label="Root concept")
+        result = _render_concept_tree_ascii(root)
+        assert result == "Root concept"
+
+    def test_single_level_children(self):
+        root = ConceptNode(label="Root", children=[
+            ConceptNode(label="Child A"),
+            ConceptNode(label="Child B"),
+        ])
+        result = _render_concept_tree_ascii(root)
+        assert "├── Child A" in result
+        assert "└── Child B" in result
+
+    def test_last_child_uses_corner(self):
+        root = ConceptNode(label="Root", children=[
+            ConceptNode(label="Only child"),
+        ])
+        result = _render_concept_tree_ascii(root)
+        assert "└── Only child" in result
+
+    def test_nested_children(self):
+        root = ConceptNode(label="Root", children=[
+            ConceptNode(label="Parent", children=[
+                ConceptNode(label="Child"),
+            ]),
+        ])
+        result = _render_concept_tree_ascii(root)
+        assert "└── Parent" in result
+        assert "    └── Child" in result
+
+    def test_continuation_bar_on_non_last(self):
+        root = ConceptNode(label="Root", children=[
+            ConceptNode(label="A", children=[
+                ConceptNode(label="A1"),
+            ]),
+            ConceptNode(label="B"),
+        ])
+        result = _render_concept_tree_ascii(root)
+        assert "│   └── A1" in result
+
+    def test_root_label_is_first_line(self):
+        root = ConceptNode(label="My Paper")
+        result = _render_concept_tree_ascii(root)
+        assert result.splitlines()[0] == "My Paper"
+
+
+class TestConceptTreeEmptyBranches:
     def setup_method(self):
         self.gen = ReportGenerator()
 
-    def test_mindmap_hidden_when_all_branch_lists_empty(self):
-        """A decomposition with no sub-ideas/assumptions/limitations should not
-        produce an 'Idea Mind Map' section (just a lone root circle is useless)."""
+    def test_no_concept_tree_section_when_decomp_has_no_tree(self):
         report = _sample_report()
         report.idea_decomposition = IdeaDecomposition(
             core_concept="Core concept only",
@@ -1140,54 +1188,17 @@ class TestMindMapEmptyBranches:
             limitations=[],
         )
         out = self.gen.generate(report, fmt="markdown")
-        assert "### Idea Mind Map" not in out
-        assert "mindmap" not in out
+        assert "### Concept Tree" not in out
 
-    def test_mindmap_shown_when_sub_ideas_present(self):
+    def test_concept_tree_section_shown_when_tree_present(self):
         report = _sample_report()
         report.idea_decomposition = IdeaDecomposition(
             core_concept="Core",
-            sub_ideas=["Idea A"],
+            concept_tree=ConceptNode(label="Core", children=[ConceptNode(label="Child A")]),
         )
         out = self.gen.generate(report, fmt="markdown")
-        assert "### Idea Mind Map" in out
-        assert "mindmap" in out
-
-    def test_build_mindmap_returns_empty_string_when_no_branches(self):
-        d = IdeaDecomposition(core_concept="X", sub_ideas=[], assumptions=[], limitations=[])
-        result = _build_mindmap(d, "Paper")
-        assert result == ""
-
-    def test_build_mindmap_truncates_long_items(self):
-        long_text = "A" * 100  # definitely over 60 chars
-        d = IdeaDecomposition(
-            core_concept="Core",
-            sub_ideas=[long_text],
-        )
-        diagram = _build_mindmap(d, "Paper")
-        # The truncated label should appear in the diagram (60 chars + ellipsis)
-        assert "A" * 60 in diagram
-        assert "A" * 100 not in diagram
-        assert "…" in diagram
-
-    def test_build_mindmap_does_not_truncate_exactly_max_length(self):
-        exact_text = "B" * 60  # exactly at the limit — must NOT be truncated
-        d = IdeaDecomposition(
-            core_concept="Core",
-            sub_ideas=[exact_text],
-        )
-        diagram = _build_mindmap(d, "Paper")
-        assert "B" * 60 in diagram
-        assert "…" not in diagram
-
-    def test_build_mindmap_removes_brackets_and_braces(self):
-        d = IdeaDecomposition(
-            core_concept="Core",
-            sub_ideas=["Method [A] and {B}"],
-        )
-        diagram = _build_mindmap(d, "Paper")
-        assert "[" not in diagram.split("root")[1]  # not in branches
-        assert "{" not in diagram.split("root")[1]
+        assert "### Concept Tree" in out
+        assert "Child A" in out
 
 
 # ---------------------------------------------------------------------------
@@ -1220,15 +1231,15 @@ class TestSimilarPaperAnnotationsInMarkdown:
 
     def test_markdown_shows_reference_annotations_section(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        assert "### Reference Annotations" in out
+        assert "### Methodological Analysis" in out
 
     def test_markdown_annotations_use_comparison_table(self):
         out = self.gen.generate(self.report, fmt="markdown")
         # Annotations now render as inline comparison tables, not <details> blocks.
-        ann_pos = out.index("### Reference Annotations")
+        ann_pos = out.index("### Methodological Analysis")
         section = out[ann_pos:]
         assert "| Dimension | Notes |" in section
-        assert "**Overlap**" in section
+        assert "**Methodological overlap**" in section
         assert "**Differences**" in section
 
     def test_markdown_shows_overlap(self):
@@ -1250,7 +1261,7 @@ class TestSimilarPaperAnnotationsInMarkdown:
     def test_markdown_no_annotations_section_when_empty(self):
         report = _sample_report()  # no annotations
         out = self.gen.generate(report, fmt="markdown")
-        assert "### Reference Annotations" not in out
+        assert "### Methodological Analysis" not in out
 
 
 class TestSimilarPaperAnnotationsInJSON:
