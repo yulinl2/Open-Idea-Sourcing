@@ -35,6 +35,10 @@ The `release.yml` workflow will:
 
 ## [Unreleased]
 
+---
+
+## [2.1.0] — 2026-03-25
+
 ### Added
 
 **Paper parser**
@@ -48,6 +52,9 @@ The `release.yml` workflow will:
 
 **Reference corpus**
 - Removed placeholder "A custom reference paper" (`user-paper-001`) from `data/references.json`; it was a test stub that poisoned similarity search with a zero-score result for every evaluation run.
+
+**Reference store pipeline job**
+- New **Load references** Pipeline Job Log entry (agent `ReferenceStore`) records the reference loading step between parsing and online search.  The table row shows which source files were loaded; the collapsible detail section breaks down bundled vs. custom counts and flags missing files with a ⚠️ warning.  This directly answers the question "was my custom reference file actually loaded?" without needing to read stderr output.
 
 ---
 
@@ -154,7 +161,9 @@ The `release.yml` workflow will:
 ---
 
 <!-- Links are auto-maintained — update when a new version is tagged -->
-[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.3.0...v2.0.0
 [1.3.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.0.0...v1.1.0

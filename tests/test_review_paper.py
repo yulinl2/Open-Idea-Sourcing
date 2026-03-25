@@ -1021,3 +1021,118 @@ class TestOnlineSearchIntegration:
         from review_paper import _parse_args
         args = _parse_args(["paper.txt", "--format", "text", "--no-online-search"])
         assert args.no_online_search is True
+
+
+# ---------------------------------------------------------------------------
+# Reference store pipeline job
+# ---------------------------------------------------------------------------
+
+_RSPJ_SAMPLE_TEXT = """Sample Paper Title
+
+Abstract
+This is a sample abstract for testing reference store pipeline job visibility.
+
+1. Introduction
+This paper demonstrates reference loading visibility.
+"""
+
+
+class TestReferenceStorePipelineJob:
+    """Verify that the reference store load step appears in the pipeline job log."""
+
+    def test_load_references_job_in_markdown_report(self, tmp_path):
+        """The 'Load references' PipelineJob must appear in the Markdown report."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(_RSPJ_SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "markdown", "--no-online-search",
+                       "--reports-dir", str(tmp_path)])
+
+        assert rc == 0
+        report_files = list(tmp_path.glob("*.md"))
+        assert report_files, "no Markdown report was written"
+        content = report_files[0].read_text(encoding="utf-8")
+        assert "Load references" in content, (
+            "Expected 'Load references' job in pipeline log"
+        )
+
+    def test_load_references_job_shows_bundled_count(self, tmp_path):
+        """The 'Load references' job output must show the bundled reference count."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(_RSPJ_SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "markdown", "--no-online-search",
+                       "--reports-dir", str(tmp_path)])
+
+        assert rc == 0
+        content = list(tmp_path.glob("*.md"))[0].read_text(encoding="utf-8")
+        # The bundled corpus has at least 1 paper; output should say "bundled"
+        assert "bundled" in content
+
+    def test_load_references_job_shows_custom_count(self, tmp_path):
+        """When a custom reference file is given, its count appears in the job."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(_RSPJ_SAMPLE_TEXT, encoding="utf-8")
+        user_refs = [
+            {
+                "id": "custom-001",
+                "title": "A custom paper for pipeline job test",
+                "abstract": "Custom abstract.",
+                "authors": ["Custom Author"],
+                "year": 2023,
+                "venue": "ICML",
+                "url": "https://example.com/custom-001",
+            }
+        ]
+        user_refs_path = tmp_path / "custom_refs.json"
+        user_refs_path.write_text(_json.dumps(user_refs), encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([
+                str(paper), "--format", "markdown", "--no-online-search",
+                "--references", str(user_refs_path),
+                "--reports-dir", str(tmp_path),
+            ])
+
+        assert rc == 0
+        content = list(tmp_path.glob("*.md"))[0].read_text(encoding="utf-8")
+        # Custom file was loaded; detail should mention it
+        assert "custom_refs.json" in content
+
+    def test_load_references_job_skipped_when_references_empty(self, tmp_path):
+        """When --references '' is passed, the job should report skipped."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(_RSPJ_SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([
+                str(paper), "--format", "markdown", "--no-online-search",
+                "--references", "",
+                "--reports-dir", str(tmp_path),
+            ])
+
+        assert rc == 0
+        content = list(tmp_path.glob("*.md"))[0].read_text(encoding="utf-8")
+        # The job should still be listed but input should indicate skipped
+        assert "Load references" in content
+        assert "skipped" in content.lower()
+
+    def test_load_references_job_in_referencestoreagent_section(self, tmp_path):
+        """The 'Load references' job must be under a 'ReferenceStore' section."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(_RSPJ_SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "markdown", "--no-online-search",
+                       "--reports-dir", str(tmp_path)])
+
+        assert rc == 0
+        content = list(tmp_path.glob("*.md"))[0].read_text(encoding="utf-8")
+        assert "ReferenceStore" in content

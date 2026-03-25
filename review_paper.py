@@ -470,24 +470,35 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         # Any user-supplied store that differs from the bundled path is
         # loaded and merged on top so that the full combined corpus is
         # available to the similarity search.
+        t0 = time.monotonic()
         store = ReferenceStore()
+        _bundled_count = 0
+        _custom_count = 0
+        _custom_ref_path: Path | None = None
+        _custom_ref_missing = False
         if args.references != "":
             if _BUNDLED_REFERENCES.exists():
                 store.load(_BUNDLED_REFERENCES)
+                _bundled_count = len(store)
                 print(
-                    f"Loaded {len(store)} bundled reference(s) from"
+                    f"Loaded {_bundled_count} bundled reference(s) from"
                     f" {_BUNDLED_REFERENCES.name}",
                     file=sys.stderr,
                 )
         if args.references != "" and args.references != str(_BUNDLED_REFERENCES):
-            ref_path = Path(args.references)
-            if ref_path.exists():
-                print(f"Loading reference store: {ref_path} ...", file=sys.stderr)
-                store.load(ref_path)
+            _custom_ref_path = Path(args.references)
+            if _custom_ref_path.exists():
+                print(f"Loading reference store: {_custom_ref_path} ...", file=sys.stderr)
+                _before_custom = len(store)
+                store.load(_custom_ref_path)
+                _custom_count = len(store) - _before_custom
             else:
+                _custom_ref_missing = True
                 print(
-                    f"Warning: reference file not found: {ref_path}", file=sys.stderr
+                    f"Warning: reference file not found: {_custom_ref_path}", file=sys.stderr
                 )
+        ref_load_duration = round(time.monotonic() - t0, 2)
+        stage_runtimes["ref_load"] = ref_load_duration
 
         # --- Build LLM (needed for query generation and novelty evaluation) ---
         try:
@@ -634,6 +645,70 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 detail=_parse_detail,
             ),
         ]
+        # --- Reference store pipeline job (shows which sources were loaded) ---
+        _ref_input_parts: list[str] = []
+        if args.references == "":
+            _ref_input_parts.append("*(skipped)*")
+        else:
+            if _bundled_count:
+                _ref_input_parts.append(_BUNDLED_REFERENCES.name)
+            if _custom_ref_path is not None:
+                _ref_input_parts.append(_custom_ref_path.name)
+        _ref_input = ", ".join(_ref_input_parts) if _ref_input_parts else "*(none)*"
+
+        _ref_output_parts: list[str] = []
+        if _bundled_count:
+            _ref_output_parts.append(f"{_bundled_count} bundled")
+        if _custom_count:
+            _ref_output_parts.append(f"{_custom_count} custom")
+        _ref_output = (
+            ", ".join(_ref_output_parts) + " ref(s)"
+            if _ref_output_parts
+            else "0 ref(s)"
+        )
+
+        _ref_detail_lines: list[str] = []
+        if args.references == "":
+            _ref_detail_lines.append("Reference loading was skipped (`--references ''`).")
+        else:
+            if _bundled_count:
+                _ref_detail_lines.append(
+                    f"**Bundled corpus** (`{_BUNDLED_REFERENCES.name}`): {_bundled_count} ref(s)"
+                )
+            else:
+                _ref_detail_lines.append(
+                    f"**Bundled corpus** (`{_BUNDLED_REFERENCES.name}`): not found or empty"
+                )
+            if _custom_ref_path is not None:
+                if _custom_ref_missing:
+                    _ref_detail_lines.append(
+                        f"**Custom file** (`{_custom_ref_path.name}`): ⚠️ file not found"
+                    )
+                elif _custom_count:
+                    _ref_detail_lines.append(
+                        f"**Custom file** (`{_custom_ref_path.name}`): {_custom_count} ref(s) added"
+                    )
+                else:
+                    _ref_detail_lines.append(
+                        f"**Custom file** (`{_custom_ref_path.name}`): 0 new ref(s) (all duplicates)"
+                    )
+        _ref_detail_lines.append("")
+        _ref_detail_lines.append(
+            f"**Total before online search:** {len(store)} ref(s)"
+        )
+        _ref_detail = "\n".join(_ref_detail_lines)
+
+        early_jobs.append(
+            PipelineJob(
+                name="Load references",
+                agent="ReferenceStore",
+                offset_s=round(parse_duration, 3),
+                duration_s=ref_load_duration,
+                input_summary=_ref_input,
+                output_summary=_ref_output,
+                detail=_ref_detail,
+            )
+        )
         if not args.no_online_search:
             # Short table cell summary (queries in detail section below).
             _qword = "query" if len(search_queries) == 1 else "queries"
@@ -673,7 +748,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 PipelineJob(
                     name="Online reference search",
                     agent="SemanticScholar API",
-                    offset_s=round(stage_runtimes["parsing"], 3),
+                    offset_s=round(stage_runtimes["parsing"] + ref_load_duration, 3),
                     duration_s=online_duration,
                     input_summary=_search_input,
                     output_summary=f"{online_papers_count} paper(s) fetched",
@@ -681,7 +756,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 )
             )
         sim_offset = round(
-            stage_runtimes["parsing"] + online_duration,
+            stage_runtimes["parsing"] + ref_load_duration + online_duration,
             3,
         )
 
