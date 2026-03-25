@@ -45,9 +45,18 @@ jobs:
         run: python -m pytest tests/ -v
 
   review:
-    name: Review paper (manual trigger or main merge)
+    name: Review paper (manual trigger, main merge, or same-repo PR)
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    # Run on:
+    #   - manual workflow_dispatch triggers
+    #   - pushes to main (post-merge validation)
+    #   - pull_request events from the same repository (dev feedback loop;
+    #     forks are excluded because secrets are not available there)
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     needs: test
     permissions:
       contents: write
@@ -64,6 +73,11 @@ jobs:
           # Push-triggered runs always use the default batch file — no inputs to validate.
           if [ "$EVENT_NAME" = "push" ]; then
             echo "Push-triggered run — using default batch file (data/test_papers.ndjson)."
+            exit 0
+          fi
+          # PR-triggered runs also use the default batch file.
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "PR-triggered run — using default batch file (data/test_papers.ndjson)."
             exit 0
           fi
           PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"
@@ -159,3 +173,73 @@ jobs:
             git commit -m "reports: run #${{ github.run_number }}"
             git push origin HEAD:reports
           fi
+
+  report-review:
+    name: AI report quality review
+    runs-on: ubuntu-latest
+    # Runs after review completes, mirroring the same trigger conditions.
+    # The review agent reads generated reports, assesses their quality with an
+    # LLM, and writes structured feedback to the step summary and (on PRs) as
+    # a pull request comment — giving developers an immediate signal on
+    # concept tree depth, novelty grounding, and pipeline health.
+    needs: review
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Download generated reports
+        uses: actions/download-artifact@v4
+        with:
+          name: src-ideas-reports
+          path: reports/
+
+      - name: List downloaded reports
+        run: ls -lh reports/
+
+      - name: Run report review agent
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          shopt -s nullglob
+          REPORT_FILES=(reports/*.md reports/*.markdown)
+          if [ ${#REPORT_FILES[@]} -eq 0 ]; then
+            echo "No Markdown reports found to review."
+            exit 0
+          fi
+          # Always write to step summary.
+          # Also post as a PR comment only when the event is pull_request AND
+          # PR_NUMBER is populated (prevents accidental comment posting on push/dispatch).
+          POST_FLAG=""
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ -n "$PR_NUMBER" ]; then
+            POST_FLAG="--post-pr-comment"
+          fi
+          # shellcheck disable=SC2086
+          python scripts/report_review_agent.py \
+            "${REPORT_FILES[@]}" \
+            --output-md reports/feedback.md \
+            --github-summary \
+            $POST_FLAG
+
+      - name: Upload feedback as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: src-ideas-report-feedback
+          path: reports/feedback.md
+          if-no-files-found: ignore
+
