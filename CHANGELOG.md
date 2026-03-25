@@ -81,6 +81,41 @@ The `release.yml` workflow will:
 - `_extract_title()` now joins continuation lines (lines starting with a lowercase letter or connector word such as "of", "for", "via") so multi-line PDF titles are reconstructed correctly (e.g. "Conformal Inference" + "of Counterfactuals …" → full title).
 - PaperParser Pipeline Job Log detail section now shows an **Authors** field.
 
+---
+
+## [2.1.0] — 2026-03-25
+
+### Added
+
+**Stage 5: REF-N evidence IDs in analysis prompts**
+- `format_references()` now labels each reference as `REF-N [id]: Title…` — enables LLMs to cite references by short label (REF-1, REF-3) rather than opaque 40-char Semantic Scholar UUIDs.
+- All dimension prompts (`duplication`, `combination`, `equivalence`) updated to request `REF-N` citations in their REFERENCES field.
+- Reports display cited `REF-N` labels inline with each analysis dimension.
+
+**Stage 3: Temporal reference filter**
+- `OnlineReferenceSearch(min_year=YYYY)` — filters retrieved papers by publication year.
+- `--since-year YEAR` CLI flag: only online references published in or after YEAR are included.
+- Year filter applied to both `/paper/search` query params (Semantic Scholar `year=YYYY-` param) and post-processing of `/references` endpoint results.
+
+**Stage 3: Retry logic for transient HTTP errors**
+- `OnlineReferenceSearch._http_get()` — shared HTTP-GET helper with exponential-backoff retry (up to 3 attempts, base delay 2 s) for HTTP 429 (rate limit), 500, and 503 errors.
+- Non-retryable errors (400, 401, 404) fail immediately as before.
+
+**Stage 3: All 3 reference sources always aggregated**
+- For non-arXiv papers, `OnlineReferenceSearch.search()` now calls `_lookup_paper_id_by_title()` to find the Semantic Scholar paper ID and fetch the paper's own reference list — the same depth signal previously only available for arXiv submissions.
+
+**Stage 3 / Stage 5: Threshold-based reference filtering**
+- Default `similarity_threshold` raised from 0.05 → 0.1 (papers below this score are never included).
+- Default `top_k_similar` cap raised from 5 → 20 (threshold is now the primary filter).
+- `--similarity-threshold FLOAT` CLI flag (env: `SIMILARITY_THRESHOLD`).
+- `--top-k` default raised to 20.
+
+### Changed
+- `decomposition.txt` prompt relaxed: removes "exactly 3 levels" prescription; tree size is now "as needed" (typically 2–4 levels). Prompt shortened and more flexible.
+- `--top-k` default changed from 5 → 20 to work with the new threshold-first filtering.
+
+---
+
 **Online reference search**
 - Fixed URL encoding bug in `OnlineReferenceSearch._fetch_references`: `urllib.parse.quote(safe="")` encoded the colon in `arXiv:XXXX.XXXXX` to `%3A`. Semantic Scholar's API expects the literal colon; changed to `safe=":"`.
 - `OnlineReferenceSearch` now records HTTP / network errors in `self._last_errors` (accessible via `.last_errors` property). The SemanticScholar API Pipeline Job Log detail section surfaces these errors (e.g. HTTP 429 rate-limit) so users can tell why 0 papers were fetched.

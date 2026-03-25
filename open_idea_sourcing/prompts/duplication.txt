@@ -18,5 +18,5 @@ INSTRUCTIONS:
 - Respond with a structured analysis.
 - Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = paper is NOT a duplicate).
 - Then write EXPLANATION: one or two paragraphs.
-- Then write REFERENCES: comma-separated IDs of papers that are duplicated
-  (or "none").
+- Then write REFERENCES: comma-separated REF-N labels for any papers that
+  are duplicated (e.g. REF-1, REF-3), or "none".

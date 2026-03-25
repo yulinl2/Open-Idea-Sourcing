@@ -19,4 +19,5 @@ INSTRUCTIONS:
 - Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = not a simple combination).
 - Then write EXPLANATION: one or two paragraphs describing which components
   come from which prior works, and whether the combination adds value.
-- Then write REFERENCES: comma-separated IDs of source papers (or "none").
+- Then write REFERENCES: comma-separated REF-N labels for source papers
+  (e.g. REF-2, REF-4), or "none".

@@ -260,8 +260,8 @@ class NoveltyEvaluator:
     def __init__(
         self,
         llm: LLMCallable,
-        top_k_similar: int = 5,
-        similarity_threshold: float = 0.05,
+        top_k_similar: int = 20,
+        similarity_threshold: float = 0.1,
         decomposition_llm: LLMCallable | None = None,
     ) -> None:
         self._llm = llm
@@ -637,7 +637,7 @@ class NoveltyEvaluator:
         for i, r in enumerate(similar, 1):
             p = r.paper
             lines.append(
-                f"{i}. [{p.id}] {p.title} "
+                f"REF-{i} [{p.id}]: {p.title} "
                 f"({p.year or 'year unknown'}) — similarity {r.score:.2f}\n"
                 f"   Abstract: {p.abstract[:300]}"
             )

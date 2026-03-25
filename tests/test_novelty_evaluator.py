@@ -383,6 +383,34 @@ class TestNoveltyEvaluator:
         text = NoveltyEvaluator.format_references(similar)
         assert "Attention Is All You Need" in text
         assert "0.90" in text
+        assert "REF-1" in text
+
+
+class TestFormatReferencesRefNFormat:
+    def test_first_reference_uses_ref_1(self):
+        similar = [SimilarityResult(paper=SAMPLE_REFERENCE, score=0.9)]
+        text = NoveltyEvaluator.format_references(similar)
+        assert "REF-1" in text
+
+    def test_second_reference_uses_ref_2(self):
+        ref2 = ReferencePaper(id="bert2019", title="BERT", abstract="BERT paper.", year=2019)
+        similar = [
+            SimilarityResult(paper=SAMPLE_REFERENCE, score=0.9),
+            SimilarityResult(paper=ref2, score=0.7),
+        ]
+        text = NoveltyEvaluator.format_references(similar)
+        assert "REF-1" in text
+        assert "REF-2" in text
+
+    def test_ref_n_label_precedes_bracket_id(self):
+        similar = [SimilarityResult(paper=SAMPLE_REFERENCE, score=0.9)]
+        text = NoveltyEvaluator.format_references(similar)
+        ref1_pos = text.index("REF-1")
+        bracket_pos = text.index("[att2017]")
+        assert ref1_pos < bracket_pos
+
+    def test_format_references_empty_unchanged(self):
+        assert "No reference papers provided" in NoveltyEvaluator.format_references([])
 
 
 # ---------------------------------------------------------------------------

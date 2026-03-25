@@ -19,4 +19,5 @@ INSTRUCTIONS:
 - Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = no equivalence found).
 - Then write EXPLANATION: describe any equivalences found, citing the
   established method.
-- Then write REFERENCES: comma-separated IDs of equivalent papers (or "none").
+- Then write REFERENCES: comma-separated REF-N labels for equivalent papers
+  (e.g. REF-1), or "none".

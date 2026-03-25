@@ -374,8 +374,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--top-k",
         type=int,
-        default=5,
-        help="Number of similar reference papers to surface (default: 5).",
+        default=int(os.environ.get("TOP_K", "20")),
+        help="Maximum number of similar reference papers to surface (default: 20).",
     )
     parser.add_argument(
         "--papers-file",
@@ -396,6 +396,26 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Scholar API (enabled by default).  Use this flag when working "
             "offline or when you want to rely solely on a local --references "
             "file."
+        ),
+    )
+    parser.add_argument(
+        "--since-year",
+        type=int,
+        metavar="YEAR",
+        default=None,
+        help=(
+            "Only include online reference papers published in or after YEAR "
+            "(e.g. --since-year 2020). When not set, no temporal filter is applied."
+        ),
+    )
+    parser.add_argument(
+        "--similarity-threshold",
+        type=float,
+        default=float(os.environ.get("SIMILARITY_THRESHOLD", "0.1")),
+        help=(
+            "Minimum cosine-similarity score for a reference paper to be "
+            "included in the analysis (default: 0.1 or SIMILARITY_THRESHOLD env var). "
+            "Papers below this threshold are excluded regardless of --top-k."
         ),
     )
     parser.add_argument(
@@ -524,6 +544,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         evaluator = NoveltyEvaluator(
             llm=llm,
             top_k_similar=args.top_k,
+            similarity_threshold=args.similarity_threshold,
             decomposition_llm=decomp_llm,
         )
 
@@ -582,7 +603,10 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 "Searching for related papers online (Semantic Scholar) ...",
                 file=sys.stderr,
             )
-            online_searcher = OnlineReferenceSearch(max_results=args.top_k * 2)
+            online_searcher = OnlineReferenceSearch(
+                max_results=args.top_k * 2,
+                min_year=args.since_year if hasattr(args, "since_year") else None,
+            )
             online_papers = online_searcher.search(
                 paper.title,
                 paper.abstract,

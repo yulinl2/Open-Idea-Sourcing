@@ -1085,3 +1085,20 @@ class TestDecompositionModelArg:
         from review_paper import _parse_args
         args = _parse_args(["paper.txt", "--format", "text", "--decomposition-model", "o3-mini"])
         assert args.decomposition_model == "o3-mini"
+
+
+class TestSimilarityThresholdArg:
+    def test_default_threshold_is_0_1(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text"])
+        assert args.similarity_threshold == pytest.approx(0.1)
+
+    def test_threshold_can_be_set(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text", "--similarity-threshold", "0.25"])
+        assert args.similarity_threshold == pytest.approx(0.25)
+
+    def test_default_top_k_is_20(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text"])
+        assert args.top_k == 20

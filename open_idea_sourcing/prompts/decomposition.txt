@@ -11,29 +11,22 @@ Respond with the following structured fields.
 CORE_CONCEPT: One sentence describing the central contribution or idea.
 
 CONCEPT_TREE:
-Provide a 3-level indented text tree (2 spaces per level) covering the
-Problem/Method/Evidence at Level 1, sub-problems/components at Level 2,
-and key terms/metrics at Level 3.  Example format:
+Provide an indented text tree (2 spaces per level) breaking down the
+paper's core contributions. Add levels only where they add clarity —
+size the tree as needed (typically 2–4 levels for most papers). Example:
 
-Core topic or problem
-  Sub-topic A
-    Detail 1
-    Detail 2
-  Sub-topic B
-    Detail 3
+Core contribution or problem
+  Key component or sub-problem
+    Supporting detail or metric
+  Another component
 Method or approach
-  Component A
-    Key term or metric
+  Key technique
 
 IMPLEMENTATION_STEPS:
-1. <first concrete step to implement the core technical idea>
-2. <second step>
-3. <additional steps — provide 5 to 8 steps total>
+List 3–8 concrete steps to implement the core technical idea (use numbered list).
 
 ASSUMPTIONS:
-1. <first underlying assumption the work makes>
-2. <additional assumptions as needed>
+List the underlying assumptions the work makes (use numbered list).
 
 LIMITATIONS:
-1. <first acknowledged or implicit limitation>
-2. <additional limitations as needed>
+List acknowledged or implicit limitations (use numbered list).
