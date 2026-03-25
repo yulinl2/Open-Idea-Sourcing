@@ -1021,3 +1021,67 @@ class TestOnlineSearchIntegration:
         from review_paper import _parse_args
         args = _parse_args(["paper.txt", "--format", "text", "--no-online-search"])
         assert args.no_online_search is True
+
+# ---------------------------------------------------------------------------
+# _build_llm reasoning model support
+# ---------------------------------------------------------------------------
+
+
+class TestBuildLlmReasoningModel:
+    """_build_llm must omit temperature for reasoning model families."""
+
+    def _run_and_capture_kwargs(self, model: str):
+        """Invoke _build_llm(model) and capture the kwargs passed to create()."""
+        captured = {}
+
+        class FakeCompletion:
+            choices = [MagicMock(message=MagicMock(content="ok"))]
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+                return FakeCompletion()
+
+        class FakeClient:
+            chat = MagicMock()
+            chat.completions = FakeCompletions()
+
+        import openai
+        with patch("openai.OpenAI", return_value=FakeClient()):
+            with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}):
+                llm = _build_llm(model)
+                llm("hello")
+        return captured
+
+    def test_standard_model_has_temperature(self):
+        kwargs = self._run_and_capture_kwargs("gpt-4o")
+        assert "temperature" in kwargs
+
+    def test_o1_model_omits_temperature(self):
+        kwargs = self._run_and_capture_kwargs("o1-mini")
+        assert "temperature" not in kwargs
+
+    def test_o3_model_omits_temperature(self):
+        kwargs = self._run_and_capture_kwargs("o3-mini")
+        assert "temperature" not in kwargs
+
+    def test_o4_model_omits_temperature(self):
+        kwargs = self._run_and_capture_kwargs("o4-mini")
+        assert "temperature" not in kwargs
+
+
+# ---------------------------------------------------------------------------
+# --decomposition-model CLI flag
+# ---------------------------------------------------------------------------
+
+
+class TestDecompositionModelArg:
+    def test_default_is_empty_string(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text"])
+        assert args.decomposition_model == "" or args.decomposition_model is None or not args.decomposition_model
+
+    def test_can_be_set(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text", "--decomposition-model", "o3-mini"])
+        assert args.decomposition_model == "o3-mini"

@@ -307,6 +307,27 @@ class NoveltyEvaluator:
         """
         return self._find_domain_references(content, refs_text, raw)
 
+    def decompose_idea(self, paper: ParsedPaper, raw: dict[str, str]) -> IdeaDecomposition:
+        """Decompose *paper*'s core idea into structured components (Stage 2).
+
+        Calling this before :meth:`evaluate` (Stage 3+) lets the concept tree
+        inform query generation in the online retrieval step.
+
+        Parameters
+        ----------
+        paper:
+            The parsed paper to decompose.
+        raw:
+            Mutable dict into which the raw LLM response is stored under
+            ``"idea_decomposition"``.
+
+        Returns
+        -------
+        IdeaDecomposition
+            Structured breakdown of the paper's core idea.
+        """
+        return self._decompose_idea(paper.key_content(), raw)
+
     def evaluate(
         self,
         paper: ParsedPaper,
@@ -805,3 +826,88 @@ def _parse_similar_paper_annotations_response(
             derivation=derivation,
         ))
     return results
+
+
+def _parse_concept_tree_text(text: str) -> "ConceptNode | None":
+    """Parse an indented text outline into a :class:`ConceptNode` tree.
+
+    Auto-detects the indent unit from the first indented line.
+    Returns ``None`` when *text* is empty or contains no indented lines.
+    """
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return None
+
+    # Detect indent unit: first line that has leading whitespace.
+    indent_unit = ""
+    for ln in lines:
+        stripped = ln.lstrip()
+        if len(ln) > len(stripped):
+            indent_unit = ln[: len(ln) - len(stripped)]
+            break
+
+    if not indent_unit:
+        # No indented lines — either a single-level flat list or one item.
+        return None if len(lines) > 1 else ConceptNode(label=lines[0].strip())
+
+    # Build the tree: virtual_root collects all depth-0 items.
+    virtual_root = ConceptNode(label="")
+    # ancestors[d] = most-recently-seen node at depth d; index 0 = virtual_root.
+    ancestors: list[ConceptNode] = [virtual_root]
+    for ln in lines:
+        stripped = ln.lstrip()
+        leading = ln[: len(ln) - len(stripped)]
+        depth = len(leading) // len(indent_unit)
+        node = ConceptNode(label=stripped)
+        # Trim ancestors to the parent level.
+        del ancestors[depth + 1 :]
+        parent = ancestors[depth] if depth < len(ancestors) else ancestors[-1]
+        parent.children.append(node)
+        ancestors.append(node)   # ancestors[depth + 1] = node
+
+    if not virtual_root.children:
+        return None
+    if len(virtual_root.children) == 1:
+        return virtual_root.children[0]
+    return virtual_root  # virtual root with multiple depth-0 children
+
+
+def _concept_tree_to_text(node: "ConceptNode", indent: int = 0) -> str:
+    """Render a :class:`ConceptNode` tree as an indented text string.
+
+    Uses 2-space indentation per level.  Suitable for embedding in LLM
+    prompts where box-drawing characters may confuse the tokeniser.
+    """
+    prefix = "  " * indent
+    lines = [f"{prefix}{node.label}"]
+    for child in node.children:
+        lines.append(_concept_tree_to_text(child, indent + 1))
+    return "\n".join(lines)
+
+
+def _format_decomp_context(decomp: "IdeaDecomposition | None") -> str:
+    """Return a concise text representation of *decomp* for LLM prompt injection.
+
+    When *decomp* is ``None`` a short placeholder is returned so that
+    prompt templates that include ``{decomposition}`` always receive a
+    non-empty value.
+    """
+    if decomp is None:
+        return "(no decomposition available)"
+
+    parts: list[str] = [f"Core concept: {decomp.core_concept}"]
+
+    if decomp.concept_tree is not None:
+        tree_str = _concept_tree_to_text(decomp.concept_tree)
+        if tree_str:
+            parts.append("Concept tree:\n" + tree_str)
+    elif decomp.sub_ideas:
+        parts.append("Sub-ideas:\n" + "\n".join(f"- {s}" for s in decomp.sub_ideas))
+
+    if decomp.implementation_steps:
+        steps = "\n".join(
+            f"{i}. {s}" for i, s in enumerate(decomp.implementation_steps, 1)
+        )
+        parts.append("Implementation steps:\n" + steps)
+
+    return "\n\n".join(parts)

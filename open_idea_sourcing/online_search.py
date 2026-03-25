@@ -109,6 +109,7 @@ def generate_search_queries(
     llm: LLMCallable,
     *,
     max_queries: int = 6,
+    decomposition: object = None,
 ) -> list[str]:
     """Ask an LLM to generate conceptual search queries for a paper.
 
@@ -134,7 +135,13 @@ def generate_search_queries(
         (LLM failure, malformed response, etc.) so that callers can fall
         back to title-based search gracefully.
     """
-    prompt = _QUERY_GENERATION_PROMPT.format(content=paper_content)
+    decomp_hint = ""
+    if decomposition is not None:
+        from .novelty_evaluator import _format_decomp_context
+        decomp_hint = "\n\nIDEA DECOMPOSITION:\n" + _format_decomp_context(decomposition)
+    prompt = _QUERY_GENERATION_PROMPT.format(
+        content=paper_content + decomp_hint
+    )
     try:
         response = llm(prompt)
     except Exception as exc:  # noqa: BLE001

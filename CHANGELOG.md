@@ -33,6 +33,45 @@ The `release.yml` workflow will:
 
 ---
 
+## [2.0.0] — 2026-03-25
+
+### Added
+
+**Deep concept tree decomposition (Stage 2 — Understand)**
+- `ConceptNode` dataclass — recursive tree node (`label: str`, `children: list[ConceptNode]`).
+- `IdeaDecomposition` gains two new fields: `concept_tree: ConceptNode | None` and `implementation_steps: list[str]`.
+- `decomposition.txt` prompt updated to elicit a `CONCEPT_TREE` indented outline (3 levels: Problem/Method/Evidence at L1, sub-problems at L2, key terms at L3) and `IMPLEMENTATION_STEPS` (5–8 numbered concrete steps).
+- `_parse_concept_tree_text()` — indent-aware parser; auto-detects 2-space or 4-space indent unit; handles multi-root outlines via a virtual root.
+- `_format_decomp_context()` — compact formatter for injecting decomposition context into LLM prompts.
+- `_render_concept_tree_ascii()` in `report_generator.py` — renders `ConceptNode` trees with `├──`, `└──`, `│` box-drawing chars; replaces Mermaid mind-map in reports.
+- `implementation_steps` rendered as a numbered **Implementation Roadmap** in Markdown and text reports.
+- JSON output includes `concept_tree` (nested dict) and `implementation_steps` in `idea_decomposition`.
+
+**Prompts directory**
+- All prompt templates moved from inline constants in `novelty_evaluator.py` into versioned `.txt` files under `open_idea_sourcing/prompts/`.
+- `_load_prompt(name)` helper reads templates at import time.
+- All dimension prompts (`duplication`, `combination`, `equivalence`, `annotation`) gain a `{decomposition}` slot — verdicts are now grounded in the structural concept breakdown.
+
+**Stage 2 before Stage 3**
+- `NoveltyEvaluator.decompose_idea(paper, raw)` public method — callable before the retrieval step.
+- `review_paper.py` calls decomposition before online search (Stage 2 → Stage 3) so the concept tree can inform Semantic Scholar query generation.
+- `generate_search_queries()` accepts an optional `decomposition` keyword argument; when provided, the concept context is appended to the query-generation prompt.
+- `evaluate()` accepts `idea_decomposition` parameter — skips internal decomposition when a pre-computed result is passed.
+
+**Separate decomposition model**
+- `NoveltyEvaluator(decomposition_llm=...)` — routes the decomposition step through a separate callable; enables using a reasoning model for the expensive structural pass.
+- `--decomposition-model NAME` CLI flag (env: `OPENAI_DECOMPOSITION_MODEL`) — passes a separate LLM to `NoveltyEvaluator`.
+- `_build_llm()` auto-detects reasoning models (`o1-*`, `o3-*`, `o4-*` prefix) and omits `temperature` from the API call.
+
+**Pipeline context**
+- `PipelineContext` dataclass — typed shared state bus for pipeline stages (foundation for future `Pipeline` class refactor).
+
+### Changed
+- Idea Decomposition report section: ASCII concept tree replaces Mermaid mind-map when `concept_tree` is populated; `implementation_steps` appear as a numbered roadmap.
+- Pipeline Job Log: Stage 2 (Idea decomposition) now appears before Stage 3 (Online reference search).
+
+---
+
 ## [Unreleased]
 
 ### Fixed
@@ -134,7 +173,8 @@ The `release.yml` workflow will:
 ---
 
 <!-- Links are auto-maintained — update when a new version is tagged -->
-[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.3.0...v2.0.0
 [1.3.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.0.0...v1.1.0

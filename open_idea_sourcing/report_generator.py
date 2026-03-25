@@ -25,6 +25,7 @@ from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .novelty_evaluator import (
+    ConceptNode,
     IdeaDecomposition,
     DomainReference,
     SimilarityAnnotation,
@@ -72,6 +73,14 @@ def _escape_table_cell(text: str) -> str:
     delimiters.
     """
     return text.replace('\n', ' ').replace('|', r'\|')
+
+
+def _concept_node_to_dict(node: ConceptNode) -> dict:
+    """Recursively serialise a :class:`ConceptNode` to a JSON-safe dict."""
+    return {
+        "label": node.label,
+        "children": [_concept_node_to_dict(c) for c in node.children],
+    }
 
 
 @lru_cache(maxsize=None)
@@ -259,9 +268,19 @@ class ReportGenerator:
             d = r.idea_decomposition
             lines += ["IDEA DECOMPOSITION", "-" * 70]
             lines.append(f"  Core concept: {d.core_concept}")
-            if d.sub_ideas:
+            if d.concept_tree is not None:
+                tree_str = _render_concept_tree_ascii(d.concept_tree)
+                if tree_str:
+                    lines.append("  Concept tree:")
+                    for ln in tree_str.splitlines():
+                        lines.append(f"    {ln}")
+            elif d.sub_ideas:
                 lines.append("  Sub-ideas:")
                 for i, item in enumerate(d.sub_ideas, 1):
+                    lines.append(f"    {i}. {item}")
+            if d.implementation_steps:
+                lines.append("  Implementation roadmap:")
+                for i, item in enumerate(d.implementation_steps, 1):
                     lines.append(f"    {i}. {item}")
             if d.assumptions:
                 lines.append("  Assumptions:")
@@ -490,11 +509,29 @@ class ReportGenerator:
                 f"**Core concept:** {d.core_concept}",
                 "",
             ]
-            if d.sub_ideas:
+            # Concept tree (replaces Mermaid mindmap when available)
+            if d.concept_tree is not None:
+                tree_str = _render_concept_tree_ascii(d.concept_tree)
+                if tree_str:
+                    lines += [
+                        "### Concept Tree",
+                        "",
+                        "```",
+                        tree_str,
+                        "```",
+                        "",
+                    ]
+            elif d.sub_ideas:
                 lines.append("**Sub-ideas:**")
                 lines.append("")
                 for item in d.sub_ideas:
                     lines.append(f"- {item}")
+                lines.append("")
+            # Implementation roadmap
+            if d.implementation_steps:
+                lines += ["**Implementation roadmap:**", ""]
+                for i, step in enumerate(d.implementation_steps, 1):
+                    lines.append(f"{i}. {step}")
                 lines.append("")
             if d.assumptions:
                 lines.append("**Assumptions:**")
@@ -508,14 +545,6 @@ class ReportGenerator:
                 for item in d.limitations:
                     lines.append(f"- {item}")
                 lines.append("")
-            mindmap_diagram = _build_mindmap(d, r.paper_title)
-            if mindmap_diagram:
-                lines += [
-                    "### Idea Mind Map",
-                    "",
-                    mindmap_diagram,
-                    "",
-                ]
 
         lines += [
             f"**Overall verdict:** {ov} **{r.overall_verdict}** "
@@ -714,6 +743,12 @@ class ReportGenerator:
                 "sub_ideas": d.sub_ideas,
                 "assumptions": d.assumptions,
                 "limitations": d.limitations,
+                "implementation_steps": d.implementation_steps,
+                "concept_tree": (
+                    _concept_node_to_dict(d.concept_tree)
+                    if d.concept_tree is not None
+                    else None
+                ),
             }
         if r.domain_references:
             data["domain_references"] = [
@@ -765,6 +800,49 @@ def _build_gantt(metadata: RunMetadata, paper_title: str = "") -> str:
 # ---------------------------------------------------------------------------
 # Idea mind map (Mermaid)
 # ---------------------------------------------------------------------------
+
+def _render_concept_tree_ascii(root: ConceptNode) -> str:
+    """Render a :class:`ConceptNode` tree as a ``tree``-command-style ASCII string.
+
+    Uses box-drawing characters ``├──``, ``└──``, and ``│`` so that the
+    hierarchy is scannable without relying on indentation alone.
+
+    Examples
+    --------
+    ::
+
+        Root
+        ├── Child A
+        │   ├── Grandchild 1
+        │   └── Grandchild 2
+        └── Child B
+
+    Returns an empty string when *root* has no children.
+    """
+    if not root.label and not root.children:
+        return ""
+
+    lines: list[str] = []
+
+    def _recurse(node: ConceptNode, prefix: str, is_last: bool) -> None:
+        connector = "└── " if is_last else "├── "
+        lines.append(prefix + connector + node.label)
+        child_prefix = prefix + ("    " if is_last else "│   ")
+        for i, child in enumerate(node.children):
+            _recurse(child, child_prefix, i == len(node.children) - 1)
+
+    # Render the root label first (no connector), then recurse into children.
+    if root.label:
+        lines.append(root.label)
+        for i, child in enumerate(root.children):
+            _recurse(child, "", i == len(root.children) - 1)
+    else:
+        # Virtual root (empty label): render children as top-level items.
+        for i, child in enumerate(root.children):
+            _recurse(child, "", i == len(root.children) - 1)
+
+    return "\n".join(lines)
+
 
 def _build_mindmap(decomp: IdeaDecomposition, paper_title: str = "") -> str:
     """Return a Mermaid ``mindmap`` diagram for *decomp*.

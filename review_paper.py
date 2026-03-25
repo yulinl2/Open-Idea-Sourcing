@@ -253,13 +253,18 @@ def _build_llm(model: str):
 
     client = openai.OpenAI(api_key=api_key)
 
+    # Reasoning models (o1-*, o3-*, o4-*) do not accept a temperature parameter.
+    _is_reasoning = model.startswith(("o1-", "o3-", "o4-"))
+
     def call_llm(prompt: str) -> str:
         try:
-            response = client.chat.completions.create(
+            kwargs: dict = dict(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
             )
+            if not _is_reasoning:
+                kwargs["temperature"] = 0.2
+            response = client.chat.completions.create(**kwargs)
             return response.choices[0].message.content or ""
         except openai.OpenAIError as exc:
             raise RuntimeError(str(exc)) from exc
@@ -393,6 +398,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "file."
         ),
     )
+    parser.add_argument(
+        "--decomposition-model",
+        metavar="NAME",
+        default=os.environ.get("OPENAI_DECOMPOSITION_MODEL", ""),
+        help=(
+            "OpenAI model name to use for the idea decomposition step "
+            "(Stage 2). When not set, the main --model is used. "
+            "Useful for routing the expensive decomposition pass to a "
+            "reasoning model (e.g. o3-mini) while keeping a cheaper "
+            "model for the analysis passes. "
+            "(default: OPENAI_DECOMPOSITION_MODEL env var or empty)"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -495,12 +513,43 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         except SystemExit as exc:
             return _fail(str(exc.code), args.format)
 
+        # --- Build decomposition LLM (optional separate model for Stage 2) ---
+        decomp_llm = None
+        if hasattr(args, "decomposition_model") and args.decomposition_model:
+            try:
+                decomp_llm = _build_llm(args.decomposition_model)
+            except SystemExit as exc:
+                return _fail(str(exc.code), args.format)
+
+        evaluator = NoveltyEvaluator(
+            llm=llm,
+            top_k_similar=args.top_k,
+            decomposition_llm=decomp_llm,
+        )
+
+        # --- Stage 2 — Idea decomposition (Understand) ---
+        # Runs BEFORE online search so the concept tree can inform query
+        # generation (richer queries = more relevant retrieved papers).
+        print("Decomposing paper idea ...", file=sys.stderr)
+        t0 = time.monotonic()
+        _decomp_raw: dict[str, str] = {}
+        try:
+            idea_decomp = evaluator.decompose_idea(paper, _decomp_raw)
+        except RuntimeError as exc:
+            return _fail(f"idea decomposition failed: {exc}", args.format)
+        decomp_duration = round(time.monotonic() - t0, 2)
+        stage_runtimes["decomposition"] = decomp_duration
+        print(
+            f"  Decomposed into concept tree"
+            f"{' with ' + str(len(idea_decomp.implementation_steps)) + ' implementation step(s)' if idea_decomp.implementation_steps else ''}.",
+            file=sys.stderr,
+        )
+
         # --- Stage 3 — Online reference search (Retrieve) ---
-        # This stage runs after parsing (Stage 1) and is positioned at the
-        # retrieval layer so that online results augment the reference store
-        # before TF-IDF similarity search.  LLM-generated conceptual queries
-        # are produced here; when decomposition is later extracted from
-        # evaluate() this step will consume those results instead.
+        # This stage runs after parsing (Stage 1) and decomposition (Stage 2),
+        # so the concept tree can inform query generation (richer queries =
+        # more relevant retrieved papers).  LLM-generated conceptual queries
+        # are produced here using the decomposition context.
         online_papers_count = 0
         online_duration = 0.0
         online_papers: list = []
@@ -512,7 +561,9 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             t0 = time.monotonic()
-            search_queries = generate_search_queries(paper.key_content(), llm)
+            search_queries = generate_search_queries(
+                paper.key_content(), llm, decomposition=idea_decomp
+            )
             if search_queries:
                 print(
                     f"  Generated {len(search_queries)} quer"
@@ -575,8 +626,6 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             query_preview += "…"
 
         # Create the evaluator here so Stage 3d can use it for domain refs.
-        evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
-
         # --- Stage 3d — Domain reference finder (Retrieve) ---
         # Domain reference finding is a *retrieval* task: it contextualises
         # the paper in its field using the top-matched references as context.
@@ -623,6 +672,11 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         ]
         _parse_detail = "\n".join(_parse_detail_parts)
 
+        _decomp_model_label = (
+            args.decomposition_model
+            if (hasattr(args, "decomposition_model") and args.decomposition_model)
+            else args.model
+        )
         early_jobs: list[PipelineJob] = [
             PipelineJob(
                 name="Parse paper",
@@ -632,6 +686,21 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 input_summary=paper_path.name,
                 output_summary=f'"{paper.title}", {len(paper.full_text)} chars',
                 detail=_parse_detail,
+            ),
+            PipelineJob(
+                name="Idea decomposition",
+                agent=f"LLM ({_decomp_model_label})",
+                offset_s=round(parse_duration, 3),
+                duration_s=decomp_duration,
+                input_summary="paper content",
+                output_summary=(
+                    f"concept tree"
+                    + (
+                        f", {len(idea_decomp.implementation_steps)} step(s)"
+                        if idea_decomp.implementation_steps
+                        else ""
+                    )
+                ),
             ),
         ]
         if not args.no_online_search:
@@ -673,7 +742,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 PipelineJob(
                     name="Online reference search",
                     agent="SemanticScholar API",
-                    offset_s=round(stage_runtimes["parsing"], 3),
+                    offset_s=round(stage_runtimes["parsing"] + decomp_duration, 3),
                     duration_s=online_duration,
                     input_summary=_search_input,
                     output_summary=f"{online_papers_count} paper(s) fetched",
@@ -681,7 +750,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 )
             )
         sim_offset = round(
-            stage_runtimes["parsing"] + online_duration,
+            stage_runtimes["parsing"] + decomp_duration + online_duration,
             3,
         )
 
@@ -785,6 +854,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 _run_start=run_start,
                 domain_references=domain_refs,
                 _domain_references_raw=_dr_raw,
+                idea_decomposition=idea_decomp,
             )
         except RuntimeError as exc:
             return _fail(f"novelty evaluation failed: {exc}", args.format)

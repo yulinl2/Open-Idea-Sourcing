@@ -788,3 +788,245 @@ class TestAnnotateSimilarPapersMethod:
         assert isinstance(result, list)
         assert len(result) >= 1
         assert isinstance(result[0], SimilarityAnnotation)
+
+# ---------------------------------------------------------------------------
+# ConceptNode dataclass
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import ConceptNode
+
+
+class TestConceptNode:
+    def test_leaf_node(self):
+        node = ConceptNode(label="leaf")
+        assert node.label == "leaf"
+        assert node.children == []
+
+    def test_node_with_children(self):
+        child = ConceptNode(label="child")
+        parent = ConceptNode(label="parent", children=[child])
+        assert parent.children[0].label == "child"
+
+    def test_default_children_empty(self):
+        node = ConceptNode(label="x")
+        assert node.children == []
+
+    def test_deep_nesting(self):
+        leaf = ConceptNode(label="leaf")
+        mid = ConceptNode(label="mid", children=[leaf])
+        root = ConceptNode(label="root", children=[mid])
+        assert root.children[0].children[0].label == "leaf"
+
+
+# ---------------------------------------------------------------------------
+# _parse_concept_tree_text
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import _parse_concept_tree_text
+
+
+class TestParseConceptTreeText:
+    def test_empty_returns_none(self):
+        assert _parse_concept_tree_text("") is None
+
+    def test_whitespace_only_returns_none(self):
+        assert _parse_concept_tree_text("   \n   ") is None
+
+    def test_single_line_no_indent_returns_single_root(self):
+        result = _parse_concept_tree_text("Problem")
+        assert result is not None
+        assert result.label == "Problem"
+        assert result.children == []
+
+    def test_multiple_non_indented_lines_returns_none(self):
+        result = _parse_concept_tree_text("Problem\nMethod\nEvidence")
+        assert result is None
+
+    def test_two_level_tree(self):
+        text = "Problem\n  Sub-problem A\n  Sub-problem B"
+        root = _parse_concept_tree_text(text)
+        assert root is not None
+        assert root.label == "Problem"
+        assert len(root.children) == 2
+        assert root.children[0].label == "Sub-problem A"
+        assert root.children[1].label == "Sub-problem B"
+
+    def test_three_level_tree(self):
+        text = (
+            "Problem\n"
+            "  Sub-problem A\n"
+            "    Detail 1\n"
+            "    Detail 2\n"
+            "  Sub-problem B\n"
+        )
+        root = _parse_concept_tree_text(text)
+        assert root is not None
+        assert root.label == "Problem"
+        assert len(root.children) == 2
+        assert len(root.children[0].children) == 2
+        assert root.children[0].children[0].label == "Detail 1"
+
+    def test_four_space_indent(self):
+        text = "Root\n    Child A\n    Child B"
+        root = _parse_concept_tree_text(text)
+        assert root is not None
+        assert len(root.children) == 2
+        assert root.children[0].label == "Child A"
+
+    def test_multiple_root_level_items(self):
+        text = "Problem\n  Sub A\nMethod\n  Component A"
+        result = _parse_concept_tree_text(text)
+        # Multiple depth-0 items → virtual root with 2 children
+        assert result is not None
+        assert len(result.children) == 2
+        assert result.children[0].label == "Problem"
+        assert result.children[1].label == "Method"
+
+    def test_blank_lines_skipped(self):
+        text = "Root\n\n  Child A\n\n  Child B\n"
+        root = _parse_concept_tree_text(text)
+        assert root is not None
+        assert len(root.children) == 2
+
+    def test_parse_decomp_response_includes_concept_tree(self):
+        text = (
+            "CORE_CONCEPT: A new method.\n"
+            "CONCEPT_TREE:\n"
+            "Problem\n"
+            "  Sub A\n"
+            "IMPLEMENTATION_STEPS:\n"
+            "1. Step one\n"
+            "2. Step two\n"
+            "ASSUMPTIONS:\n"
+            "1. Assumes X\n"
+            "LIMITATIONS:\n"
+            "1. Limited to Y\n"
+        )
+        d = _parse_decomposition_response(text)
+        assert d.concept_tree is not None
+        assert d.concept_tree.label == "Problem"
+        assert len(d.implementation_steps) == 2
+        assert d.implementation_steps[0] == "Step one"
+
+
+# ---------------------------------------------------------------------------
+# _format_decomp_context
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import _format_decomp_context
+
+
+class TestFormatDecompContext:
+    def test_none_returns_placeholder(self):
+        result = _format_decomp_context(None)
+        assert "no decomposition" in result.lower()
+
+    def test_includes_core_concept(self):
+        d = IdeaDecomposition(core_concept="A dynamic attention mechanism.")
+        result = _format_decomp_context(d)
+        assert "dynamic attention" in result.lower()
+
+    def test_includes_sub_ideas_when_no_tree(self):
+        d = IdeaDecomposition(
+            core_concept="Core.",
+            sub_ideas=["Idea A", "Idea B"],
+        )
+        result = _format_decomp_context(d)
+        assert "Idea A" in result
+        assert "Idea B" in result
+
+    def test_tree_preferred_over_sub_ideas(self):
+        tree = ConceptNode(label="Root", children=[ConceptNode(label="Child")])
+        d = IdeaDecomposition(
+            core_concept="Core.",
+            sub_ideas=["Sub idea"],
+            concept_tree=tree,
+        )
+        result = _format_decomp_context(d)
+        assert "Root" in result
+        # sub_ideas omitted when tree is present
+        assert "Sub idea" not in result
+
+    def test_includes_implementation_steps(self):
+        d = IdeaDecomposition(
+            core_concept="Core.",
+            implementation_steps=["Step 1", "Step 2"],
+        )
+        result = _format_decomp_context(d)
+        assert "Step 1" in result
+        assert "Step 2" in result
+
+    def test_empty_decomp_has_core_concept(self):
+        d = IdeaDecomposition(core_concept="Just this.")
+        result = _format_decomp_context(d)
+        assert "Just this." in result
+
+
+# ---------------------------------------------------------------------------
+# NoveltyEvaluator decomposition_llm param
+# ---------------------------------------------------------------------------
+
+class TestDecompositionLlm:
+    def test_decomposition_llm_used_for_decompose(self):
+        """When decomposition_llm is set, it (not llm) is called for decomposition."""
+        main_calls = []
+        decomp_calls = []
+
+        def main_llm(prompt: str) -> str:
+            main_calls.append(prompt)
+            return "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none"
+
+        def decomp_llm(prompt: str) -> str:
+            decomp_calls.append(prompt)
+            return _DECOMP_RESPONSE
+
+        evaluator = NoveltyEvaluator(llm=main_llm, decomposition_llm=decomp_llm)
+        evaluator.evaluate(SAMPLE_PAPER)
+        assert len(decomp_calls) == 1
+        assert len(main_calls) == 5  # dup+combo+equiv+synth+domain_refs
+
+    def test_fallback_to_main_llm_when_no_decomp_llm(self):
+        calls = []
+        def llm(prompt: str) -> str:
+            calls.append(prompt)
+            return "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none"
+        evaluator = NoveltyEvaluator(llm=llm)
+        evaluator.evaluate(SAMPLE_PAPER)
+        # All 6 calls go through the same llm
+        assert len(calls) == 6
+
+
+# ---------------------------------------------------------------------------
+# NoveltyEvaluator.decompose_idea() public method
+# ---------------------------------------------------------------------------
+
+class TestDecomposeIdeaPublicMethod:
+    def test_returns_idea_decomposition(self):
+        evaluator = NoveltyEvaluator(llm=lambda _: _DECOMP_RESPONSE)
+        raw: dict = {}
+        result = evaluator.decompose_idea(SAMPLE_PAPER, raw)
+        assert isinstance(result, IdeaDecomposition)
+        assert result.core_concept != ""
+
+    def test_raw_stored(self):
+        evaluator = NoveltyEvaluator(llm=lambda _: _DECOMP_RESPONSE)
+        raw: dict = {}
+        evaluator.decompose_idea(SAMPLE_PAPER, raw)
+        assert "idea_decomposition" in raw
+
+    def test_evaluate_skips_decomposition_when_passed(self):
+        calls = []
+        def llm(prompt: str) -> str:
+            calls.append(prompt)
+            return "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none"
+        evaluator = NoveltyEvaluator(llm=llm)
+        pre_decomp = IdeaDecomposition(core_concept="Pre-computed.")
+        evaluator.evaluate(SAMPLE_PAPER, idea_decomposition=pre_decomp)
+        # 5 calls: dup+combo+equiv+synth+domain_refs (decomp skipped)
+        assert len(calls) == 5
+
+    def test_decomp_fed_into_evaluate_shows_in_report(self):
+        evaluator = NoveltyEvaluator(llm=lambda _: "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none")
+        pre_decomp = IdeaDecomposition(core_concept="Pre-computed concept.")
+        report = evaluator.evaluate(SAMPLE_PAPER, idea_decomposition=pre_decomp)
+        assert report.idea_decomposition.core_concept == "Pre-computed concept."
