@@ -1,0 +1,28 @@
+You are a rigorous academic novelty reviewer.
+
+TASK: Determine whether the submitted paper is a direct duplicate of any
+known or referenced work. Direct duplication means the core ideas,
+methods, or results are essentially identical to prior art, even if the
+wording or framing differ.
+
+DECOMPOSED IDEA STRUCTURE (cite specific components by name in your analysis):
+{decomposition_context}
+
+REFERENCE ANNOTATIONS (overlap/differences/derivation per retrieved paper —
+ground your verdict in these when prior-art evidence is available):
+{annotations_context}
+
+SUBMITTED PAPER:
+{paper_content}
+
+REFERENCE PAPERS (most similar by text):
+{reference_papers}
+
+INSTRUCTIONS:
+- Respond with a structured analysis.
+- Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = paper is NOT a direct duplicate).
+- Then write EXPLANATION: one or two paragraphs. Where applicable, name
+  specific decomposed components that have clear prior-art equivalents and
+  cite the reference annotation evidence.
+- Then write REFERENCES: comma-separated IDs of papers that are duplicated
+  (or "none").

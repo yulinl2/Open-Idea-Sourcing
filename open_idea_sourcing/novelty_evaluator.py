@@ -17,10 +17,22 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Optional
 
 from .paper_parser import ParsedPaper
 from .similarity_search import SimilarityResult
+
+# ---------------------------------------------------------------------------
+# Prompt loading — templates live in prompts/ as versioned text files
+# ---------------------------------------------------------------------------
+
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+
+def _load_prompt(filename: str) -> str:
+    """Load a prompt template from the prompts/ directory."""
+    return (_PROMPTS_DIR / filename).read_text(encoding="utf-8")
 
 
 # Type alias for the LLM callable
@@ -351,23 +363,37 @@ class NoveltyEvaluator:
         agent = f"LLM ({metadata.model})" if (metadata and metadata.model) else "LLM"
         run_start = _run_start if _run_start is not None else time.monotonic()
 
-        # Idea decomposition runs FIRST — it provides the structural context
-        # that informs all subsequent novelty analysis passes.
+        # Stage 2 — Understand: decompose the paper's core idea first.
         t0 = time.monotonic()
         idea_decomp = self._decompose_idea(content, raw)
         t1 = time.monotonic()
-        # Dimension checks receive the decomposition for evidence-backed verdicts:
-        # each check can cite specific named components from the decomposition.
-        dup = self._check_duplication(content, refs_text, raw, idea_decomp=idea_decomp)
+
+        # Stage 4 — Compare: annotate each retrieved reference BEFORE evaluation
+        # so that per-reference overlap/differences/derivation evidence can feed
+        # directly into the Stage 5 dimension verdicts.
+        annotations: list[SimilarityAnnotation] = []
+        if similar_papers:
+            annotations = self._annotate_similar_papers(content, similar_papers, raw)
         t2 = time.monotonic()
-        combo = self._check_combination(content, refs_text, raw, idea_decomp=idea_decomp)
+
+        # Stage 5 — Evaluate: each pass receives both decomposition + annotations
+        # for fully evidence-backed verdicts.
+        dup = self._check_duplication(
+            content, refs_text, raw, idea_decomp=idea_decomp, annotations=annotations
+        )
         t3 = time.monotonic()
-        equiv = self._check_equivalence(content, refs_text, raw, idea_decomp=idea_decomp)
+        combo = self._check_combination(
+            content, refs_text, raw, idea_decomp=idea_decomp, annotations=annotations
+        )
         t4 = time.monotonic()
+        equiv = self._check_equivalence(
+            content, refs_text, raw, idea_decomp=idea_decomp, annotations=annotations
+        )
+        t5 = time.monotonic()
         overall, confidence, summary = self._synthesise(
             paper.title, dup, combo, equiv, raw
         )
-        t5 = time.monotonic()
+        t6 = time.monotonic()
 
         # Domain references: when pre-computed at Stage 3d (by the caller),
         # skip the internal LLM call entirely and merge the caller's raw
@@ -477,12 +503,15 @@ class NoveltyEvaluator:
     def _check_duplication(
         self, content: str, refs_text: str, raw: dict[str, str],
         idea_decomp: Optional["IdeaDecomposition"] = None,
+        annotations: Optional[list["SimilarityAnnotation"]] = None,
     ) -> NoveltyDimension:
         """Detect whether the paper directly duplicates existing work."""
         decomp_ctx = _format_decomp_context(idea_decomp) if idea_decomp else "(not available)"
+        ann_ctx = _format_annotations_context(annotations or [])
         prompt = _DUPLICATION_PROMPT.format(
             paper_content=content, reference_papers=refs_text,
             decomposition_context=decomp_ctx,
+            annotations_context=ann_ctx,
         )
         response = self._llm(prompt)
         raw["duplication"] = response
@@ -497,12 +526,15 @@ class NoveltyEvaluator:
     def _check_combination(
         self, content: str, refs_text: str, raw: dict[str, str],
         idea_decomp: Optional["IdeaDecomposition"] = None,
+        annotations: Optional[list["SimilarityAnnotation"]] = None,
     ) -> NoveltyDimension:
         """Detect whether the paper is merely a combination of prior works."""
         decomp_ctx = _format_decomp_context(idea_decomp) if idea_decomp else "(not available)"
+        ann_ctx = _format_annotations_context(annotations or [])
         prompt = _COMBINATION_PROMPT.format(
             paper_content=content, reference_papers=refs_text,
             decomposition_context=decomp_ctx,
+            annotations_context=ann_ctx,
         )
         response = self._llm(prompt)
         raw["combination"] = response
@@ -517,12 +549,15 @@ class NoveltyEvaluator:
     def _check_equivalence(
         self, content: str, refs_text: str, raw: dict[str, str],
         idea_decomp: Optional["IdeaDecomposition"] = None,
+        annotations: Optional[list["SimilarityAnnotation"]] = None,
     ) -> NoveltyDimension:
         """Detect methodological equivalence to known methods."""
         decomp_ctx = _format_decomp_context(idea_decomp) if idea_decomp else "(not available)"
+        ann_ctx = _format_annotations_context(annotations or [])
         prompt = _EQUIVALENCE_PROMPT.format(
             paper_content=content, reference_papers=refs_text,
             decomposition_context=decomp_ctx,
+            annotations_context=ann_ctx,
         )
         response = self._llm(prompt)
         raw["equivalence"] = response
@@ -609,189 +644,16 @@ class NoveltyEvaluator:
 
 
 # ---------------------------------------------------------------------------
-# Prompt templates
+# Prompt templates — loaded from prompts/ at import time
 # ---------------------------------------------------------------------------
 
-_DUPLICATION_PROMPT = """You are a rigorous academic novelty reviewer.
-
-TASK: Determine whether the submitted paper is a direct duplicate of any
-known or referenced work. Direct duplication means the core ideas,
-methods, or results are essentially identical to prior art, even if the
-wording or framing differ.
-
-DECOMPOSED IDEA STRUCTURE (cite specific components by name in your analysis):
-{decomposition_context}
-
-SUBMITTED PAPER:
-{paper_content}
-
-REFERENCE PAPERS (most similar by text):
-{reference_papers}
-
-INSTRUCTIONS:
-- Respond with a structured analysis.
-- Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = paper is NOT a duplicate).
-- Then write EXPLANATION: one or two paragraphs. Where applicable, name
-  specific decomposed components that have clear prior-art equivalents.
-- Then write REFERENCES: comma-separated IDs of papers that are duplicated
-  (or "none").
-"""
-
-_COMBINATION_PROMPT = """You are a rigorous academic novelty reviewer.
-
-TASK: Determine whether the submitted paper is merely a simple combination
-of existing works without a unifying contribution. Identify the individual
-components, trace each to its origin, and assess whether their combination
-constitutes a genuine insight.
-
-DECOMPOSED IDEA STRUCTURE (cite specific components by name in your analysis):
-{decomposition_context}
-
-SUBMITTED PAPER:
-{paper_content}
-
-REFERENCE PAPERS (most similar by text):
-{reference_papers}
-
-INSTRUCTIONS:
-- Respond with a structured analysis.
-- Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = not a simple combination).
-- Then write EXPLANATION: one or two paragraphs describing which decomposed
-  components come from which prior works, and whether the combination adds value.
-- Then write REFERENCES: comma-separated IDs of source papers (or "none").
-"""
-
-_EQUIVALENCE_PROMPT = """You are a rigorous academic novelty reviewer.
-
-TASK: Identify whether the methods proposed in the submitted paper are
-subtly equivalent to well-established methodologies, even if the notation,
-framing, or application domain differ. Look for mathematical equivalences,
-algorithmic re-derivations, or conceptual renamings.
-
-DECOMPOSED IDEA STRUCTURE (cite specific components by name in your analysis):
-{decomposition_context}
-
-SUBMITTED PAPER:
-{paper_content}
-
-REFERENCE PAPERS (most similar by text):
-{reference_papers}
-
-INSTRUCTIONS:
-- Respond with a structured analysis.
-- Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = no equivalence found).
-- Then write EXPLANATION: describe any equivalences found, naming the specific
-  decomposed component and the established method it maps to.
-- Then write REFERENCES: comma-separated IDs of equivalent papers (or "none").
-"""
-
-_SYNTHESIS_PROMPT = """You are a senior programme-committee member.
-
-Given the individual novelty analyses below for the paper titled
-"{paper_title}", produce a final holistic verdict.
-
-DUPLICATION ANALYSIS:
-{duplication_result}
-
-COMBINATION ANALYSIS:
-{combination_result}
-
-EQUIVALENCE ANALYSIS:
-{equivalence_result}
-
-INSTRUCTIONS:
-Respond with:
-OVERALL_VERDICT: <NOVEL|MARGINAL|NOT_NOVEL>
-CONFIDENCE: <HIGH|MEDIUM|LOW>
-SUMMARY: two to four sentences explaining the overall conclusion and the
-main reasons behind it.
-"""
-
-_IDEA_DECOMPOSITION_PROMPT = """You are an expert research analyst.
-
-TASK: Decompose the following paper's core idea into its fundamental technical
-components and produce a practical implementation roadmap.
-
-SUBMITTED PAPER:
-{paper_content}
-
-INSTRUCTIONS:
-Respond with the following structured fields.
-
-CORE_CONCEPT: One sentence describing the central contribution or idea.
-
-CONCEPT_TREE:
-<Root concept label (usually the paper's main method or system name)>
-  <Primary technical component 1>
-    <Sub-component 1a>
-    <Sub-component 1b>
-  <Primary technical component 2>
-    <Sub-component 2a>
-(Use 2-space indentation per level.  Include 3–5 primary components and
-go at least 2 levels deep where the paper provides sufficient detail.)
-
-SUB_IDEAS:
-1. <first key component or sub-contribution>
-2. <second key component or sub-contribution>
-3. <additional components as needed>
-
-ASSUMPTIONS:
-1. <first underlying assumption the work makes>
-2. <additional assumptions as needed>
-
-LIMITATIONS:
-1. <first acknowledged or implicit limitation>
-2. <additional limitations as needed>
-
-IMPLEMENTATION_ROADMAP:
-1. <first concrete step to implement the proposed approach>
-2. <second step>
-3. <additional ordered steps as needed — typically 4–6 steps total>
-"""
-
-_DOMAIN_REFERENCES_PROMPT = """You are an expert research librarian.
-
-TASK: Identify the most important foundational and closely related works
-in the domain of the following paper. Focus on seminal papers that a
-reader would need to understand the context of this contribution.
-
-SUBMITTED PAPER:
-{paper_content}
-
-ALREADY IDENTIFIED SIMILAR PAPERS (from text similarity search):
-{reference_papers}
-
-INSTRUCTIONS:
-List 3 to 6 key domain references in the format below.
-Each entry must appear on its own line starting with a number.
-
-REFERENCES:
-1. TITLE: <paper title> | AUTHORS: <author(s)> | YEAR: <year> | RELEVANCE: <why this reference matters>
-2. TITLE: <paper title> | AUTHORS: <author(s)> | YEAR: <year> | RELEVANCE: <why this reference matters>
-"""
-
-_SIMILAR_PAPERS_ANNOTATION_PROMPT = """You are an expert research analyst.
-
-TASK: For each similar reference paper listed below, write a concise comparative
-annotation against the submitted paper. Describe shared aspects, key differences,
-and any elements in the submitted paper that appear derived from or inspired by
-that reference. Every claim should be grounded in the paper content provided.
-
-SUBMITTED PAPER:
-{paper_content}
-
-SIMILAR REFERENCE PAPERS (ranked by TF-IDF cosine similarity score):
-{reference_papers}
-
-INSTRUCTIONS:
-Respond with one block per reference paper, in the order listed.
-Use the paper ID exactly as shown in brackets.
-
-PAPER [<id>]:
-OVERLAP: <1–2 sentences on shared methods, concepts, or results between the submitted paper and this reference>
-DIFFERENCES: <1–2 sentences on what distinguishes the submitted paper from this reference>
-DERIVATION: <1 sentence on what in the submitted paper appears derived from or inspired by this reference, or "None identified">
-"""
+_DUPLICATION_PROMPT = _load_prompt("duplication.txt")
+_COMBINATION_PROMPT = _load_prompt("combination.txt")
+_EQUIVALENCE_PROMPT = _load_prompt("equivalence.txt")
+_SYNTHESIS_PROMPT = _load_prompt("synthesis.txt")
+_IDEA_DECOMPOSITION_PROMPT = _load_prompt("decomposition.txt")
+_DOMAIN_REFERENCES_PROMPT = _load_prompt("domain_references.txt")
+_SIMILAR_PAPERS_ANNOTATION_PROMPT = _load_prompt("annotations.txt")
 
 
 # ---------------------------------------------------------------------------

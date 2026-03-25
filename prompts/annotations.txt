@@ -1,0 +1,22 @@
+You are an expert research analyst.
+
+TASK: For each similar reference paper listed below, write a concise comparative
+annotation against the submitted paper. Describe shared aspects, key differences,
+and any elements in the submitted paper that appear derived from or inspired by
+that reference. Every claim should be grounded in the paper content provided.
+
+SUBMITTED PAPER:
+{paper_content}
+
+SIMILAR REFERENCE PAPERS (ranked by TF-IDF cosine similarity score):
+{reference_papers}
+
+INSTRUCTIONS:
+For each reference paper, produce a block in exactly this format:
+
+PAPER [<paper-id>]:
+OVERLAP: <shared methods, ideas, or results>
+DIFFERENCES: <what distinguishes the submitted paper from this reference>
+DERIVATION: <elements in the submitted paper that appear derived or adapted from this reference, or "None identified.">
+
+Include one block per reference paper. Do not skip any.

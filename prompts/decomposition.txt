@@ -1,0 +1,40 @@
+You are an expert research analyst.
+
+TASK: Decompose the following paper's core idea into its fundamental technical
+components and produce a practical implementation roadmap.
+
+SUBMITTED PAPER:
+{paper_content}
+
+INSTRUCTIONS:
+Respond with the following structured fields.
+
+CORE_CONCEPT: One sentence describing the central contribution or idea.
+
+CONCEPT_TREE:
+<Root concept label (usually the paper's main method or system name)>
+  <Primary technical component 1>
+    <Sub-component 1a>
+    <Sub-component 1b>
+  <Primary technical component 2>
+    <Sub-component 2a>
+(Use 2-space indentation per level.  Include 3–5 primary components and
+go at least 2 levels deep where the paper provides sufficient detail.)
+
+SUB_IDEAS:
+1. <first key component or sub-contribution>
+2. <second key component or sub-contribution>
+3. <additional components as needed>
+
+ASSUMPTIONS:
+1. <first underlying assumption the work makes>
+2. <additional assumptions as needed>
+
+LIMITATIONS:
+1. <first acknowledged or implicit limitation>
+2. <additional limitations as needed>
+
+IMPLEMENTATION_ROADMAP:
+1. <first concrete step to implement the proposed approach>
+2. <second step>
+3. <additional ordered steps as needed — typically 4–6 steps total>
