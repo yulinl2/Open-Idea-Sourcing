@@ -733,8 +733,43 @@ class TestPipelineJobsInJSON:
 # Idea Decomposition rendering
 # ---------------------------------------------------------------------------
 
-from open_idea_sourcing.novelty_evaluator import IdeaDecomposition, DomainReference
-from open_idea_sourcing.report_generator import _build_mindmap
+from open_idea_sourcing.novelty_evaluator import ConceptNode, IdeaDecomposition, DomainReference
+from open_idea_sourcing.report_generator import _render_concept_tree_ascii, _concept_tree_to_dict
+
+
+def _sample_concept_tree() -> ConceptNode:
+    """Return a small concept tree for use in tests."""
+    return ConceptNode(
+        label="A Novel Attention Mechanism",
+        children=[
+            ConceptNode(
+                label="Problem: Attention is computationally expensive",
+                children=[
+                    ConceptNode(label="Gap: Quadratic complexity in sequence length"),
+                    ConceptNode(label="Metric: Speed and accuracy on NLP benchmarks"),
+                ],
+            ),
+            ConceptNode(
+                label="Method: Dynamic attention masking",
+                children=[
+                    ConceptNode(
+                        label="Architecture: Learned gate per head",
+                        children=[
+                            ConceptNode(label="Implementation: sigmoid-gated softmax"),
+                        ],
+                    ),
+                    ConceptNode(label="Training: Standard cross-entropy"),
+                ],
+            ),
+            ConceptNode(
+                label="Evidence",
+                children=[
+                    ConceptNode(label="Empirical: +2% BLEU on WMT14"),
+                    ConceptNode(label="Theoretical: O(n log n) complexity bound"),
+                ],
+            ),
+        ],
+    )
 
 
 def _sample_decomposition() -> IdeaDecomposition:
@@ -743,6 +778,7 @@ def _sample_decomposition() -> IdeaDecomposition:
         sub_ideas=["Dynamic attention masking", "Standard Transformer integration"],
         assumptions=["Uniform tokenisation"],
         limitations=["Evaluated on NLP benchmarks only"],
+        concept_tree=_sample_concept_tree(),
     )
 
 
@@ -840,70 +876,70 @@ class TestIdeaDecompositionInMarkdown:
         assert out.index("## Idea Decomposition") < out.index("**Overall verdict:**")
 
 
-class TestMindMapInMarkdown:
+class TestConceptTreeInMarkdown:
     def setup_method(self):
         self.gen = ReportGenerator()
         self.report = _sample_report_enriched()
 
-    def test_markdown_contains_mindmap_section(self):
+    def test_markdown_contains_concept_tree_section(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        assert "### Idea Mind Map" in out
+        assert "### Concept Tree" in out
 
-    def test_markdown_contains_mermaid_mindmap_block(self):
+    def test_markdown_concept_tree_in_code_block(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        assert "mindmap" in out
+        assert "```\nA Novel Attention Mechanism" in out
 
-    def test_markdown_mindmap_has_root_node(self):
+    def test_markdown_concept_tree_has_branch_connectors(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        assert "root((" in out
+        assert "├──" in out or "└──" in out
 
-    def test_markdown_mindmap_no_section_when_no_decomposition(self):
+    def test_markdown_no_concept_tree_section_when_no_decomposition(self):
         report = _sample_report()
         out = self.gen.generate(report, fmt="markdown")
-        assert "mindmap" not in out
+        assert "### Concept Tree" not in out
 
-    def test_build_mindmap_contains_sub_ideas(self):
-        d = _sample_decomposition()
-        diagram = _build_mindmap(d, "Test Paper")
-        assert "Dynamic attention masking" in diagram
-        assert "Standard Transformer integration" in diagram
+    def test_render_concept_tree_ascii_root_label(self):
+        tree = _sample_concept_tree()
+        lines = _render_concept_tree_ascii(tree)
+        assert lines[0] == "A Novel Attention Mechanism"
 
-    def test_build_mindmap_contains_assumptions(self):
-        d = _sample_decomposition()
-        diagram = _build_mindmap(d, "Test Paper")
-        assert "Uniform tokenisation" in diagram
+    def test_render_concept_tree_ascii_first_child(self):
+        tree = _sample_concept_tree()
+        lines = _render_concept_tree_ascii(tree)
+        assert any("Problem" in line for line in lines)
 
-    def test_build_mindmap_contains_limitations(self):
-        d = _sample_decomposition()
-        diagram = _build_mindmap(d, "Test Paper")
-        assert "NLP benchmarks" in diagram
+    def test_render_concept_tree_ascii_deep_node(self):
+        tree = _sample_concept_tree()
+        lines = _render_concept_tree_ascii(tree)
+        assert any("sigmoid-gated softmax" in line for line in lines)
 
-    def test_build_mindmap_uses_paper_title_as_root(self):
-        d = _sample_decomposition()
-        diagram = _build_mindmap(d, "My Paper Title")
-        assert "My Paper Title" in diagram
+    def test_render_concept_tree_ascii_last_child_uses_corner(self):
+        tree = _sample_concept_tree()
+        lines = _render_concept_tree_ascii(tree)
+        # Last top-level child should use └── connector
+        assert any("└──" in line and "Evidence" in line for line in lines)
 
-    def test_build_mindmap_falls_back_to_core_concept_when_no_title(self):
-        d = _sample_decomposition()
-        diagram = _build_mindmap(d)
-        assert "dynamic masking" in diagram.lower()
+    def test_concept_tree_to_dict_label(self):
+        tree = _sample_concept_tree()
+        d = _concept_tree_to_dict(tree)
+        assert d["label"] == "A Novel Attention Mechanism"
 
-    def test_build_mindmap_escapes_parens(self):
-        import re
-        d = IdeaDecomposition(
-            core_concept="Method (improved)",
-            sub_ideas=["Component (A)"],
-        )
-        diagram = _build_mindmap(d, "Paper (v2)")
-        # Strip the mandatory root((...)) wrapper, then verify no raw parens remain
-        # in the content lines (which would break Mermaid node syntax).
-        content_lines = [
-            line for line in diagram.splitlines()
-            if "root((" not in line
-        ]
-        for line in content_lines:
-            assert "(" not in line, f"Unexpected '(' in line: {line!r}"
-            assert ")" not in line, f"Unexpected ')' in line: {line!r}"
+    def test_concept_tree_to_dict_children(self):
+        tree = _sample_concept_tree()
+        d = _concept_tree_to_dict(tree)
+        assert "children" in d
+        assert len(d["children"]) == 3
+
+    def test_concept_tree_to_dict_leaf_no_children_key(self):
+        leaf = ConceptNode(label="Leaf node")
+        d = _concept_tree_to_dict(leaf)
+        assert "children" not in d
+
+    def test_concept_tree_no_section_when_concept_tree_is_none(self):
+        report = _sample_report_enriched()
+        report.idea_decomposition.concept_tree = None
+        out = self.gen.generate(report, fmt="markdown")
+        assert "### Concept Tree" not in out
 
 
 class TestDomainReferencesInText:
@@ -995,6 +1031,27 @@ class TestEnrichedFieldsInJSON:
         assert "authors" in ref
         assert "year" in ref
         assert "relevance" in ref
+
+    def test_json_contains_concept_tree_when_present(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert "concept_tree" in data["idea_decomposition"]
+
+    def test_json_concept_tree_has_label(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        ct = data["idea_decomposition"]["concept_tree"]
+        assert ct["label"] == "A Novel Attention Mechanism"
+
+    def test_json_concept_tree_has_children(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        ct = data["idea_decomposition"]["concept_tree"]
+        assert "children" in ct
+        assert len(ct["children"]) == 3
+
+    def test_json_no_concept_tree_when_none(self):
+        report = _sample_report_enriched()
+        report.idea_decomposition.concept_tree = None
+        data = json.loads(self.gen.generate(report, fmt="json"))
+        assert "concept_tree" not in data["idea_decomposition"]
 
     def test_json_no_idea_decomposition_when_none(self):
         report = _sample_report()
@@ -1125,69 +1182,64 @@ class TestPipelineJobTableGrouping:
 # Mind map: hide when no branches / truncate long items
 # ---------------------------------------------------------------------------
 
-class TestMindMapEmptyBranches:
+class TestConceptTreeEdgeCases:
     def setup_method(self):
         self.gen = ReportGenerator()
 
-    def test_mindmap_hidden_when_all_branch_lists_empty(self):
-        """A decomposition with no sub-ideas/assumptions/limitations should not
-        produce an 'Idea Mind Map' section (just a lone root circle is useless)."""
+    def test_concept_tree_hidden_when_tree_is_none(self):
+        """A decomposition without a concept_tree should not produce a Concept Tree section."""
         report = _sample_report()
         report.idea_decomposition = IdeaDecomposition(
             core_concept="Core concept only",
-            sub_ideas=[],
+            sub_ideas=["Idea A"],
             assumptions=[],
             limitations=[],
         )
         out = self.gen.generate(report, fmt="markdown")
-        assert "### Idea Mind Map" not in out
-        assert "mindmap" not in out
+        assert "### Concept Tree" not in out
 
-    def test_mindmap_shown_when_sub_ideas_present(self):
+    def test_concept_tree_shown_when_tree_present(self):
         report = _sample_report()
         report.idea_decomposition = IdeaDecomposition(
             core_concept="Core",
             sub_ideas=["Idea A"],
+            concept_tree=ConceptNode(
+                label="Root",
+                children=[ConceptNode(label="Child A")],
+            ),
         )
         out = self.gen.generate(report, fmt="markdown")
-        assert "### Idea Mind Map" in out
-        assert "mindmap" in out
+        assert "### Concept Tree" in out
+        assert "Root" in out
 
-    def test_build_mindmap_returns_empty_string_when_no_branches(self):
-        d = IdeaDecomposition(core_concept="X", sub_ideas=[], assumptions=[], limitations=[])
-        result = _build_mindmap(d, "Paper")
-        assert result == ""
+    def test_render_single_child_uses_corner_connector(self):
+        tree = ConceptNode(label="Root", children=[ConceptNode(label="Only child")])
+        lines = _render_concept_tree_ascii(tree)
+        assert any("└── Only child" in line for line in lines)
 
-    def test_build_mindmap_truncates_long_items(self):
-        long_text = "A" * 100  # definitely over 60 chars
-        d = IdeaDecomposition(
-            core_concept="Core",
-            sub_ideas=[long_text],
+    def test_render_multi_child_last_uses_corner(self):
+        tree = ConceptNode(
+            label="Root",
+            children=[ConceptNode(label="First"), ConceptNode(label="Last")],
         )
-        diagram = _build_mindmap(d, "Paper")
-        # The truncated label should appear in the diagram (60 chars + ellipsis)
-        assert "A" * 60 in diagram
-        assert "A" * 100 not in diagram
-        assert "…" in diagram
+        lines = _render_concept_tree_ascii(tree)
+        assert any("├── First" in line for line in lines)
+        assert any("└── Last" in line for line in lines)
 
-    def test_build_mindmap_does_not_truncate_exactly_max_length(self):
-        exact_text = "B" * 60  # exactly at the limit — must NOT be truncated
-        d = IdeaDecomposition(
-            core_concept="Core",
-            sub_ideas=[exact_text],
+    def test_render_nested_continuation_bar(self):
+        """When a parent is NOT last, its children's prefix should have │."""
+        tree = ConceptNode(
+            label="Root",
+            children=[
+                ConceptNode(label="A", children=[ConceptNode(label="A.1")]),
+                ConceptNode(label="B"),
+            ],
         )
-        diagram = _build_mindmap(d, "Paper")
-        assert "B" * 60 in diagram
-        assert "…" not in diagram
+        lines = _render_concept_tree_ascii(tree)
+        # A is not last → A.1 should be prefixed with │
+        assert any("│" in line and "A.1" in line for line in lines)
 
-    def test_build_mindmap_removes_brackets_and_braces(self):
-        d = IdeaDecomposition(
-            core_concept="Core",
-            sub_ideas=["Method [A] and {B}"],
-        )
-        diagram = _build_mindmap(d, "Paper")
-        assert "[" not in diagram.split("root")[1]  # not in branches
-        assert "{" not in diagram.split("root")[1]
+
 
 
 # ---------------------------------------------------------------------------

@@ -35,7 +35,7 @@ The `release.yml` workflow will:
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
 **Paper parser**
 - `ParsedPaper` gains an `authors: list[str]` field; `PaperParser._extract_authors()` heuristically extracts author names (capitalised-word lines between the title and institutional affiliations).
@@ -48,6 +48,26 @@ The `release.yml` workflow will:
 
 **Reference corpus**
 - Removed placeholder "A custom reference paper" (`user-paper-001`) from `data/references.json`; it was a test stub that poisoned similarity search with a zero-score result for every evaluation run.
+
+---
+
+## [2.0.0] — 2026-03-25
+
+### Added
+
+**Deep concept tree (v2.0 primary feature)**
+- `ConceptNode` dataclass — a recursive tree node (`label: str`, `children: list[ConceptNode]`) that represents any level of technical detail in a hierarchical concept tree.
+- `IdeaDecomposition.concept_tree: ConceptNode | None` — optional hierarchical concept tree field added to the existing decomposition dataclass.  When present it supersedes the flat lists as the primary structured view of the paper's contribution.
+- `_parse_concept_tree_text()` — parses indentation-based (2-spaces per level) LLM output into a `ConceptNode` tree.  Blank lines are ignored; nodes are attached to the deepest available parent.
+- `_render_concept_tree_ascii()` in `report_generator.py` — renders a `ConceptNode` tree as a list of ASCII box-drawing lines using `├──` / `└──` / `│` connectors (identical to the Unix `tree` command output).
+- `_concept_tree_to_dict()` in `report_generator.py` — serialises a `ConceptNode` tree to a JSON-compatible nested dict (`{label, children?}`).
+
+### Changed
+
+- `_IDEA_DECOMPOSITION_PROMPT` updated to request a `CONCEPT_TREE` section from the LLM — a multi-level indented tree with at least 3 top-level branches (Problem, Method, Evidence) and ≥3 levels deep where the technical implementation warrants it.
+- Markdown report: replaced the Mermaid `mindmap` diagram (Idea Mind Map section) with an ASCII concept tree rendered in a fenced code block under a new `### Concept Tree` section within `## Idea Decomposition`.  The ASCII tree is renderer-agnostic, never silently drops nodes, and goes arbitrarily deep.
+- Text report: `## Idea Decomposition` section now renders the concept tree with the `_render_concept_tree_ascii` helper when a tree is present.
+- JSON report: `idea_decomposition` object gains an optional `concept_tree` key containing the full nested node structure when a tree is present.
 
 ---
 

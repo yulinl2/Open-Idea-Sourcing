@@ -3,6 +3,7 @@
 import pytest
 
 from open_idea_sourcing.novelty_evaluator import (
+    ConceptNode,
     DomainReference,
     IdeaDecomposition,
     NoveltyDimension,
@@ -10,6 +11,7 @@ from open_idea_sourcing.novelty_evaluator import (
     NoveltyReport,
     SimilarityAnnotation,
     _extract_field,
+    _parse_concept_tree_text,
     _parse_decomposition_response,
     _parse_dimension_response,
     _parse_domain_references_response,
@@ -90,7 +92,19 @@ _DECOMP_RESPONSE = (
     "ASSUMPTIONS:\n"
     "1. Input sequences are tokenised uniformly\n"
     "LIMITATIONS:\n"
-    "1. Only evaluated on NLP benchmarks"
+    "1. Only evaluated on NLP benchmarks\n"
+    "CONCEPT_TREE:\n"
+    "A Novel Attention Mechanism\n"
+    "  Problem: Attention is computationally expensive\n"
+    "    Gap: Quadratic complexity in sequence length\n"
+    "    Metric: Speed and BLEU score\n"
+    "  Method: Dynamic attention masking\n"
+    "    Architecture: Learned gate per attention head\n"
+    "      Implementation: Sigmoid-gated softmax weights\n"
+    "    Training: Standard cross-entropy loss\n"
+    "  Evidence\n"
+    "    Empirical: +2% BLEU on WMT14 En-De\n"
+    "    Theoretical: O(n log n) complexity bound"
 )
 _DOMAIN_REFS_RESPONSE = (
     "REFERENCES:\n"
@@ -472,10 +486,107 @@ class TestIdeaDecomposition:
         assert d.assumptions == ["X"]
         assert d.limitations == ["Y"]
 
+    def test_concept_tree_defaults_to_none(self):
+        d = IdeaDecomposition(core_concept="A new method.")
+        assert d.concept_tree is None
+
+    def test_concept_tree_stored(self):
+        tree = ConceptNode(label="Root")
+        d = IdeaDecomposition(core_concept="Core.", concept_tree=tree)
+        assert d.concept_tree is tree
+
 
 # ---------------------------------------------------------------------------
-# DomainReference dataclass
+# ConceptNode dataclass
 # ---------------------------------------------------------------------------
+
+class TestConceptNode:
+    def test_label_stored(self):
+        node = ConceptNode(label="Root idea")
+        assert node.label == "Root idea"
+
+    def test_children_default_empty(self):
+        node = ConceptNode(label="Leaf")
+        assert node.children == []
+
+    def test_children_stored(self):
+        child = ConceptNode(label="Child")
+        node = ConceptNode(label="Parent", children=[child])
+        assert len(node.children) == 1
+        assert node.children[0].label == "Child"
+
+    def test_nested_children(self):
+        grandchild = ConceptNode(label="Grandchild")
+        child = ConceptNode(label="Child", children=[grandchild])
+        root = ConceptNode(label="Root", children=[child])
+        assert root.children[0].children[0].label == "Grandchild"
+
+
+# ---------------------------------------------------------------------------
+# _parse_concept_tree_text
+# ---------------------------------------------------------------------------
+
+_TREE_TEXT = (
+    "A Novel Attention Mechanism\n"
+    "  Problem: Attention is expensive\n"
+    "    Gap: Quadratic complexity\n"
+    "    Metric: BLEU score\n"
+    "  Method: Dynamic masking\n"
+    "    Architecture: Learned gate\n"
+    "      Implementation: Sigmoid weights\n"
+    "  Evidence\n"
+    "    Empirical: +2% BLEU\n"
+    "    Theoretical: O(n log n)"
+)
+
+
+class TestParseConceptTreeText:
+    def test_returns_concept_node(self):
+        root = _parse_concept_tree_text(_TREE_TEXT)
+        assert isinstance(root, ConceptNode)
+
+    def test_root_label(self):
+        root = _parse_concept_tree_text(_TREE_TEXT)
+        assert root.label == "A Novel Attention Mechanism"
+
+    def test_top_level_children_count(self):
+        root = _parse_concept_tree_text(_TREE_TEXT)
+        assert len(root.children) == 3
+
+    def test_first_child_label(self):
+        root = _parse_concept_tree_text(_TREE_TEXT)
+        assert root.children[0].label == "Problem: Attention is expensive"
+
+    def test_second_level_children(self):
+        root = _parse_concept_tree_text(_TREE_TEXT)
+        problem = root.children[0]
+        assert len(problem.children) == 2
+        assert problem.children[0].label == "Gap: Quadratic complexity"
+
+    def test_deep_nesting(self):
+        root = _parse_concept_tree_text(_TREE_TEXT)
+        method = root.children[1]
+        arch = method.children[0]
+        assert arch.label == "Architecture: Learned gate"
+        assert arch.children[0].label == "Implementation: Sigmoid weights"
+
+    def test_empty_text_returns_none(self):
+        assert _parse_concept_tree_text("") is None
+
+    def test_whitespace_only_returns_none(self):
+        assert _parse_concept_tree_text("   \n  \n") is None
+
+    def test_single_line_returns_root_no_children(self):
+        root = _parse_concept_tree_text("Just a root")
+        assert root.label == "Just a root"
+        assert root.children == []
+
+    def test_blank_lines_are_ignored(self):
+        text = "Root\n\n  Child one\n\n  Child two"
+        root = _parse_concept_tree_text(text)
+        assert len(root.children) == 2
+
+
 
 class TestDomainReference:
     def test_defaults(self):
@@ -549,6 +660,23 @@ class TestParseDecompositionResponse:
     def test_returns_idea_decomposition_instance(self):
         d = _parse_decomposition_response(_DECOMP_RESPONSE)
         assert isinstance(d, IdeaDecomposition)
+
+    def test_parses_concept_tree_when_present(self):
+        d = _parse_decomposition_response(_DECOMP_RESPONSE)
+        assert d.concept_tree is not None
+        assert isinstance(d.concept_tree, ConceptNode)
+
+    def test_concept_tree_root_label(self):
+        d = _parse_decomposition_response(_DECOMP_RESPONSE)
+        assert d.concept_tree.label == "A Novel Attention Mechanism"
+
+    def test_concept_tree_top_level_children(self):
+        d = _parse_decomposition_response(_DECOMP_RESPONSE)
+        assert len(d.concept_tree.children) == 3
+
+    def test_concept_tree_is_none_when_missing(self):
+        d = _parse_decomposition_response("CORE_CONCEPT: Simple idea.\n")
+        assert d.concept_tree is None
 
 
 # ---------------------------------------------------------------------------
