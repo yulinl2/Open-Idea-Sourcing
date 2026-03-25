@@ -222,7 +222,20 @@ class NoveltyReport:
 
 @dataclass
 class PipelineContext:
-    """Shared state bus threaded through all pipeline stages."""
+    """Shared state bus threaded through all pipeline stages.
+
+    Each stage reads from and writes to this object.  Using
+    ``PipelineContext`` as the shared bus (rather than function
+    parameters) makes it possible to:
+
+    * Inspect or checkpoint pipeline state at any point mid-run.
+    * Replay any stage independently without re-running earlier stages.
+    * Swap any stage implementation (e.g. swap the parser, the retriever,
+      or a single dimension check) without touching adjacent stages.
+    * Run reliable ablations — separate the effects of model choice, prompt
+      design, and pipeline structure cleanly.
+    """
+
     paper: ParsedPaper
     metadata: RunMetadata
     raw_llm_responses: dict[str, str] = field(default_factory=dict)
@@ -231,6 +244,11 @@ class PipelineContext:
     domain_references: list[DomainReference] = field(default_factory=list)
     similar_paper_annotations: list[SimilarityAnnotation] = field(default_factory=list)
     dimensions: list[NoveltyDimension] = field(default_factory=list)
+    search_queries: list[str] = field(default_factory=list)
+    online_papers: list = field(default_factory=list)
+    stage_runtimes: dict[str, float] = field(default_factory=dict)
+    # Maps paper_id → source label ("bundled", "user", "paper-cited", "online")
+    ref_sources: dict[str, str] = field(default_factory=dict)
 
 
 class NoveltyEvaluator:
@@ -498,6 +516,175 @@ class NoveltyEvaluator:
             dimensions=[dup, combo, equiv],
             similar_papers=similar_papers,
             raw_llm_responses=raw,
+            idea_decomposition=idea_decomp,
+            domain_references=domain_refs,
+            similar_paper_annotations=annotations,
+        )
+
+    def evaluate_with_context(self, ctx: "PipelineContext") -> "NoveltyReport":
+        """Run all evaluation passes using *ctx* as the shared state bus.
+
+        Reads inputs from *ctx* and writes all results back to it, making
+        this the ablation-friendly entry point for the evaluation stage.
+
+        When ``ctx.idea_decomposition`` is already populated (e.g. pre-run
+        at Stage 2), the internal decomposition LLM call is skipped.
+        Likewise, when ``ctx.domain_references`` is already populated
+        (pre-run at Stage 3d), the internal domain-references call is
+        skipped and no duplicate ``PipelineJob`` entry is added.
+
+        Reads
+        -----
+        ctx.paper, ctx.similar_papers, ctx.idea_decomposition,
+        ctx.domain_references, ctx.metadata, ctx.raw_llm_responses
+
+        Writes
+        ------
+        ctx.idea_decomposition, ctx.domain_references,
+        ctx.similar_paper_annotations, ctx.dimensions, ctx.raw_llm_responses,
+        ctx.metadata.jobs (appended)
+
+        Parameters
+        ----------
+        ctx:
+            Shared pipeline context.
+
+        Returns
+        -------
+        NoveltyReport
+            Fully assembled report with all dimension verdicts and metadata.
+        """
+        similar_papers = [
+            p for p in ctx.similar_papers if p.score >= self._threshold
+        ][: self._top_k]
+        content = ctx.paper.key_content()
+        refs_text = self.format_references(similar_papers)
+        raw = ctx.raw_llm_responses
+        refs_summary = f"{len(similar_papers)} reference paper(s)"
+        agent = (
+            f"LLM ({ctx.metadata.model})"
+            if (ctx.metadata and ctx.metadata.model)
+            else "LLM"
+        )
+        run_start = time.monotonic()
+
+        decomp_ran_internally = False
+        t0 = time.monotonic()
+        if ctx.idea_decomposition is not None:
+            idea_decomp = ctx.idea_decomposition
+            t1 = time.monotonic()
+        else:
+            idea_decomp = self._decompose_idea(content, raw)
+            ctx.idea_decomposition = idea_decomp
+            decomp_ran_internally = True
+            t1 = time.monotonic()
+
+        dup = self._check_duplication(content, refs_text, raw, decomp=idea_decomp)
+        t2 = time.monotonic()
+        combo = self._check_combination(content, refs_text, raw, decomp=idea_decomp)
+        t3 = time.monotonic()
+        equiv = self._check_equivalence(content, refs_text, raw, decomp=idea_decomp)
+        t4 = time.monotonic()
+        overall, confidence, summary = self._synthesise(
+            ctx.paper.title, dup, combo, equiv, raw
+        )
+        t5 = time.monotonic()
+
+        domain_refs_ran_internally = False
+        if ctx.domain_references:
+            domain_refs = ctx.domain_references
+            t6 = t5
+        else:
+            domain_refs = self._find_domain_references(content, refs_text, raw)
+            ctx.domain_references = domain_refs
+            domain_refs_ran_internally = True
+            t6 = time.monotonic()
+
+        annotations: list[SimilarityAnnotation] = []
+        t7 = t6
+        if similar_papers:
+            annotations = self._annotate_similar_papers(
+                content, similar_papers, raw, decomp=idea_decomp
+            )
+            ctx.similar_paper_annotations = annotations
+            t7 = time.monotonic()
+
+        ctx.dimensions = [dup, combo, equiv]
+
+        if ctx.metadata is not None:
+            jobs: list[PipelineJob] = []
+            if decomp_ran_internally:
+                jobs.append(PipelineJob(
+                    name="Idea decomposition",
+                    agent=agent,
+                    offset_s=round(t0 - run_start, 3),
+                    duration_s=round(t1 - t0, 3),
+                    input_summary="paper content",
+                    output_summary=f"{len(idea_decomp.sub_ideas)} sub-idea(s)",
+                ))
+            jobs += [
+                PipelineJob(
+                    name="Duplication check",
+                    agent=agent,
+                    offset_s=round(t1 - run_start, 3),
+                    duration_s=round(t2 - t1, 3),
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"verdict={dup.verdict}",
+                ),
+                PipelineJob(
+                    name="Combination check",
+                    agent=agent,
+                    offset_s=round(t2 - run_start, 3),
+                    duration_s=round(t3 - t2, 3),
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"verdict={combo.verdict}",
+                ),
+                PipelineJob(
+                    name="Equivalence check",
+                    agent=agent,
+                    offset_s=round(t3 - run_start, 3),
+                    duration_s=round(t4 - t3, 3),
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"verdict={equiv.verdict}",
+                ),
+                PipelineJob(
+                    name="Synthesis",
+                    agent=agent,
+                    offset_s=round(t4 - run_start, 3),
+                    duration_s=round(t5 - t4, 3),
+                    input_summary="3 dimension results",
+                    output_summary=f"verdict={overall}, confidence={confidence}",
+                ),
+            ]
+            if domain_refs_ran_internally:
+                jobs.append(PipelineJob(
+                    name="Domain references",
+                    agent=agent,
+                    offset_s=round(t5 - run_start, 3),
+                    duration_s=round(t6 - t5, 3),
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"{len(domain_refs)} domain reference(s)",
+                ))
+            if annotations:
+                jobs.append(PipelineJob(
+                    name="Reference annotation",
+                    agent=agent,
+                    offset_s=round(t6 - run_start, 3),
+                    duration_s=round(t7 - t6, 3),
+                    input_summary=f"paper + {len(similar_papers)} similar paper(s)",
+                    output_summary=f"{len(annotations)} annotation(s)",
+                ))
+            ctx.metadata.jobs.extend(jobs)
+
+        return NoveltyReport(
+            paper_title=ctx.paper.title,
+            overall_verdict=overall,
+            confidence=confidence,
+            summary=summary,
+            dimensions=[dup, combo, equiv],
+            similar_papers=similar_papers,
+            raw_llm_responses=dict(raw),
+            metadata=ctx.metadata,
             idea_decomposition=idea_decomp,
             domain_references=domain_refs,
             similar_paper_annotations=annotations,

@@ -165,3 +165,87 @@ class TestPaperParser:
         dummy_pdf.write_bytes(b"%PDF-1.4 fake")
         with pytest.raises(ImportError, match="pdfplumber"):
             self.parser.parse_pdf(str(dummy_pdf))
+
+
+# ---------------------------------------------------------------------------
+# LLMPaperParser
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.paper_parser import LLMPaperParser
+
+
+_MOCK_LLM_PARSE_RESPONSE = (
+    "TITLE: Attention Is All You Need\n"
+    "AUTHORS: Vaswani, Shazeer, Parmar\n"
+    "ABSTRACT: We propose a new simple network architecture.\n"
+    "SECTIONS:\n"
+    "1. Introduction\n"
+    "2. Background\n"
+    "3. Model Architecture\n"
+    "4. Experiments\n"
+    "5. Conclusion\n"
+)
+
+
+class TestLLMPaperParser:
+    def _mock_llm(self, prompt: str) -> str:
+        return _MOCK_LLM_PARSE_RESPONSE
+
+    def test_extracts_title(self):
+        parser = LLMPaperParser(self._mock_llm)
+        paper = parser.parse_text("Some raw PDF text.")
+        assert paper.title == "Attention Is All You Need"
+
+    def test_extracts_abstract(self):
+        parser = LLMPaperParser(self._mock_llm)
+        paper = parser.parse_text("Some raw PDF text.")
+        assert "simple network architecture" in paper.abstract
+
+    def test_extracts_authors(self):
+        parser = LLMPaperParser(self._mock_llm)
+        paper = parser.parse_text("Some raw PDF text.")
+        assert "Vaswani" in paper.authors
+
+    def test_extracts_sections(self):
+        parser = LLMPaperParser(self._mock_llm)
+        paper = parser.parse_text("Some raw PDF text.")
+        section_titles = [s.title for s in paper.sections]
+        assert "Introduction" in section_titles
+        assert "Model Architecture" in section_titles
+
+    def test_full_text_preserved(self):
+        parser = LLMPaperParser(self._mock_llm)
+        raw = "Some raw PDF text with body content."
+        paper = parser.parse_text(raw)
+        assert "body content" in paper.full_text
+
+    def test_falls_back_on_llm_failure(self):
+        """A failing LLM falls back to the regex parser without crashing."""
+        def failing_llm(prompt: str) -> str:
+            raise RuntimeError("LLM unavailable")
+
+        parser = LLMPaperParser(failing_llm)
+        paper = parser.parse_text("Some Title\nAbstract: A short abstract.\nBody text.")
+        assert isinstance(paper.title, str)
+        assert isinstance(paper.abstract, str)
+
+    def test_falls_back_on_empty_llm_output(self):
+        """When LLM returns no title+abstract, fall back to regex parser."""
+        parser = LLMPaperParser(lambda p: "TITLE: \nABSTRACT: ")
+        paper = parser.parse_text("Some Title\nAbstract: A short abstract.\n")
+        assert isinstance(paper, ParsedPaper)
+
+    def test_returns_parsed_paper_type(self):
+        parser = LLMPaperParser(self._mock_llm)
+        paper = parser.parse_text("Any text.")
+        assert isinstance(paper, ParsedPaper)
+
+    def test_llm_parser_flag_parsed(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text", "--llm-parser"])
+        assert args.llm_parser is True
+
+    def test_llm_parser_default_is_false(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text"])
+        assert args.llm_parser is False

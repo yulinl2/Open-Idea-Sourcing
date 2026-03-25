@@ -71,7 +71,7 @@ MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MiB safety limit for downloads
 _BUNDLED_REFERENCES = Path(__file__).resolve().parent / "data" / "references.json"
 
 from open_idea_sourcing import __version__
-from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator, PipelineJob, RunMetadata
+from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator, PipelineContext, PipelineJob, RunMetadata
 from open_idea_sourcing.online_search import OnlineReferenceSearch, generate_search_queries
 from open_idea_sourcing.paper_parser import PaperParser
 from open_idea_sourcing.reference_store import ReferenceStore
@@ -431,6 +431,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "(default: OPENAI_DECOMPOSITION_MODEL env var or empty)"
         ),
     )
+    parser.add_argument(
+        "--llm-parser",
+        action="store_true",
+        default=bool(int(os.environ.get("LLM_PARSER", "0"))),
+        help=(
+            "Use the LLM-based paper parser for Stage 1 (more accurate title, "
+            "abstract, and section extraction). Falls back to the regex parser "
+            "when the LLM call fails. Controlled by LLM_PARSER=1 env var."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -488,9 +498,23 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             if not paper_path.exists():
                 return _fail(f"file not found: {paper_path}", args.format)
 
+        # --- Build LLM early when --llm-parser is requested so it can be
+        # shared with the parser before the normal LLM-build position. ---
+        llm = None
+        if getattr(args, "llm_parser", False):
+            try:
+                llm = _build_llm(args.model)
+            except SystemExit:
+                pass  # fall back to regex parser; LLM error surfaced later
+
         # --- Parse the submitted paper ---
-        parser = PaperParser()
-        print(f"Parsing paper: {paper_path.name} ...", file=sys.stderr)
+        if getattr(args, "llm_parser", False) and llm is not None:
+            from open_idea_sourcing.paper_parser import LLMPaperParser
+            parser = LLMPaperParser(llm)
+            print(f"Parsing paper (LLM-enhanced): {paper_path.name} ...", file=sys.stderr)
+        else:
+            parser = PaperParser()
+            print(f"Parsing paper: {paper_path.name} ...", file=sys.stderr)
         t0 = time.monotonic()
         try:
             paper = parser.parse_file(paper_path)
@@ -500,6 +524,12 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         stage_runtimes["parsing"] = parse_duration
         if not paper.full_text.strip():
             return _fail("no text could be extracted from the paper.", args.format)
+
+        # Create the shared pipeline context and redirect stage_runtimes to it
+        # so there is a single source of truth for all pipeline state.
+        ctx = PipelineContext(paper=paper, metadata=RunMetadata(model=args.model))
+        ctx.stage_runtimes["parsing"] = parse_duration
+        stage_runtimes = ctx.stage_runtimes
 
         # --- Load reference store ---
         # By default --references points to the bundled baseline corpus
@@ -511,7 +541,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         store = ReferenceStore()
         if args.references != "":
             if _BUNDLED_REFERENCES.exists():
-                store.load(_BUNDLED_REFERENCES)
+                store.load(_BUNDLED_REFERENCES, source="bundled")
                 print(
                     f"Loaded {len(store)} bundled reference(s) from"
                     f" {_BUNDLED_REFERENCES.name}",
@@ -521,17 +551,18 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             ref_path = Path(args.references)
             if ref_path.exists():
                 print(f"Loading reference store: {ref_path} ...", file=sys.stderr)
-                store.load(ref_path)
+                store.load(ref_path, source="user")
             else:
                 print(
                     f"Warning: reference file not found: {ref_path}", file=sys.stderr
                 )
 
         # --- Build LLM (needed for query generation and novelty evaluation) ---
-        try:
-            llm = _build_llm(args.model)
-        except SystemExit as exc:
-            return _fail(str(exc.code), args.format)
+        if llm is None:
+            try:
+                llm = _build_llm(args.model)
+            except SystemExit as exc:
+                return _fail(str(exc.code), args.format)
 
         # --- Build decomposition LLM (optional separate model for Stage 2) ---
         decomp_llm = None
@@ -560,6 +591,8 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             return _fail(f"idea decomposition failed: {exc}", args.format)
         decomp_duration = round(time.monotonic() - t0, 2)
         stage_runtimes["decomposition"] = decomp_duration
+        ctx.idea_decomposition = idea_decomp
+        ctx.raw_llm_responses.update(_decomp_raw)
         print(
             f"  Decomposed into concept tree"
             f"{' with ' + str(len(idea_decomp.implementation_steps)) + ' implementation step(s)' if idea_decomp.implementation_steps else ''}.",
@@ -614,10 +647,12 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 queries=search_queries or None,
             )
             for ref_paper in online_papers:
-                store.add(ref_paper)
+                store.add(ref_paper, source="online")
             online_papers_count = len(online_papers)
             online_duration = round(time.monotonic() - t0, 2)
             stage_runtimes["online_search"] = online_duration
+            ctx.online_papers = online_papers
+            ctx.search_queries = search_queries
             print(
                 f"  Found {online_papers_count} related paper(s) online.",
                 file=sys.stderr,
@@ -630,6 +665,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         similar = searcher.search(query, top_k=args.top_k)
         sim_duration = round(time.monotonic() - t0, 2)
         stage_runtimes["similarity"] = sim_duration
+        ctx.similar_papers = similar
 
         # Build descriptive output summary: list top matched titles with scores.
         if similar:
@@ -670,6 +706,8 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             return _fail(f"domain reference finding failed: {exc}", args.format)
         dr_duration = round(time.monotonic() - t0, 2)
         stage_runtimes["domain_references"] = dr_duration
+        ctx.domain_references = domain_refs
+        ctx.raw_llm_responses.update(_dr_raw)
         print(
             f"  Found {len(domain_refs)} domain reference(s).",
             file=sys.stderr,
@@ -778,24 +816,47 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             3,
         )
 
-        # Similarity search detail: full list of matched papers with scores.
+        # Similarity search detail: full list of matched papers with scores + source breakdown.
         def _esc(text: str) -> str:
             """Escape text for a Markdown table cell."""
             return str(text).replace("|", r"\|").replace("\n", " ")
 
         _sim_rows = "\n".join(
-            f"| {r.score:.3f} | {_esc(r.paper.title)} | {r.paper.year or '—'} |"
+            f"| {r.score:.3f} | {_esc(r.paper.title)} | {r.paper.year or '—'} | {store.get_source(r.paper.id) or '—'} |"
             for r in similar
-        ) if similar else "| — | *(no matches)* | — |"
+        ) if similar else "| — | *(no matches)* | — | — |"
+
+        # Source count breakdown for all loaded references.
+        _source_counts: dict[str, int] = {}
+        for _p in store.all_papers():
+            _src = store.get_source(_p.id) or "unknown"
+            _source_counts[_src] = _source_counts.get(_src, 0) + 1
+        _SOURCE_DISPLAY = {
+            "bundled": "Bundled corpus",
+            "user": "User-provided",
+            "paper-cited": "Paper citations",
+            "online": "Online search",
+            "unknown": "Unknown",
+        }
+        _src_table_rows = "\n".join(
+            f"| {_SOURCE_DISPLAY.get(src, src.capitalize())} | {cnt} |"
+            for src, cnt in sorted(_source_counts.items())
+        )
         _sim_detail = "\n".join([
-            f"**Query (key content excerpt):**",
+            "**Query (key content excerpt):**",
             "```",
             query[:300] + ("…" if len(query) > 300 else ""),
             "```",
             "",
+            "### All loaded references",
+            "",
+            "| Source | Count |",
+            "|--------|-------|",
+            _src_table_rows,
+            "",
             f"**All matches ({len(similar)}):**",
-            "| Score | Title | Year |",
-            "|------:|-------|------|",
+            "| Score | Title | Year | Source |",
+            "|------:|-------|------|--------|",
             _sim_rows,
         ])
 
@@ -870,16 +931,11 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             pr_number=pr_number,
             jobs=early_jobs,
         )
+        # Wire ctx to the full run metadata so evaluate_with_context can
+        # append pipeline jobs to the correct metadata object.
+        ctx.metadata = run_metadata
         try:
-            report = evaluator.evaluate(
-                paper,
-                similar_papers=similar,
-                metadata=run_metadata,
-                _run_start=run_start,
-                domain_references=domain_refs,
-                _domain_references_raw=_dr_raw,
-                idea_decomposition=idea_decomp,
-            )
+            report = evaluator.evaluate_with_context(ctx)
         except RuntimeError as exc:
             return _fail(f"novelty evaluation failed: {exc}", args.format)
         stage_runtimes["evaluation"] = round(time.monotonic() - t0, 2)

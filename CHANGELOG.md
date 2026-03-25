@@ -83,6 +83,31 @@ The `release.yml` workflow will:
 
 ---
 
+## [2.2.0] — 2026-03-25
+
+### Added
+
+**Pipeline: `PipelineContext` as shared state bus**
+- `PipelineContext` is now the single shared state object threaded through all pipeline stages in `_review_one()`.
+- `NoveltyEvaluator.evaluate_with_context(ctx)` — ablation-friendly entry point that reads inputs from and writes results back to context, replacing the 6-parameter `evaluate()` call in the main pipeline.
+- Enables: independent stage re-runs, per-stage checkpointing, reliable ablations (swap model/prompt/pipeline without touching adjacent stages).
+- `PipelineContext` gains `search_queries`, `online_papers`, `stage_runtimes`, and `ref_sources` fields.
+- Backward-compatible: the existing `evaluate()` method remains fully functional.
+
+**Stage 1: LLM-based paper parser**
+- `LLMPaperParser` in `paper_parser.py` — uses an LLM to extract title, abstract, authors, and section list from raw paper text. More robust than regex for real PDFs.
+- Prompt template: `open_idea_sourcing/prompts/paper_parse.txt`.
+- Falls back gracefully to the regex-based `PaperParser` when the LLM call fails or returns empty output.
+- `--llm-parser` CLI flag (env: `LLM_PARSER=1`) to enable.
+
+**Stage 3: Reference source separation and annotated audit list**
+- `ReferenceStore.add(paper, source=...)` and `ReferenceStore.load(path, source=...)` accept a source label.
+- `ReferenceStore.get_source(paper_id)` returns the source label for any loaded paper.
+- Source labels: `"bundled"` (data/references.json), `"user"` (--references file), `"online"` (keyword search).
+- Pipeline log similarity-search job detail shows a complete annotated reference list grouped by source. Enables full audit trail without mixing or auto-ingesting sources.
+
+---
+
 ## [2.1.0] — 2026-03-25
 
 ### Added

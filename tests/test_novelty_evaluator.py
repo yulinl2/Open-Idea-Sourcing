@@ -8,6 +8,8 @@ from open_idea_sourcing.novelty_evaluator import (
     NoveltyDimension,
     NoveltyEvaluator,
     NoveltyReport,
+    PipelineContext,
+    RunMetadata,
     SimilarityAnnotation,
     _extract_field,
     _parse_decomposition_response,
@@ -1058,3 +1060,122 @@ class TestDecomposeIdeaPublicMethod:
         pre_decomp = IdeaDecomposition(core_concept="Pre-computed concept.")
         report = evaluator.evaluate(SAMPLE_PAPER, idea_decomposition=pre_decomp)
         assert report.idea_decomposition.core_concept == "Pre-computed concept."
+
+
+# ---------------------------------------------------------------------------
+# Helpers for evaluate_with_context tests
+# ---------------------------------------------------------------------------
+
+def _mock_llm_response(prompt: str) -> str:
+    """Generic mock LLM that returns valid structured responses for all passes."""
+    return (
+        "VERDICT: LOW\n"
+        "EXPLANATION: No significant overlap.\n"
+        "REFERENCES: none\n"
+        "OVERALL_VERDICT: NOVEL\n"
+        "CONFIDENCE: HIGH\n"
+        "SUMMARY: Paper is novel."
+    )
+
+
+# ---------------------------------------------------------------------------
+# NoveltyEvaluator.evaluate_with_context()
+# ---------------------------------------------------------------------------
+
+class TestEvaluateWithContext:
+    def test_evaluate_with_context_returns_novelty_report(self):
+        """evaluate_with_context should return a NoveltyReport."""
+        evaluator = NoveltyEvaluator(llm=_mock_llm_response)
+        paper = ParsedPaper(title="Test", abstract="Test abstract.", full_text="Test full text.")
+        ctx = PipelineContext(paper=paper, metadata=RunMetadata(model="test-model"))
+        report = evaluator.evaluate_with_context(ctx)
+        assert isinstance(report, NoveltyReport)
+        assert report.paper_title == "Test"
+
+    def test_evaluate_with_context_uses_precomputed_decomposition(self):
+        """When ctx.idea_decomposition is set, the decomposition LLM call is skipped."""
+        decomp_calls = []
+
+        def llm(prompt: str) -> str:
+            if "CORE_CONCEPT:" in prompt or "Decompose" in prompt:
+                decomp_calls.append(prompt)
+                return "CORE_CONCEPT: test\nASSUMPTIONS:\n1. none\nLIMITATIONS:\n1. none"
+            return _mock_llm_response(prompt)
+
+        evaluator = NoveltyEvaluator(llm=llm)
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        decomp = IdeaDecomposition(core_concept="pre-computed")
+        ctx = PipelineContext(
+            paper=paper,
+            metadata=RunMetadata(model="test"),
+            idea_decomposition=decomp,
+        )
+        report = evaluator.evaluate_with_context(ctx)
+        assert report.idea_decomposition.core_concept == "pre-computed"
+        assert len(decomp_calls) == 0
+
+    def test_evaluate_with_context_writes_dimensions_to_ctx(self):
+        """After evaluate_with_context, ctx.dimensions should have 3 entries."""
+        evaluator = NoveltyEvaluator(llm=_mock_llm_response)
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        ctx = PipelineContext(paper=paper, metadata=RunMetadata(model="test"))
+        evaluator.evaluate_with_context(ctx)
+        assert len(ctx.dimensions) == 3  # duplication, combination, equivalence
+
+    def test_evaluate_with_context_skips_domain_refs_when_precomputed(self):
+        """Pre-populated ctx.domain_references suppresses the domain-refs LLM call."""
+        calls = []
+
+        def llm(prompt: str) -> str:
+            calls.append(prompt)
+            return _mock_llm_response(prompt)
+
+        evaluator = NoveltyEvaluator(llm=llm)
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        pre_refs = [DomainReference(title="Pre-computed ref")]
+        ctx = PipelineContext(
+            paper=paper,
+            metadata=RunMetadata(model="test"),
+            domain_references=pre_refs,
+        )
+        evaluator.evaluate_with_context(ctx)
+        # domain_refs call should not have been made
+        assert ctx.domain_references[0].title == "Pre-computed ref"
+        # Only decomp + dup + combo + equiv + synth = 5 calls (no domain refs)
+        assert len(calls) == 5
+
+    def test_evaluate_with_context_appends_jobs_to_metadata(self):
+        """evaluate_with_context should add PipelineJob entries to ctx.metadata."""
+        evaluator = NoveltyEvaluator(llm=_mock_llm_response)
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        metadata = RunMetadata(model="test")
+        ctx = PipelineContext(paper=paper, metadata=metadata)
+        evaluator.evaluate_with_context(ctx)
+        assert len(ctx.metadata.jobs) > 0
+
+    def test_pipeline_context_ref_sources_field(self):
+        """PipelineContext should have a ref_sources dict field."""
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        ctx = PipelineContext(paper=paper, metadata=RunMetadata())
+        assert isinstance(ctx.ref_sources, dict)
+        ctx.ref_sources["paper123"] = "online"
+        assert ctx.ref_sources["paper123"] == "online"
+
+    def test_pipeline_context_stage_runtimes_field(self):
+        """PipelineContext should have a stage_runtimes dict field."""
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        ctx = PipelineContext(paper=paper, metadata=RunMetadata())
+        assert isinstance(ctx.stage_runtimes, dict)
+        ctx.stage_runtimes["parsing"] = 0.5
+        assert ctx.stage_runtimes["parsing"] == 0.5
+
+    def test_pipeline_context_search_queries_and_online_papers(self):
+        """PipelineContext should have search_queries list and online_papers list."""
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        ctx = PipelineContext(paper=paper, metadata=RunMetadata())
+        assert isinstance(ctx.search_queries, list)
+        assert isinstance(ctx.online_papers, list)
+        ctx.search_queries.append("deep learning transformers")
+        ctx.online_papers.append(object())
+        assert len(ctx.search_queries) == 1
+        assert len(ctx.online_papers) == 1
