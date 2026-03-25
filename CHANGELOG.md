@@ -51,6 +51,24 @@ The `release.yml` workflow will:
 
 ---
 
+## [2.2.0] — 2026-03-25
+
+### Changed
+
+**Stage 2 (Understand) now runs before Stage 3 (Retrieve)**
+- `NoveltyEvaluator.decompose_idea()` — new public method that runs the idea decomposition pass before online retrieval so the structured concept tree is available to inform LLM query generation.  The caller (Stage 2) records the PipelineJob entry; `evaluate()` skips the internal LLM call when `idea_decomposition` is pre-supplied.
+- `evaluate()` gains two new optional parameters — `idea_decomposition: IdeaDecomposition | None` and `_idea_decomposition_raw: dict[str, str] | None` — mirroring the existing `domain_references` / `_domain_references_raw` pattern for pre-computed stages.
+- `generate_search_queries()` in `online_search.py` gains an optional `decomposition: IdeaDecomposition | None` parameter.  When a decomposition with a `core_concept` is supplied, the enhanced `_QUERY_GENERATION_PROMPT_WITH_DECOMP` is used; conceptual queries are derived from the structured concept tree rather than just the raw paper text.
+- `review_paper._review_one()` now runs Stage 2 immediately after parsing (before Stage 3), passes the pre-computed decomposition to `generate_search_queries`, and forwards it to `evaluate()` so no redundant LLM call is made.  The "Idea decomposition" PipelineJob is added to `early_jobs` with a correct offset relative to parse + decomp duration.
+- The `stage_runtimes` dict now includes a `"decomposition"` entry.
+
+**Evidence IDs (REF-N labels) in evaluation prompts**
+- `format_references()` now labels each reference as `REF-N [id]: ...` instead of `N. [id] ...`.
+- `_DUPLICATION_PROMPT`, `_COMBINATION_PROMPT`, and `_EQUIVALENCE_PROMPT` INSTRUCTIONS now explicitly instruct the LLM to cite references using their `REF-N` label (e.g. `REF-2`) both within the EXPLANATION and in the REFERENCES field.
+- `_SYNTHESIS_PROMPT` INSTRUCTIONS now ask the LLM to back SUMMARY claims with `REF-N` labels where relevant.
+
+---
+
 ## [2.1.0] — 2026-03-25
 
 ### Added
