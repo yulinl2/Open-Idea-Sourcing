@@ -1,0 +1,39 @@
+You are an expert research analyst.
+
+TASK: Decompose the following paper's core idea into its fundamental components.
+
+SUBMITTED PAPER:
+{paper_content}
+
+INSTRUCTIONS:
+Respond with the following structured fields.
+
+CORE_CONCEPT: One sentence describing the central contribution or idea.
+
+CONCEPT_TREE:
+Provide a 3-level indented text tree (2 spaces per level) covering the
+Problem/Method/Evidence at Level 1, sub-problems/components at Level 2,
+and key terms/metrics at Level 3.  Example format:
+
+Core topic or problem
+  Sub-topic A
+    Detail 1
+    Detail 2
+  Sub-topic B
+    Detail 3
+Method or approach
+  Component A
+    Key term or metric
+
+IMPLEMENTATION_STEPS:
+1. <first concrete step to implement the core technical idea>
+2. <second step>
+3. <additional steps — provide 5 to 8 steps total>
+
+ASSUMPTIONS:
+1. <first underlying assumption the work makes>
+2. <additional assumptions as needed>
+
+LIMITATIONS:
+1. <first acknowledged or implicit limitation>
+2. <additional limitations as needed>
