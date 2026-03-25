@@ -21,9 +21,16 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .novelty_evaluator import NoveltyReport, RunMetadata
+from .novelty_evaluator import (
+    IdeaDecomposition,
+    DomainReference,
+    SimilarityAnnotation,
+    NoveltyReport,
+    RunMetadata,
+)
 
 OutputFormat = Literal["text", "markdown", "json", "pdf"]
 
@@ -55,6 +62,16 @@ blockquote { border-left: 4px solid #aaa; margin: 0; padding: 6px 16px; color: #
 code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
 pre code { display: block; padding: 10px; }
 """
+
+
+def _escape_table_cell(text: str) -> str:
+    """Sanitise *text* for embedding in a Markdown table cell.
+
+    Replaces literal newlines with a space (multi-line values break table
+    rows) and escapes pipe characters so they are not interpreted as column
+    delimiters.
+    """
+    return text.replace('\n', ' ').replace('|', r'\|')
 
 
 @lru_cache(maxsize=None)
@@ -238,6 +255,24 @@ class ReportGenerator:
                 lines.append(f"       out: {job.output_summary}")
             lines.append("")
 
+        if r.idea_decomposition:
+            d = r.idea_decomposition
+            lines += ["IDEA DECOMPOSITION", "-" * 70]
+            lines.append(f"  Core concept: {d.core_concept}")
+            if d.sub_ideas:
+                lines.append("  Sub-ideas:")
+                for i, item in enumerate(d.sub_ideas, 1):
+                    lines.append(f"    {i}. {item}")
+            if d.assumptions:
+                lines.append("  Assumptions:")
+                for i, item in enumerate(d.assumptions, 1):
+                    lines.append(f"    {i}. {item}")
+            if d.limitations:
+                lines.append("  Limitations:")
+                for i, item in enumerate(d.limitations, 1):
+                    lines.append(f"    {i}. {item}")
+            lines.append("")
+
         lines += [
             f"Paper  : {r.paper_title}",
             f"Verdict: {r.overall_verdict}  (confidence: {r.confidence})",
@@ -259,10 +294,35 @@ class ReportGenerator:
 
         if r.similar_papers:
             lines += ["MOST SIMILAR REFERENCE PAPERS", "-" * 70]
+            lines.append(
+                "  (Scores are TF-IDF cosine similarity, 0–1; "
+                "higher = more textual overlap)"
+            )
+            annotations_by_id = {a.paper_id: a for a in r.similar_paper_annotations}
             for res in r.similar_papers:
                 p = res.paper
                 year = f" ({p.year})" if p.year else ""
                 lines.append(f"  [{res.score:.2f}] {p.title}{year}")
+                if p.url:
+                    lines.append(f"    URL: {p.url}")
+                ann = annotations_by_id.get(p.id)
+                if ann:
+                    if ann.overlap:
+                        lines.append(f"    Overlap    : {ann.overlap}")
+                    if ann.differences:
+                        lines.append(f"    Differences: {ann.differences}")
+                    if ann.derivation:
+                        lines.append(f"    Derivation : {ann.derivation}")
+            lines.append("")
+
+        if r.domain_references:
+            lines += ["MAIN DOMAIN REFERENCES", "-" * 70]
+            for i, ref in enumerate(r.domain_references, 1):
+                year_str = f" ({ref.year})" if ref.year else ""
+                authors_str = f" — {ref.authors}" if ref.authors else ""
+                lines.append(f"  {i}. {ref.title}{year_str}{authors_str}")
+                if ref.relevance:
+                    lines.append(f"     Relevance: {ref.relevance}")
             lines.append("")
 
         lines.append("=" * 70)
@@ -375,16 +435,87 @@ class ReportGenerator:
                 "",
                 _build_gantt(r.metadata, r.paper_title),
                 "",
-                "| # | Job | Agent | Start (s) | Duration (s) | Input | Output |",
-                "|---|-----|-------|----------:|-------------:|-------|--------|",
             ]
+            # Group jobs by agent; each new agent gets a bold section header +
+            # its own table.  After the table, render collapsible detail sections
+            # for any job that has extended content.
+            current_agent: str | None = None
+            current_group: list[tuple[int, object]] = []
+
+            def _flush_group(group: list, lines: list) -> None:
+                """Render one agent-group's table then its detail sections."""
+                for idx, job in group:
+                    lines.append(
+                        f"| {idx} | {_escape_table_cell(str(job.name))} "
+                        f"| {job.offset_s:.2f} | {job.duration_s:.2f} "
+                        f"| {_escape_table_cell(job.input_summary or '')} "
+                        f"| {_escape_table_cell(job.output_summary or '')} |"
+                    )
+                # Detail sections (collapsible) rendered after the table.
+                for idx, job in group:
+                    if job.detail:
+                        lines += [
+                            "",
+                            "<details>",
+                            f"<summary>📋 {job.name} — details</summary>",
+                            "",
+                            job.detail,
+                            "",
+                            "</details>",
+                        ]
+
             for i, job in enumerate(r.metadata.jobs, 1):
-                lines.append(
-                    f"| {i} | {job.name} | {job.agent} "
-                    f"| {job.offset_s:.2f} | {job.duration_s:.2f} "
-                    f"| {job.input_summary} | {job.output_summary} |"
-                )
+                if job.agent != current_agent:
+                    if current_agent is not None:
+                        _flush_group(current_group, lines)
+                        lines.append("")
+                    lines += [
+                        f"**{job.agent}**",
+                        "",
+                        "| # | Job | Start (s) | Duration (s) | Input | Output |",
+                        "|---|-----|----------:|-------------:|-------|--------|",
+                    ]
+                    current_agent = job.agent
+                    current_group = []
+                current_group.append((i, job))
+            if current_group:
+                _flush_group(current_group, lines)
             lines.append("")
+
+        if r.idea_decomposition:
+            d = r.idea_decomposition
+            lines += [
+                "## Idea Decomposition",
+                "",
+                f"**Core concept:** {d.core_concept}",
+                "",
+            ]
+            if d.sub_ideas:
+                lines.append("**Sub-ideas:**")
+                lines.append("")
+                for item in d.sub_ideas:
+                    lines.append(f"- {item}")
+                lines.append("")
+            if d.assumptions:
+                lines.append("**Assumptions:**")
+                lines.append("")
+                for item in d.assumptions:
+                    lines.append(f"- {item}")
+                lines.append("")
+            if d.limitations:
+                lines.append("**Limitations:**")
+                lines.append("")
+                for item in d.limitations:
+                    lines.append(f"- {item}")
+                lines.append("")
+            mindmap_diagram = _build_mindmap(d, r.paper_title)
+            if mindmap_diagram:
+                lines += [
+                    "### Idea Mind Map",
+                    "",
+                    mindmap_diagram,
+                    "",
+                ]
 
         lines += [
             f"**Overall verdict:** {ov} **{r.overall_verdict}** "
@@ -402,7 +533,8 @@ class ReportGenerator:
             lines += [
                 f"### {dim.name}",
                 "",
-                f"**Risk level:** {icon} {dim.verdict}",
+                "<details>",
+                f"<summary><strong>Risk level:</strong> {icon} {dim.verdict}</summary>",
                 "",
                 dim.explanation,
                 "",
@@ -413,10 +545,15 @@ class ReportGenerator:
                     + ", ".join(f"`{ref}`" for ref in dim.references),
                     "",
                 ]
+            lines += ["</details>", ""]
 
         if r.similar_papers:
             lines += [
                 "## Most Similar Reference Papers",
+                "",
+                "> **Scoring method:** TF-IDF cosine similarity (0–1). "
+                "Higher scores indicate greater textual overlap between "
+                "the paper's key content and the reference.",
                 "",
                 "| Score | Title | Year |",
                 "|-------|-------|------|",
@@ -424,9 +561,80 @@ class ReportGenerator:
             for res in r.similar_papers:
                 p = res.paper
                 year = str(p.year) if p.year else "—"
-                title = p.title.replace("|", "\\|")
-                lines.append(f"| {res.score:.2f} | {title} | {year} |")
+                title_text = p.title.replace("|", "\\|")
+                title_cell = f"[{title_text}]({p.url})" if p.url else title_text
+                lines.append(f"| {res.score:.2f} | {title_cell} | {year} |")
             lines.append("")
+
+            # Per-paper comparative annotations
+            if r.similar_paper_annotations:
+                annotations_by_id = {
+                    a.paper_id: a for a in r.similar_paper_annotations
+                }
+                lines += ["### Reference Annotations", ""]
+                for res in r.similar_papers:
+                    p = res.paper
+                    year_str = f" ({p.year})" if p.year else ""
+                    title_link = (
+                        f"[{p.title}]({p.url})" if p.url else p.title
+                    )
+                    lines += [
+                        f"**[{res.score:.2f}] {title_link}{year_str}**",
+                        "",
+                    ]
+                    ann = annotations_by_id.get(p.id)
+                    if ann and (ann.overlap or ann.differences or ann.derivation):
+                        # Render as a compact two-column comparison table so each
+                        # dimension is scannable side-by-side (apple-to-apple).
+                        lines += [
+                            "| Dimension | Notes |",
+                            "|-----------|-------|",
+                        ]
+                        if ann.overlap:
+                            lines.append(
+                                f"| **Overlap** | {_escape_table_cell(ann.overlap)} |"
+                            )
+                        if ann.differences:
+                            lines.append(
+                                f"| **Differences** | {_escape_table_cell(ann.differences)} |"
+                            )
+                        if ann.derivation:
+                            lines.append(
+                                f"| **Derivation** | {_escape_table_cell(ann.derivation)} |"
+                            )
+                        lines.append("")
+                    else:
+                        lines += ["*No annotation available.*", ""]
+
+        if r.domain_references:
+            lines += [
+                "## Main Domain References",
+                "",
+            ]
+            for i, ref in enumerate(r.domain_references, 1):
+                # Build a clickable Semantic Scholar search link from the title.
+                _ss_url = (
+                    f"https://www.semanticscholar.org/search?q={quote_plus(ref.title)}"
+                    "&sort=Relevance"
+                )
+                year_str = f", {ref.year}" if ref.year else ""
+                authors_str = f"*{ref.authors}*" if ref.authors else ""
+                title_clean = ref.title.strip('"').strip("'")
+                lines += [
+                    f"{i}. **[{title_clean}]({_ss_url})**{year_str}",
+                ]
+                if authors_str:
+                    lines.append(f"   {authors_str}")
+                if ref.relevance:
+                    lines += [
+                        "   <details>",
+                        "   <summary>Why this matters</summary>",
+                        "",
+                        f"   {ref.relevance}",
+                        "",
+                        "   </details>",
+                    ]
+                lines.append("")
 
         return "\n".join(lines)
 
@@ -450,16 +658,29 @@ class ReportGenerator:
                 }
                 for d in r.dimensions
             ],
-            "similar_papers": [
-                {
-                    "score": res.score,
-                    "id": res.paper.id,
-                    "title": res.paper.title,
-                    "year": res.paper.year,
-                }
-                for res in r.similar_papers
-            ],
         }
+        annotations_by_id = {
+            a.paper_id: a for a in r.similar_paper_annotations
+        }
+        data["similar_papers"] = [
+            {
+                "score": res.score,
+                "id": res.paper.id,
+                "title": res.paper.title,
+                "year": res.paper.year,
+                "url": res.paper.url,
+                **(
+                    {
+                        "overlap": ann.overlap,
+                        "differences": ann.differences,
+                        "derivation": ann.derivation,
+                    }
+                    if (ann := annotations_by_id.get(res.paper.id)) is not None
+                    else {}
+                ),
+            }
+            for res in r.similar_papers
+        ]
         if r.metadata:
             m = r.metadata
             data["metadata"] = {
@@ -486,6 +707,24 @@ class ReportGenerator:
                     for j in m.jobs
                 ],
             }
+        if r.idea_decomposition:
+            d = r.idea_decomposition
+            data["idea_decomposition"] = {
+                "core_concept": d.core_concept,
+                "sub_ideas": d.sub_ideas,
+                "assumptions": d.assumptions,
+                "limitations": d.limitations,
+            }
+        if r.domain_references:
+            data["domain_references"] = [
+                {
+                    "title": ref.title,
+                    "authors": ref.authors,
+                    "year": ref.year,
+                    "relevance": ref.relevance,
+                }
+                for ref in r.domain_references
+            ]
         return json.dumps(data, indent=2)
 
 
@@ -518,6 +757,70 @@ def _build_gantt(metadata: RunMetadata, paper_title: str = "") -> str:
         dur_ms = max(1, int(job.duration_s * 1000))
         safe_name = job.name.replace(":", " -")
         lines.append(f"    {safe_name} :done, {start_ms}, {dur_ms}ms")
+
+    lines.append("```")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Idea mind map (Mermaid)
+# ---------------------------------------------------------------------------
+
+def _build_mindmap(decomp: IdeaDecomposition, paper_title: str = "") -> str:
+    """Return a Mermaid ``mindmap`` diagram for *decomp*.
+
+    The mind map places the core concept at the root and branches out to
+    sub-ideas, assumptions, and limitations.
+
+    Returns an empty string when there are no branches so callers can
+    omit the section entirely rather than rendering a bare root circle.
+    """
+    has_branches = bool(
+        decomp.sub_ideas or decomp.assumptions or decomp.limitations
+    )
+    if not has_branches:
+        return ""
+
+    root_label = paper_title or decomp.core_concept
+
+    _MAX_NODE_LEN = 60  # chars; longer text breaks GitHub's Mermaid renderer
+
+    def _safe(text: str) -> str:
+        """Sanitise text for a Mermaid mindmap node label.
+
+        * Removes shape-control characters ``()[]{}"#`` that Mermaid
+          interprets as node-shape markers.
+        * Replaces backticks with single quotes.
+        * Truncates long items with an ellipsis so nodes stay readable;
+          LLM-generated items are often full sentences that would cause
+          the renderer to silently drop all branches.
+        """
+        _remove_table = str.maketrans("", "", '()[]{}\"#')
+        text = text.translate(_remove_table).replace("`", "'")
+        if len(text) > _MAX_NODE_LEN:
+            text = text[:_MAX_NODE_LEN].rstrip() + "…"
+        return text
+
+    lines = [
+        "```mermaid",
+        "mindmap",
+        f"  root(({_safe(root_label)}))",
+    ]
+
+    if decomp.sub_ideas:
+        lines.append("    Sub-ideas")
+        for item in decomp.sub_ideas:
+            lines.append(f"      {_safe(item)}")
+
+    if decomp.assumptions:
+        lines.append("    Assumptions")
+        for item in decomp.assumptions:
+            lines.append(f"      {_safe(item)}")
+
+    if decomp.limitations:
+        lines.append("    Limitations")
+        for item in decomp.limitations:
+            lines.append(f"      {_safe(item)}")
 
     lines.append("```")
     return "\n".join(lines)

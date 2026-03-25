@@ -666,6 +666,17 @@ class TestPipelineJobLogInMarkdown:
         assert "## Pipeline Job Log" not in out
         assert "```mermaid" not in out
 
+    def test_markdown_job_table_escapes_pipe_in_job_name(self):
+        """Pipe chars in job name, input_summary, output_summary must be escaped."""
+        report = _sample_report_with_jobs()
+        report.metadata.jobs[0].name = "Parse | paper"
+        report.metadata.jobs[0].input_summary = "file | path"
+        report.metadata.jobs[0].output_summary = "title | subtitle"
+        out = self.gen.generate(report, fmt="markdown")
+        assert r"Parse \| paper" in out
+        assert r"file \| path" in out
+        assert r"title \| subtitle" in out
+
 
 class TestPipelineJobLogInText:
     def setup_method(self):
@@ -716,3 +727,559 @@ class TestPipelineJobsInJSON:
         report.metadata = _sample_metadata()
         data = json.loads(self.gen.generate(report, fmt="json"))
         assert data["metadata"]["jobs"] == []
+
+
+# ---------------------------------------------------------------------------
+# Idea Decomposition rendering
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import IdeaDecomposition, DomainReference
+from open_idea_sourcing.report_generator import _build_mindmap
+
+
+def _sample_decomposition() -> IdeaDecomposition:
+    return IdeaDecomposition(
+        core_concept="A dynamic masking extension of Transformer attention.",
+        sub_ideas=["Dynamic attention masking", "Standard Transformer integration"],
+        assumptions=["Uniform tokenisation"],
+        limitations=["Evaluated on NLP benchmarks only"],
+    )
+
+
+def _sample_domain_refs() -> list[DomainReference]:
+    return [
+        DomainReference(
+            title="Attention Is All You Need",
+            authors="Vaswani et al.",
+            year="2017",
+            relevance="Foundational Transformer work",
+        ),
+        DomainReference(
+            title="BERT",
+            authors="Devlin et al.",
+            year="2018",
+            relevance="Pre-training with masked attention",
+        ),
+    ]
+
+
+def _sample_report_enriched() -> NoveltyReport:
+    report = _sample_report()
+    report.idea_decomposition = _sample_decomposition()
+    report.domain_references = _sample_domain_refs()
+    return report
+
+
+class TestIdeaDecompositionInText:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_enriched()
+
+    def test_text_contains_idea_decomposition_section(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "IDEA DECOMPOSITION" in out
+
+    def test_text_contains_core_concept(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "dynamic masking" in out.lower()
+
+    def test_text_contains_sub_ideas(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "Dynamic attention masking" in out
+
+    def test_text_contains_assumptions(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "Uniform tokenisation" in out
+
+    def test_text_contains_limitations(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "NLP benchmarks" in out
+
+    def test_text_no_decomposition_section_when_none(self):
+        report = _sample_report()
+        out = self.gen.generate(report, fmt="text")
+        assert "IDEA DECOMPOSITION" not in out
+
+    def test_text_idea_decomposition_before_verdict(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert out.index("IDEA DECOMPOSITION") < out.index("Paper  :")
+
+
+class TestIdeaDecompositionInMarkdown:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_enriched()
+
+    def test_markdown_contains_idea_decomposition_section(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "## Idea Decomposition" in out
+
+    def test_markdown_contains_core_concept(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "dynamic masking" in out.lower()
+
+    def test_markdown_contains_sub_ideas_list(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "- Dynamic attention masking" in out
+
+    def test_markdown_contains_assumptions_list(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "- Uniform tokenisation" in out
+
+    def test_markdown_contains_limitations_list(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "- Evaluated on NLP benchmarks only" in out
+
+    def test_markdown_no_decomposition_when_none(self):
+        report = _sample_report()
+        out = self.gen.generate(report, fmt="markdown")
+        assert "## Idea Decomposition" not in out
+
+    def test_markdown_idea_decomposition_before_verdict(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert out.index("## Idea Decomposition") < out.index("**Overall verdict:**")
+
+
+class TestMindMapInMarkdown:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_enriched()
+
+    def test_markdown_contains_mindmap_section(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "### Idea Mind Map" in out
+
+    def test_markdown_contains_mermaid_mindmap_block(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "mindmap" in out
+
+    def test_markdown_mindmap_has_root_node(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "root((" in out
+
+    def test_markdown_mindmap_no_section_when_no_decomposition(self):
+        report = _sample_report()
+        out = self.gen.generate(report, fmt="markdown")
+        assert "mindmap" not in out
+
+    def test_build_mindmap_contains_sub_ideas(self):
+        d = _sample_decomposition()
+        diagram = _build_mindmap(d, "Test Paper")
+        assert "Dynamic attention masking" in diagram
+        assert "Standard Transformer integration" in diagram
+
+    def test_build_mindmap_contains_assumptions(self):
+        d = _sample_decomposition()
+        diagram = _build_mindmap(d, "Test Paper")
+        assert "Uniform tokenisation" in diagram
+
+    def test_build_mindmap_contains_limitations(self):
+        d = _sample_decomposition()
+        diagram = _build_mindmap(d, "Test Paper")
+        assert "NLP benchmarks" in diagram
+
+    def test_build_mindmap_uses_paper_title_as_root(self):
+        d = _sample_decomposition()
+        diagram = _build_mindmap(d, "My Paper Title")
+        assert "My Paper Title" in diagram
+
+    def test_build_mindmap_falls_back_to_core_concept_when_no_title(self):
+        d = _sample_decomposition()
+        diagram = _build_mindmap(d)
+        assert "dynamic masking" in diagram.lower()
+
+    def test_build_mindmap_escapes_parens(self):
+        import re
+        d = IdeaDecomposition(
+            core_concept="Method (improved)",
+            sub_ideas=["Component (A)"],
+        )
+        diagram = _build_mindmap(d, "Paper (v2)")
+        # Strip the mandatory root((...)) wrapper, then verify no raw parens remain
+        # in the content lines (which would break Mermaid node syntax).
+        content_lines = [
+            line for line in diagram.splitlines()
+            if "root((" not in line
+        ]
+        for line in content_lines:
+            assert "(" not in line, f"Unexpected '(' in line: {line!r}"
+            assert ")" not in line, f"Unexpected ')' in line: {line!r}"
+
+
+class TestDomainReferencesInText:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_enriched()
+
+    def test_text_contains_domain_references_section(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "MAIN DOMAIN REFERENCES" in out
+
+    def test_text_contains_reference_titles(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "Attention Is All You Need" in out
+        assert "BERT" in out
+
+    def test_text_contains_reference_years(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "2017" in out
+        assert "2018" in out
+
+    def test_text_contains_relevance(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "Transformer" in out
+
+    def test_text_no_domain_refs_section_when_empty(self):
+        report = _sample_report()
+        out = self.gen.generate(report, fmt="text")
+        assert "MAIN DOMAIN REFERENCES" not in out
+
+
+class TestDomainReferencesInMarkdown:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_enriched()
+
+    def test_markdown_contains_domain_references_section(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "## Main Domain References" in out
+
+    def test_markdown_contains_reference_table_header(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "| Title |" in out
+
+    def test_markdown_contains_reference_titles(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "Attention Is All You Need" in out
+        assert "BERT" in out
+
+    def test_markdown_no_domain_refs_when_empty(self):
+        report = _sample_report()
+        out = self.gen.generate(report, fmt="markdown")
+        assert "## Main Domain References" not in out
+
+
+class TestEnrichedFieldsInJSON:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_enriched()
+
+    def test_json_contains_idea_decomposition(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert "idea_decomposition" in data
+
+    def test_json_idea_decomposition_fields(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        d = data["idea_decomposition"]
+        assert "core_concept" in d
+        assert "sub_ideas" in d
+        assert "assumptions" in d
+        assert "limitations" in d
+
+    def test_json_idea_decomposition_sub_ideas_are_list(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert isinstance(data["idea_decomposition"]["sub_ideas"], list)
+
+    def test_json_contains_domain_references(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert "domain_references" in data
+
+    def test_json_domain_references_count(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert len(data["domain_references"]) == 2
+
+    def test_json_domain_reference_fields(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        ref = data["domain_references"][0]
+        assert "title" in ref
+        assert "authors" in ref
+        assert "year" in ref
+        assert "relevance" in ref
+
+    def test_json_no_idea_decomposition_when_none(self):
+        report = _sample_report()
+        data = json.loads(self.gen.generate(report, fmt="json"))
+        assert "idea_decomposition" not in data
+
+    def test_json_no_domain_references_when_empty(self):
+        report = _sample_report()
+        data = json.loads(self.gen.generate(report, fmt="json"))
+        assert "domain_references" not in data
+
+
+# ---------------------------------------------------------------------------
+# Collapsible analysis sections
+# ---------------------------------------------------------------------------
+
+class TestCollapsibleAnalysisSections:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report()
+
+    def test_markdown_dimensions_wrapped_in_details(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "<details>" in out
+        assert "</details>" in out
+
+    def test_markdown_summary_shows_risk_level(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # Each dimension should have a <summary> line with "Risk level:"
+        assert "<summary>" in out
+        assert "Risk level:" in out
+
+    def test_markdown_explanation_inside_details(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # Explanation text must appear between <details> and </details>
+        details_start = out.index("<details>")
+        details_end = out.index("</details>")
+        section = out[details_start:details_end]
+        assert "Essentially the same as att2017" in section
+
+    def test_markdown_each_dimension_has_own_details_block(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # 3 dimensions → 3 <details> blocks
+        assert out.count("<details>") >= 3
+        assert out.count("</details>") >= 3
+
+
+# ---------------------------------------------------------------------------
+# Paper metainfo block
+# ---------------------------------------------------------------------------
+
+class TestPaperMetainfoBlock:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+
+    def test_markdown_shows_source_url_as_link(self):
+        """Source URL is no longer shown in a blockquote — it lives in the
+        Run Metadata Configuration table under the 'Input' field."""
+        report = _sample_report()
+        report.metadata = _sample_metadata()
+        report.metadata.input_source = "https://arxiv.org/abs/1234.5678"
+        out = self.gen.generate(report, fmt="markdown")
+        # Source is shown in the Configuration table, not as a blockquote.
+        assert "**Source:**" not in out
+        assert "https://arxiv.org/abs/1234.5678" in out
+
+    def test_markdown_shows_file_source_as_code(self):
+        """File source is surfaced in the Configuration table, not a blockquote."""
+        report = _sample_report()
+        report.metadata = _sample_metadata()
+        report.metadata.input_source = "my_paper.pdf"
+        out = self.gen.generate(report, fmt="markdown")
+        assert "**Source:**" not in out
+        assert "my_paper.pdf" in out
+
+    def test_markdown_no_source_block_when_no_metadata(self):
+        report = _sample_report()
+        out = self.gen.generate(report, fmt="markdown")
+        assert "**Source:**" not in out
+
+    def test_markdown_no_source_block_when_empty_input_source(self):
+        report = _sample_report()
+        report.metadata = _sample_metadata()
+        report.metadata.input_source = ""
+        out = self.gen.generate(report, fmt="markdown")
+        assert "**Source:**" not in out
+
+
+# ---------------------------------------------------------------------------
+# Pipeline job table grouping by agent
+# ---------------------------------------------------------------------------
+
+class TestPipelineJobTableGrouping:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_with_jobs()
+
+    def test_markdown_table_grouped_with_bold_agent_headers(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # Bold section headers for each distinct agent group
+        assert "**PaperParser**" in out
+        assert "**LLM (gpt-4o)**" in out
+
+    def test_markdown_agent_header_before_its_jobs(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # Bold section headers must appear before their respective sub-tables.
+        # We look within the Pipeline Job Log section (after "## Pipeline Job Log").
+        log_pos = out.index("## Pipeline Job Log")
+        log_section = out[log_pos:]
+        parser_pos = log_section.index("**PaperParser**")
+        llm_pos = log_section.index("**LLM (gpt-4o)**")
+        # PaperParser header must come before LLM header
+        assert parser_pos < llm_pos
+
+    def test_markdown_no_agent_column_in_table(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # The job-detail table header should NOT include an Agent column (it's
+        # already shown as the bold group header).
+        lines = out.splitlines()
+        table_header = next(
+            (l for l in lines if "| Job |" in l), None
+        )
+        assert table_header is not None
+        assert "Agent" not in table_header
+
+
+# ---------------------------------------------------------------------------
+# Mind map: hide when no branches / truncate long items
+# ---------------------------------------------------------------------------
+
+class TestMindMapEmptyBranches:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+
+    def test_mindmap_hidden_when_all_branch_lists_empty(self):
+        """A decomposition with no sub-ideas/assumptions/limitations should not
+        produce an 'Idea Mind Map' section (just a lone root circle is useless)."""
+        report = _sample_report()
+        report.idea_decomposition = IdeaDecomposition(
+            core_concept="Core concept only",
+            sub_ideas=[],
+            assumptions=[],
+            limitations=[],
+        )
+        out = self.gen.generate(report, fmt="markdown")
+        assert "### Idea Mind Map" not in out
+        assert "mindmap" not in out
+
+    def test_mindmap_shown_when_sub_ideas_present(self):
+        report = _sample_report()
+        report.idea_decomposition = IdeaDecomposition(
+            core_concept="Core",
+            sub_ideas=["Idea A"],
+        )
+        out = self.gen.generate(report, fmt="markdown")
+        assert "### Idea Mind Map" in out
+        assert "mindmap" in out
+
+    def test_build_mindmap_returns_empty_string_when_no_branches(self):
+        d = IdeaDecomposition(core_concept="X", sub_ideas=[], assumptions=[], limitations=[])
+        result = _build_mindmap(d, "Paper")
+        assert result == ""
+
+    def test_build_mindmap_truncates_long_items(self):
+        long_text = "A" * 100  # definitely over 60 chars
+        d = IdeaDecomposition(
+            core_concept="Core",
+            sub_ideas=[long_text],
+        )
+        diagram = _build_mindmap(d, "Paper")
+        # The truncated label should appear in the diagram (60 chars + ellipsis)
+        assert "A" * 60 in diagram
+        assert "A" * 100 not in diagram
+        assert "…" in diagram
+
+    def test_build_mindmap_does_not_truncate_exactly_max_length(self):
+        exact_text = "B" * 60  # exactly at the limit — must NOT be truncated
+        d = IdeaDecomposition(
+            core_concept="Core",
+            sub_ideas=[exact_text],
+        )
+        diagram = _build_mindmap(d, "Paper")
+        assert "B" * 60 in diagram
+        assert "…" not in diagram
+
+    def test_build_mindmap_removes_brackets_and_braces(self):
+        d = IdeaDecomposition(
+            core_concept="Core",
+            sub_ideas=["Method [A] and {B}"],
+        )
+        diagram = _build_mindmap(d, "Paper")
+        assert "[" not in diagram.split("root")[1]  # not in branches
+        assert "{" not in diagram.split("root")[1]
+
+
+# ---------------------------------------------------------------------------
+# Similarity annotations in Markdown and JSON
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import SimilarityAnnotation
+
+
+def _sample_report_with_annotations() -> NoveltyReport:
+    """Sample report that has similar papers AND annotations."""
+    report = _sample_report()
+    # Give the existing similar paper a URL
+    report.similar_papers[0].paper.url = "https://arxiv.org/abs/1706.03762"
+    report.similar_paper_annotations = [
+        SimilarityAnnotation(
+            paper_id="att2017",
+            overlap="Both use self-attention as core mechanism.",
+            differences="Submitted paper adds dynamic masking; original is static.",
+            derivation="The multi-head attention design is directly derived from Vaswani et al.",
+        )
+    ]
+    return report
+
+
+class TestSimilarPaperAnnotationsInMarkdown:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_with_annotations()
+
+    def test_markdown_shows_reference_annotations_section(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "### Reference Annotations" in out
+
+    def test_markdown_annotations_use_comparison_table(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # Annotations now render as inline comparison tables, not <details> blocks.
+        ann_pos = out.index("### Reference Annotations")
+        section = out[ann_pos:]
+        assert "| Dimension | Notes |" in section
+        assert "**Overlap**" in section
+        assert "**Differences**" in section
+
+    def test_markdown_shows_overlap(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "Both use self-attention" in out
+
+    def test_markdown_shows_differences(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "dynamic masking" in out
+
+    def test_markdown_shows_derivation(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "multi-head attention design" in out
+
+    def test_markdown_similar_paper_has_url_link(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "https://arxiv.org/abs/1706.03762" in out
+
+    def test_markdown_no_annotations_section_when_empty(self):
+        report = _sample_report()  # no annotations
+        out = self.gen.generate(report, fmt="markdown")
+        assert "### Reference Annotations" not in out
+
+
+class TestSimilarPaperAnnotationsInJSON:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_with_annotations()
+
+    def test_json_similar_paper_has_url(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert data["similar_papers"][0]["url"] == "https://arxiv.org/abs/1706.03762"
+
+    def test_json_similar_paper_has_overlap(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert "overlap" in data["similar_papers"][0]
+        assert "self-attention" in data["similar_papers"][0]["overlap"]
+
+    def test_json_similar_paper_has_differences(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert "differences" in data["similar_papers"][0]
+
+    def test_json_similar_paper_has_derivation(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert "derivation" in data["similar_papers"][0]
+
+    def test_json_similar_paper_no_annotations_when_none(self):
+        report = _sample_report()  # no annotations
+        data = json.loads(self.gen.generate(report, fmt="json"))
+        p = data["similar_papers"][0]
+        assert "overlap" not in p
+        assert "differences" not in p
+        assert "derivation" not in p
+

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json as _json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -10,7 +11,8 @@ import pytest
 import review_paper
 
 # Import the helpers we want to test
-from review_paper import _normalise_arxiv_url, _download_paper, _build_llm, main
+from review_paper import _normalise_arxiv_url, _extract_arxiv_id, _download_paper, _build_llm, main
+from open_idea_sourcing.reference_store import ReferenceStore
 
 # ---------------------------------------------------------------------------
 # _normalise_arxiv_url
@@ -37,6 +39,37 @@ class TestNormaliseArxivUrl:
     def test_http_abs_url_converted(self):
         assert _normalise_arxiv_url("http://arxiv.org/abs/1234.5678") == \
             "http://arxiv.org/pdf/1234.5678"
+
+
+# ---------------------------------------------------------------------------
+# _extract_arxiv_id
+# ---------------------------------------------------------------------------
+
+
+class TestExtractArxivId:
+    def test_abs_url_returns_id(self):
+        assert _extract_arxiv_id("https://arxiv.org/abs/2006.06138") == "2006.06138"
+
+    def test_pdf_url_returns_id(self):
+        assert _extract_arxiv_id("https://arxiv.org/pdf/1706.03762") == "1706.03762"
+
+    def test_abs_url_with_version(self):
+        assert _extract_arxiv_id("https://arxiv.org/abs/2006.06138v2") == "2006.06138v2"
+
+    def test_pdf_url_with_dot_pdf_suffix_returns_id(self):
+        assert _extract_arxiv_id("https://arxiv.org/pdf/1706.03762.pdf") == "1706.03762"
+
+    def test_pdf_url_with_version_and_dot_pdf_suffix_returns_id(self):
+        assert _extract_arxiv_id("https://arxiv.org/pdf/2006.06138v2.pdf") == "2006.06138v2"
+
+    def test_non_arxiv_url_returns_empty(self):
+        assert _extract_arxiv_id("https://example.com/paper.pdf") == ""
+
+    def test_local_path_returns_empty(self):
+        assert _extract_arxiv_id("/path/to/paper.pdf") == ""
+
+    def test_empty_string_returns_empty(self):
+        assert _extract_arxiv_id("") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -310,7 +343,7 @@ class TestMainLlmError:
 
         assert rc == 1
         captured = capsys.readouterr()
-        assert "novelty evaluation failed" in captured.err
+        assert "failed" in captured.err
 
     def test_llm_error_written_to_stdout_for_tee(self, tmp_path, capsys):
         """The error message must also appear on stdout so that the workflow's
@@ -328,7 +361,7 @@ class TestMainLlmError:
         assert rc == 1
         captured = capsys.readouterr()
         assert "Error" in captured.out
-        assert "novelty evaluation failed" in captured.out
+        assert "failed" in captured.out
 
     def test_missing_api_key_written_to_stdout_for_tee(self, tmp_path, capsys):
         """A missing API key (SystemExit from _build_llm) must produce stdout
@@ -765,3 +798,226 @@ class TestMainBatchMode:
         assert rc == 1
         err = capsys.readouterr().err
         assert "could not read" in err.lower() or "nonexistent" in err
+
+
+# ---------------------------------------------------------------------------
+# Bundled default reference store
+# ---------------------------------------------------------------------------
+
+_BUNDLED_REFS_PATH = Path(__file__).resolve().parent.parent / "data" / "references.json"
+
+
+class TestBundledReferences:
+    """Verify the bundled data/references.json file and default-loading behaviour."""
+
+    def test_bundled_references_file_exists(self):
+        assert _BUNDLED_REFS_PATH.exists(), (
+            "data/references.json must exist as the bundled reference store"
+        )
+
+    def test_bundled_references_is_valid_json_list(self):
+        data = _json.loads(_BUNDLED_REFS_PATH.read_text(encoding="utf-8"))
+        assert isinstance(data, list)
+        assert len(data) >= 1
+
+    def test_bundled_references_required_fields(self):
+        data = _json.loads(_BUNDLED_REFS_PATH.read_text(encoding="utf-8"))
+        for entry in data:
+            assert "id" in entry, f"Entry missing 'id': {entry}"
+            assert "title" in entry, f"Entry missing 'title': {entry}"
+            assert "abstract" in entry, f"Entry missing 'abstract': {entry}"
+
+    def test_bundled_references_arxiv_paper_present(self):
+        """The paper from arXiv:1904.06019 must be in the bundled store."""
+        store = ReferenceStore.from_file(_BUNDLED_REFS_PATH)
+        ids = {p.id for p in store.all_papers()}
+        assert any("1904.06019" in pid for pid in ids), (
+            "arXiv paper 1904.06019 must be present in data/references.json"
+        )
+
+    def test_bundled_references_url_set(self):
+        """Every bundled entry should have a non-empty URL."""
+        data = _json.loads(_BUNDLED_REFS_PATH.read_text(encoding="utf-8"))
+        for entry in data:
+            assert entry.get("url"), f"Entry {entry.get('id')} is missing a URL"
+
+    def test_bundled_references_loadable_by_reference_store(self):
+        store = ReferenceStore.from_file(_BUNDLED_REFS_PATH)
+        assert len(store) >= 1
+        for p in store.all_papers():
+            assert p.searchable_text  # title + abstract must be non-empty
+
+
+_SAMPLE_TEXT = (
+    "Attention Is All You Need\n\n"
+    "Abstract\nWe propose the Transformer.\n\n"
+    "1. Introduction\nNeural networks are great.\n"
+)
+
+
+class TestBundledReferencesLoadedByDefault:
+    """Verify that _review_one() always loads bundled references."""
+
+    def test_bundled_refs_loaded_even_without_references_flag(self, tmp_path, capsys):
+        """Running without --references must still load the bundled store."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(_SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([str(paper), "--format", "text", "--reports-dir", str(tmp_path)])
+
+        assert rc == 0
+        err = capsys.readouterr().err
+        assert "bundled reference" in err.lower()
+
+    def test_user_references_merged_on_top_of_bundled(self, tmp_path, capsys):
+        """When --references is given, user refs are added to the bundled set."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(_SAMPLE_TEXT, encoding="utf-8")
+
+        # Create a small user reference store
+        user_refs = [
+            {
+                "id": "user-paper-001",
+                "title": "A custom reference paper",
+                "abstract": "Custom abstract content.",
+                "authors": ["Test Author"],
+                "year": 2022,
+                "venue": "NeurIPS",
+                "url": "https://example.com/user-paper-001",
+            }
+        ]
+        user_refs_path = tmp_path / "user_refs.json"
+        user_refs_path.write_text(_json.dumps(user_refs), encoding="utf-8")
+
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([
+                str(paper), "--format", "text",
+                "--references", str(user_refs_path),
+                "--reports-dir", str(tmp_path),
+            ])
+
+        assert rc == 0
+        err = capsys.readouterr().err
+        # Both the bundled load and user references load messages should appear
+        assert "bundled reference" in err.lower()
+        assert "user_refs.json" in err
+
+    def test_bundled_refs_path_constant_is_set(self):
+        """The _BUNDLED_REFERENCES constant must point to data/references.json."""
+        from review_paper import _BUNDLED_REFERENCES
+        assert _BUNDLED_REFERENCES.name == "references.json"
+        assert _BUNDLED_REFERENCES.exists()
+
+    def test_references_default_is_bundled_file(self):
+        """--references defaults to the bundled baseline corpus path."""
+        from review_paper import _parse_args, _BUNDLED_REFERENCES
+        args = _parse_args(["paper.txt", "--format", "text"])
+        assert args.references == str(_BUNDLED_REFERENCES)
+
+    def test_references_can_be_overridden_on_cli(self, tmp_path):
+        """Passing --references overrides the default bundled path."""
+        from review_paper import _parse_args
+        custom = str(tmp_path / "custom.json")
+        args = _parse_args(["paper.txt", "--references", custom, "--format", "text"])
+        assert args.references == custom
+
+    def test_empty_references_disables_all_reference_loading(self, tmp_path, capsys):
+        """Passing --references '' must skip the bundled reference store too."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(_SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([
+                str(paper), "--format", "text",
+                "--references", "",
+                "--reports-dir", str(tmp_path),
+            ])
+
+        assert rc == 0
+        err = capsys.readouterr().err
+        # Neither bundled nor user reference loading should be reported.
+        assert "bundled reference" not in err.lower()
+        assert "loading reference store" not in err.lower()
+
+
+# ---------------------------------------------------------------------------
+# Online reference search integration
+# ---------------------------------------------------------------------------
+
+_ONLINE_SEARCH_SAMPLE_TEXT = (
+    "Attention Is All You Need\n\n"
+    "Abstract\nWe propose the Transformer.\n\n"
+    "1. Introduction\nNeural networks are great.\n"
+)
+
+
+class TestOnlineSearchIntegration:
+    """Verify that online reference search is invoked by default and can be
+    disabled via --no-online-search."""
+
+    def test_online_search_called_by_default(self, tmp_path):
+        """OnlineReferenceSearch.search must be called when the flag is absent."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(_ONLINE_SEARCH_SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        call_count = {"n": 0}
+
+        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None):
+            call_count["n"] += 1
+            return []  # empty so the rest of the pipeline is unaffected
+
+        with (
+            patch("review_paper._build_llm", return_value=fake_llm),
+            patch(
+                "open_idea_sourcing.online_search.OnlineReferenceSearch.search",
+                side_effect=tracking_search,
+            ),
+        ):
+            rc = main([str(paper), "--format", "text", "--reports-dir", str(tmp_path)])
+
+        assert rc == 0
+        assert call_count["n"] >= 1
+
+    def test_online_search_skipped_with_flag(self, tmp_path):
+        """OnlineReferenceSearch.search must NOT be called with --no-online-search."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(_ONLINE_SEARCH_SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        call_count = {"n": 0}
+
+        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None):
+            call_count["n"] += 1
+            return []
+
+        with (
+            patch("review_paper._build_llm", return_value=fake_llm),
+            patch(
+                "open_idea_sourcing.online_search.OnlineReferenceSearch.search",
+                side_effect=tracking_search,
+            ),
+        ):
+            rc = main([
+                str(paper), "--format", "text",
+                "--no-online-search",
+                "--reports-dir", str(tmp_path),
+            ])
+
+        assert rc == 0
+        assert call_count["n"] == 0
+
+    def test_no_online_search_flag_default_is_false(self):
+        """--no-online-search defaults to False (online search enabled)."""
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text"])
+        assert args.no_online_search is False
+
+    def test_no_online_search_flag_can_be_set(self):
+        """--no-online-search can be explicitly set."""
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text", "--no-online-search"])
+        assert args.no_online_search is True

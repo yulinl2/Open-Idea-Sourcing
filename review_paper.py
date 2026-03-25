@@ -67,8 +67,12 @@ except ImportError:  # pragma: no cover - dependency is declared in requirements
 
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MiB safety limit for downloads
 
+# Path to the bundled default reference store shipped with the repository.
+_BUNDLED_REFERENCES = Path(__file__).resolve().parent / "data" / "references.json"
+
 from open_idea_sourcing import __version__
 from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator, PipelineJob, RunMetadata
+from open_idea_sourcing.online_search import OnlineReferenceSearch, generate_search_queries
 from open_idea_sourcing.paper_parser import PaperParser
 from open_idea_sourcing.reference_store import ReferenceStore
 from open_idea_sourcing.report_generator import ReportGenerator, suggest_filename
@@ -124,6 +128,32 @@ def _normalise_arxiv_url(url: str) -> str:
     if m:
         return f"{m.group(1)}/pdf/{m.group(2)}"
     return url
+
+
+def _extract_arxiv_id(source: str) -> str:
+    """Return the arXiv paper ID from an arXiv URL, or an empty string.
+
+    Supports both ``/abs/`` and ``/pdf/`` URL forms, with or without a
+    version suffix, and with or without a trailing ``.pdf`` extension.
+
+    Examples
+    --------
+    >>> _extract_arxiv_id("https://arxiv.org/abs/2006.06138")
+    '2006.06138'
+    >>> _extract_arxiv_id("https://arxiv.org/abs/2006.06138v2")
+    '2006.06138v2'
+    >>> _extract_arxiv_id("https://arxiv.org/pdf/1706.03762")
+    '1706.03762'
+    >>> _extract_arxiv_id("https://arxiv.org/pdf/1706.03762.pdf")
+    '1706.03762'
+    >>> _extract_arxiv_id("/path/to/paper.pdf")
+    ''
+    """
+    m = re.match(
+        r"https?://arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5}(?:v\d+)?)(?:\.pdf)?",
+        source,
+    )
+    return m.group(1) if m else ""
 
 
 def _download_paper(url: str, dest_dir: str) -> Path:
@@ -300,16 +330,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--references",
         metavar="FILE",
-        default=None,
-        help="Path to a JSON file containing reference papers to compare against.",
-    )
-    parser.add_argument(
-        "--save-references",
-        metavar="FILE",
-        default=None,
+        default=str(_BUNDLED_REFERENCES),
         help=(
-            "Save the loaded reference store to this JSON file. "
-            "This does not modify or update any references."
+            "Path to a JSON file containing reference papers to compare against. "
+            "Defaults to the bundled baseline corpus (data/references.json). "
+            "Pass an empty string ('') to disable reference comparison."
         ),
     )
     parser.add_argument(
@@ -355,6 +380,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Path to an NDJSON file listing papers to review in batch. "
             "Each line must be a JSON object with a 'url' or 'path' key. "
             "Mutually exclusive with the positional paper argument."
+        ),
+    )
+    parser.add_argument(
+        "--no-online-search",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable automatic online reference search via the Semantic "
+            "Scholar API (enabled by default).  Use this flag when working "
+            "offline or when you want to rely solely on a local --references "
+            "file."
         ),
     )
     return parser.parse_args(argv)
@@ -428,8 +464,22 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             return _fail("no text could be extracted from the paper.", args.format)
 
         # --- Load reference store ---
+        # By default --references points to the bundled baseline corpus
+        # (data/references.json).  Pass an empty string ('') to skip ALL
+        # reference loading (bundled corpus + any user-supplied file).
+        # Any user-supplied store that differs from the bundled path is
+        # loaded and merged on top so that the full combined corpus is
+        # available to the similarity search.
         store = ReferenceStore()
-        if args.references:
+        if args.references != "":
+            if _BUNDLED_REFERENCES.exists():
+                store.load(_BUNDLED_REFERENCES)
+                print(
+                    f"Loaded {len(store)} bundled reference(s) from"
+                    f" {_BUNDLED_REFERENCES.name}",
+                    file=sys.stderr,
+                )
+        if args.references != "" and args.references != str(_BUNDLED_REFERENCES):
             ref_path = Path(args.references)
             if ref_path.exists():
                 print(f"Loading reference store: {ref_path} ...", file=sys.stderr)
@@ -439,15 +489,141 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                     f"Warning: reference file not found: {ref_path}", file=sys.stderr
                 )
 
+        # --- Build LLM (needed for query generation and novelty evaluation) ---
+        try:
+            llm = _build_llm(args.model)
+        except SystemExit as exc:
+            return _fail(str(exc.code), args.format)
+
+        # --- Stage 3 — Online reference search (Retrieve) ---
+        # This stage runs after parsing (Stage 1) and is positioned at the
+        # retrieval layer so that online results augment the reference store
+        # before TF-IDF similarity search.  LLM-generated conceptual queries
+        # are produced here; when decomposition is later extracted from
+        # evaluate() this step will consume those results instead.
+        online_papers_count = 0
+        online_duration = 0.0
+        online_papers: list = []
+        search_queries: list[str] = []
+        arxiv_id = _extract_arxiv_id(paper_source)
+        if not args.no_online_search:
+            print(
+                "Generating conceptual search queries ...",
+                file=sys.stderr,
+            )
+            t0 = time.monotonic()
+            search_queries = generate_search_queries(paper.key_content(), llm)
+            if search_queries:
+                print(
+                    f"  Generated {len(search_queries)} quer"
+                    f"{'y' if len(search_queries) == 1 else 'ies'}: "
+                    + ", ".join(f'"{q}"' for q in search_queries),
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "  Query generation failed or returned no queries; "
+                    "falling back to title-based search.",
+                    file=sys.stderr,
+                )
+
+            print(
+                "Searching for related papers online (Semantic Scholar) ...",
+                file=sys.stderr,
+            )
+            online_searcher = OnlineReferenceSearch(max_results=args.top_k * 2)
+            online_papers = online_searcher.search(
+                paper.title,
+                paper.abstract,
+                arxiv_id=arxiv_id,
+                queries=search_queries or None,
+            )
+            for ref_paper in online_papers:
+                store.add(ref_paper)
+            online_papers_count = len(online_papers)
+            online_duration = round(time.monotonic() - t0, 2)
+            stage_runtimes["online_search"] = online_duration
+            print(
+                f"  Found {online_papers_count} related paper(s) online.",
+                file=sys.stderr,
+            )
+
         # --- Similarity search ---
+        query = paper.key_content()
         t0 = time.monotonic()
         searcher = SimilaritySearch(store)
-        similar = searcher.search(paper.key_content(), top_k=args.top_k)
+        similar = searcher.search(query, top_k=args.top_k)
         sim_duration = round(time.monotonic() - t0, 2)
         stage_runtimes["similarity"] = sim_duration
 
+        # Build descriptive output summary: list top matched titles with scores.
+        if similar:
+            matched_items = [
+                f"{r.score:.2f}×{r.paper.title[:35]}{'…' if len(r.paper.title) > 35 else ''}"
+                for r in similar[:3]
+            ]
+            sim_output = f"top-{len(similar)}: {'; '.join(matched_items)}"
+            if len(similar) > 3:
+                sim_output += f"; +{len(similar) - 3} more"
+        else:
+            sim_output = "no matches"
+
+        # First 15 words of key content as a readable query preview.
+        query_words = query.split()
+        query_preview = " ".join(query_words[:15])
+        if len(query_words) > 15:
+            query_preview += "…"
+
+        # Create the evaluator here so Stage 3d can use it for domain refs.
+        evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
+
+        # --- Stage 3d — Domain reference finder (Retrieve) ---
+        # Domain reference finding is a *retrieval* task: it contextualises
+        # the paper in its field using the top-matched references as context.
+        # Per the ideal architecture it belongs at Stage 3 (Retrieve), not
+        # Stage 5 (Evaluate), because it enriches the retrieval context rather
+        # than producing a novelty verdict.  Running it here means all five
+        # evaluation passes (5a–5c + synthesis) receive the domain context.
+        print("Finding domain references ...", file=sys.stderr)
+        t0 = time.monotonic()
+        _dr_raw: dict[str, str] = {}
+        try:
+            domain_refs = evaluator.find_domain_references(
+                paper.key_content(),
+                NoveltyEvaluator.format_references(similar),
+                _dr_raw,
+            )
+        except RuntimeError as exc:
+            return _fail(f"domain reference finding failed: {exc}", args.format)
+        dr_duration = round(time.monotonic() - t0, 2)
+        stage_runtimes["domain_references"] = dr_duration
+        print(
+            f"  Found {len(domain_refs)} domain reference(s).",
+            file=sys.stderr,
+        )
+
         # Build early pipeline job records for pre-LLM stages
-        early_jobs = [
+        # --- PaperParser job detail (title, abstract, authors, section list) ---
+        _abstract_preview = (
+            (paper.abstract[:500] + "…") if len(paper.abstract) > 500 else paper.abstract
+        ) or "*(not extracted)*"
+        _authors_line = ", ".join(paper.authors) if paper.authors else "*(not extracted)*"
+        _sections_list = "\n".join(
+            f"- {s.title}" for s in paper.sections[:20]
+        ) or "*(no sections detected)*"
+        _parse_detail_parts = [
+            f"**Title:** {paper.title}",
+            "",
+            f"**Authors:** {_authors_line}",
+            "",
+            f"**Abstract:** {_abstract_preview}",
+            "",
+            f"**Sections ({len(paper.sections)}):**",
+            _sections_list,
+        ]
+        _parse_detail = "\n".join(_parse_detail_parts)
+
+        early_jobs: list[PipelineJob] = [
             PipelineJob(
                 name="Parse paper",
                 agent="PaperParser",
@@ -455,23 +631,107 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 duration_s=parse_duration,
                 input_summary=paper_path.name,
                 output_summary=f'"{paper.title}", {len(paper.full_text)} chars',
+                detail=_parse_detail,
             ),
+        ]
+        if not args.no_online_search:
+            # Short table cell summary (queries in detail section below).
+            _qword = "query" if len(search_queries) == 1 else "queries"
+            if arxiv_id and search_queries:
+                _search_input = f"arXiv:{arxiv_id} + {len(search_queries)} LLM {_qword}"
+            elif search_queries:
+                _search_input = f"{len(search_queries)} LLM {_qword}"
+            elif arxiv_id:
+                _search_input = f"arXiv:{arxiv_id}"
+            else:
+                _search_input = f'title="{paper.title}"'
+
+            # Detail section: full query list + fetched paper titles.
+            _q_lines = "\n".join(
+                f"{i + 1}. {q}" for i, q in enumerate(search_queries)
+            ) if search_queries else "*(none generated)*"
+            _fetched_lines = "\n".join(
+                f"{i + 1}. **{p.title}** ({p.year or '—'})"
+                for i, p in enumerate(online_papers)
+            ) if online_papers else "*(none fetched)*"
+            _online_detail_parts = [
+                "**Queries used:**",
+                _q_lines,
+                "",
+                f"**Fetched papers ({online_papers_count}):**",
+                _fetched_lines,
+            ]
+            # Surface any HTTP / network errors so the user can tell why 0 papers
+            # were returned (e.g. rate limiting, network unavailable).
+            _search_errors = online_searcher.last_errors if not args.no_online_search else []
+            if _search_errors:
+                _error_lines = "\n".join(f"- ⚠️ {e}" for e in _search_errors)
+                _online_detail_parts += ["", "**Errors encountered:**", _error_lines]
+            _online_detail = "\n".join(_online_detail_parts)
+
+            early_jobs.append(
+                PipelineJob(
+                    name="Online reference search",
+                    agent="SemanticScholar API",
+                    offset_s=round(stage_runtimes["parsing"], 3),
+                    duration_s=online_duration,
+                    input_summary=_search_input,
+                    output_summary=f"{online_papers_count} paper(s) fetched",
+                    detail=_online_detail,
+                )
+            )
+        sim_offset = round(
+            stage_runtimes["parsing"] + online_duration,
+            3,
+        )
+
+        # Similarity search detail: full list of matched papers with scores.
+        def _esc(text: str) -> str:
+            """Escape text for a Markdown table cell."""
+            return str(text).replace("|", r"\|").replace("\n", " ")
+
+        _sim_rows = "\n".join(
+            f"| {r.score:.3f} | {_esc(r.paper.title)} | {r.paper.year or '—'} |"
+            for r in similar
+        ) if similar else "| — | *(no matches)* | — |"
+        _sim_detail = "\n".join([
+            f"**Query (key content excerpt):**",
+            "```",
+            query[:300] + ("…" if len(query) > 300 else ""),
+            "```",
+            "",
+            f"**All matches ({len(similar)}):**",
+            "| Score | Title | Year |",
+            "|------:|-------|------|",
+            _sim_rows,
+        ])
+
+        early_jobs.append(
             PipelineJob(
                 name="Similarity search",
                 agent="SimilaritySearch",
-                offset_s=round(stage_runtimes["parsing"], 3),
+                offset_s=sim_offset,
                 duration_s=sim_duration,
-                input_summary="paper key content",
-                output_summary=f"top-{len(similar)} match(es)",
-            ),
-        ]
+                input_summary=f"TF-IDF cosine on {len(store)} ref(s)",
+                output_summary=sim_output,
+                detail=_sim_detail,
+            )
+        )
+        # Domain references PipelineJob is recorded here at Stage 3d
+        # (not inside evaluate() where it used to sit at Stage 5d).
+        dr_offset = round(sim_offset + stage_runtimes["similarity"], 3)
+        early_jobs.append(
+            PipelineJob(
+                name="Domain references",
+                agent=f"LLM ({args.model})",
+                offset_s=dr_offset,
+                duration_s=dr_duration,
+                input_summary=f"paper content + {len(similar)} similar paper(s)",
+                output_summary=f"{len(domain_refs)} domain reference(s)",
+            )
+        )
 
         # --- LLM evaluation ---
-        try:
-            llm = _build_llm(args.model)
-        except SystemExit as exc:
-            return _fail(str(exc.code), args.format)
-        evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
         print("Running novelty evaluation ...", file=sys.stderr)
         t0 = time.monotonic()
 
@@ -523,6 +783,8 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 similar_papers=similar,
                 metadata=run_metadata,
                 _run_start=run_start,
+                domain_references=domain_refs,
+                _domain_references_raw=_dr_raw,
             )
         except RuntimeError as exc:
             return _fail(f"novelty evaluation failed: {exc}", args.format)
@@ -533,13 +795,6 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         run_metadata.total_runtime_seconds = total_runtime
         run_metadata.stage_runtimes = stage_runtimes
         report.metadata = run_metadata
-
-        # --- Optionally save updated store ---
-        if args.save_references:
-            store.save(args.save_references)
-            print(
-                f"Reference store saved to: {args.save_references}", file=sys.stderr
-            )
 
         # --- Render and output report ---
         generator = ReportGenerator()

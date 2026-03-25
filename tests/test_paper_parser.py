@@ -25,6 +25,27 @@ References
 learning to align and translate.
 """
 
+# Simulate a PDF-extracted paper with a multi-line title and author header
+MULTILINE_TITLE_TEXT = """Conformal Inference
+of Counterfactuals and Individual Treatment Effects
+Lihua Lei
+DepartmentofStatistics,StanfordUniversity
+E-mail: lihualei@stanford.edu
+Emmanuel J. Candes
+DepartmentofStatisticsandDepartmentofMathematics,StanfordUniversity
+
+Abstract
+We propose a framework for constructing reliable prediction intervals
+for counterfactuals and individual treatment effects, combining conformal
+inference with the potential outcomes framework.
+
+1. Introduction
+Estimating individual treatment effects is central to precision medicine.
+"""
+# Note: the "Department..." lines intentionally omit spaces — this mirrors
+# the output of PDF text extraction tools (e.g. pdfplumber) that sometimes
+# merge words without inter-word spaces in the affiliation header.
+
 
 class TestPaperParser:
     def setup_method(self):
@@ -37,6 +58,13 @@ class TestPaperParser:
     def test_extracts_title(self):
         result = self.parser.parse_text(SAMPLE_TEXT)
         assert result.title == "Attention Is All You Need"
+
+    def test_extracts_multiline_title(self):
+        """Multi-line PDF titles should be joined into a single string."""
+        result = self.parser.parse_text(MULTILINE_TITLE_TEXT)
+        assert result.title == (
+            "Conformal Inference of Counterfactuals and Individual Treatment Effects"
+        )
 
     def test_extracts_abstract(self):
         result = self.parser.parse_text(SAMPLE_TEXT)
@@ -65,6 +93,18 @@ class TestPaperParser:
         assert result.abstract == ""
         assert result.full_text == ""
         assert result.sections == []
+        assert result.authors == []
+
+    def test_authors_field_defaults_empty(self):
+        result = self.parser.parse_text(SAMPLE_TEXT)
+        assert isinstance(result.authors, list)
+
+    def test_extracts_authors_from_multiline_header(self):
+        """Author names appearing after the title should be extracted."""
+        result = self.parser.parse_text(MULTILINE_TITLE_TEXT)
+        # Both authors should be detected
+        assert "Lihua Lei" in result.authors
+        assert "Emmanuel J. Candes" in result.authors
 
     def test_normalise_removes_excess_whitespace(self):
         messy = "Title\n\n\n\n\nAbstract\n  line one  \n  line two"
