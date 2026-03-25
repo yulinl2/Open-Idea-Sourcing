@@ -51,6 +51,26 @@ The `release.yml` workflow will:
 
 ---
 
+## [2.1.0] — 2026-03-25
+
+### Added
+
+**Concept tree pipeline integration — the tree is now analytically useful**
+- `_render_concept_tree_text()` — module-level helper (parallel to `report_generator._render_concept_tree_ascii`) that renders a `ConceptNode` tree as an ASCII string for embedding in LLM prompts.
+- `_format_decomp_context()` — produces a compact decomposition summary string (core concept + ASCII concept tree) for injection into every downstream analysis prompt.
+- `NoveltyEvaluator` gains `decomposition_llm` and `decomposition_model` constructor parameters so a stronger reasoning model (e.g. `o3-mini`, `o4-mini`) can be used specifically for the decomposition step without increasing cost for the rest of the pipeline.
+- `--decomposition-model` CLI flag (also honours `OPENAI_DECOMPOSITION_MODEL` env var) wires a separate LLM callable into `NoveltyEvaluator.decomposition_llm`.
+
+### Changed
+
+- `_DUPLICATION_PROMPT`, `_COMBINATION_PROMPT`, `_EQUIVALENCE_PROMPT`, and `_SYNTHESIS_PROMPT` each now include a `PAPER DECOMPOSITION` section that provides the concept tree (or core concept + key components when no tree is present) to the analysis LLM.  The analysis passes can now reason about the paper's hierarchical structure explicitly — tracing each branch of the tree to a prior-art source — rather than treating the paper as a flat text blob.
+- `_check_duplication`, `_check_combination`, `_check_equivalence`, `_synthesise` accept an optional `decomposition: str` argument so the context can be cleanly controlled in tests.
+- `_decompose_idea()` uses `self._decomposition_llm` rather than `self._llm`, enabling the decomposition LLM to be swapped independently.
+- `_build_llm()` in `review_paper.py` now auto-detects reasoning models (`o1-*`, `o3-*`, `o4-*` prefix) and omits the `temperature` parameter from the chat completion request, which those models do not accept.
+- The `Idea decomposition` Pipeline Job Log entry shows the decomposition model name when it differs from the main model.
+
+---
+
 ## [2.0.0] — 2026-03-25
 
 ### Added
