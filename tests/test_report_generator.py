@@ -666,6 +666,17 @@ class TestPipelineJobLogInMarkdown:
         assert "## Pipeline Job Log" not in out
         assert "```mermaid" not in out
 
+    def test_markdown_job_table_escapes_pipe_in_job_name(self):
+        """Pipe chars in job name, input_summary, output_summary must be escaped."""
+        report = _sample_report_with_jobs()
+        report.metadata.jobs[0].name = "Parse | paper"
+        report.metadata.jobs[0].input_summary = "file | path"
+        report.metadata.jobs[0].output_summary = "title | subtitle"
+        out = self.gen.generate(report, fmt="markdown")
+        assert r"Parse \| paper" in out
+        assert r"file \| path" in out
+        assert r"title \| subtitle" in out
+
 
 class TestPipelineJobLogInText:
     def setup_method(self):

@@ -446,9 +446,10 @@ class ReportGenerator:
                 """Render one agent-group's table then its detail sections."""
                 for idx, job in group:
                     lines.append(
-                        f"| {idx} | {job.name} "
+                        f"| {idx} | {_escape_table_cell(str(job.name))} "
                         f"| {job.offset_s:.2f} | {job.duration_s:.2f} "
-                        f"| {job.input_summary} | {job.output_summary} |"
+                        f"| {_escape_table_cell(job.input_summary or '')} "
+                        f"| {_escape_table_cell(job.output_summary or '')} |"
                     )
                 # Detail sections (collapsible) rendered after the table.
                 for idx, job in group:

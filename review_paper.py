@@ -465,17 +465,21 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
 
         # --- Load reference store ---
         # By default --references points to the bundled baseline corpus
-        # (data/references.json).  Pass an empty string to skip it.
-        # Any user-supplied store is loaded and merged on top so that the
-        # full combined corpus is available to the similarity search.
+        # (data/references.json).  Pass an empty string ('') to skip ALL
+        # reference loading (bundled corpus + any user-supplied file).
+        # Any user-supplied store that differs from the bundled path is
+        # loaded and merged on top so that the full combined corpus is
+        # available to the similarity search.
         store = ReferenceStore()
-        if _BUNDLED_REFERENCES.exists():
-            store.load(_BUNDLED_REFERENCES)
-            print(
-                f"Loaded {len(store)} bundled reference(s) from {_BUNDLED_REFERENCES.name}",
-                file=sys.stderr,
-            )
-        if args.references and args.references != str(_BUNDLED_REFERENCES):
+        if args.references != "":
+            if _BUNDLED_REFERENCES.exists():
+                store.load(_BUNDLED_REFERENCES)
+                print(
+                    f"Loaded {len(store)} bundled reference(s) from"
+                    f" {_BUNDLED_REFERENCES.name}",
+                    file=sys.stderr,
+                )
+        if args.references != "" and args.references != str(_BUNDLED_REFERENCES):
             ref_path = Path(args.references)
             if ref_path.exists():
                 print(f"Loading reference store: {ref_path} ...", file=sys.stderr)
@@ -682,8 +686,12 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         )
 
         # Similarity search detail: full list of matched papers with scores.
+        def _esc(text: str) -> str:
+            """Escape text for a Markdown table cell."""
+            return str(text).replace("|", r"\|").replace("\n", " ")
+
         _sim_rows = "\n".join(
-            f"| {r.score:.3f} | {r.paper.title} | {r.paper.year or '—'} |"
+            f"| {r.score:.3f} | {_esc(r.paper.title)} | {r.paper.year or '—'} |"
             for r in similar
         ) if similar else "| — | *(no matches)* | — |"
         _sim_detail = "\n".join([

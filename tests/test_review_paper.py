@@ -925,6 +925,25 @@ class TestBundledReferencesLoadedByDefault:
         args = _parse_args(["paper.txt", "--references", custom, "--format", "text"])
         assert args.references == custom
 
+    def test_empty_references_disables_all_reference_loading(self, tmp_path, capsys):
+        """Passing --references '' must skip the bundled reference store too."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(_SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+
+        with patch("review_paper._build_llm", return_value=fake_llm):
+            rc = main([
+                str(paper), "--format", "text",
+                "--references", "",
+                "--reports-dir", str(tmp_path),
+            ])
+
+        assert rc == 0
+        err = capsys.readouterr().err
+        # Neither bundled nor user reference loading should be reported.
+        assert "bundled reference" not in err.lower()
+        assert "loading reference store" not in err.lower()
+
 
 # ---------------------------------------------------------------------------
 # Online reference search integration

@@ -197,7 +197,7 @@ make test-quiet    # summary only
 ```
 
 ```bash
-429 passed in 2.4s
+431 passed in 2.4s
 ```
 
 ---
