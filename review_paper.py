@@ -605,7 +605,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             )
             online_searcher = OnlineReferenceSearch(
                 max_results=args.top_k * 2,
-                min_year=args.since_year if hasattr(args, "since_year") else None,
+                min_year=args.since_year,
             )
             online_papers = online_searcher.search(
                 paper.title,

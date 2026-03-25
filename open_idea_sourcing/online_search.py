@@ -330,7 +330,7 @@ class OnlineReferenceSearch:
                     delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
                     print(
                         f"  [online_search] {label}: HTTP {exc.code}, "
-                        f"retrying in {delay:.0f}s (attempt {attempt}/{_MAX_RETRIES - 1})…",
+                        f"retrying in {delay:.0f}s (attempt {attempt}/{_MAX_RETRIES})…",
                         file=sys.stderr,
                     )
                     _time.sleep(delay)
