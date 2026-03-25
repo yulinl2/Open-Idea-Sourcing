@@ -253,10 +253,18 @@ class NoveltyEvaluator:
         llm: LLMCallable,
         top_k_similar: int = 5,
         similarity_threshold: float = 0.05,
+        decomposition_llm: "LLMCallable | None" = None,
+        decomposition_model: str = "",
     ) -> None:
         self._llm = llm
         self._top_k = top_k_similar
         self._threshold = similarity_threshold
+        # Optional separate LLM for the decomposition pass.  When supplied,
+        # a stronger reasoning model (e.g. o3-mini, o4-mini) can be used
+        # specifically for the concept-tree step without affecting the rest of
+        # the pipeline.  Falls back to the main ``llm`` when None.
+        self._decomposition_llm: LLMCallable = decomposition_llm or llm
+        self._decomposition_model: str = decomposition_model
 
     # ------------------------------------------------------------------
     # Public API
@@ -344,6 +352,9 @@ class NoveltyEvaluator:
         raw: dict[str, str] = {}
         refs_summary = f"{len(similar_papers)} reference paper(s)"
         agent = f"LLM ({metadata.model})" if (metadata and metadata.model) else "LLM"
+        # When a separate decomposition model is in use, report it in the job entry.
+        decomp_model_label = self._decomposition_model or (metadata.model if metadata else "")
+        decomp_agent = f"LLM ({decomp_model_label})" if decomp_model_label else "LLM"
         run_start = _run_start if _run_start is not None else time.monotonic()
 
         # Idea decomposition runs FIRST — it provides the structural context
@@ -351,14 +362,22 @@ class NoveltyEvaluator:
         t0 = time.monotonic()
         idea_decomp = self._decompose_idea(content, raw)
         t1 = time.monotonic()
-        dup = self._check_duplication(content, refs_text, raw)
+
+        # Build a compact decomposition context string to include in the
+        # downstream analysis prompts so that the LLM has the structured
+        # breakdown when reasoning about duplication, combination, equivalence,
+        # and synthesis.  This is the key step that makes the concept tree
+        # pipeline-useful rather than purely cosmetic.
+        decomp_context = _format_decomp_context(idea_decomp)
+
+        dup = self._check_duplication(content, refs_text, raw, decomp_context)
         t2 = time.monotonic()
-        combo = self._check_combination(content, refs_text, raw)
+        combo = self._check_combination(content, refs_text, raw, decomp_context)
         t3 = time.monotonic()
-        equiv = self._check_equivalence(content, refs_text, raw)
+        equiv = self._check_equivalence(content, refs_text, raw, decomp_context)
         t4 = time.monotonic()
         overall, confidence, summary = self._synthesise(
-            paper.title, dup, combo, equiv, raw
+            paper.title, dup, combo, equiv, raw, decomp_context
         )
         t5 = time.monotonic()
 
@@ -387,7 +406,7 @@ class NoveltyEvaluator:
             jobs: list[PipelineJob] = [
                 PipelineJob(
                     name="Idea decomposition",
-                    agent=agent,
+                    agent=decomp_agent,
                     offset_s=round(t0 - run_start, 3),
                     duration_s=round(t1 - t0, 3),
                     input_summary="paper content",
@@ -468,11 +487,11 @@ class NoveltyEvaluator:
     # ------------------------------------------------------------------
 
     def _check_duplication(
-        self, content: str, refs_text: str, raw: dict[str, str]
+        self, content: str, refs_text: str, raw: dict[str, str], decomposition: str = ""
     ) -> NoveltyDimension:
         """Detect whether the paper directly duplicates existing work."""
         prompt = _DUPLICATION_PROMPT.format(
-            paper_content=content, reference_papers=refs_text
+            paper_content=content, reference_papers=refs_text, decomposition=decomposition
         )
         response = self._llm(prompt)
         raw["duplication"] = response
@@ -485,11 +504,11 @@ class NoveltyEvaluator:
         )
 
     def _check_combination(
-        self, content: str, refs_text: str, raw: dict[str, str]
+        self, content: str, refs_text: str, raw: dict[str, str], decomposition: str = ""
     ) -> NoveltyDimension:
         """Detect whether the paper is merely a combination of prior works."""
         prompt = _COMBINATION_PROMPT.format(
-            paper_content=content, reference_papers=refs_text
+            paper_content=content, reference_papers=refs_text, decomposition=decomposition
         )
         response = self._llm(prompt)
         raw["combination"] = response
@@ -502,11 +521,11 @@ class NoveltyEvaluator:
         )
 
     def _check_equivalence(
-        self, content: str, refs_text: str, raw: dict[str, str]
+        self, content: str, refs_text: str, raw: dict[str, str], decomposition: str = ""
     ) -> NoveltyDimension:
         """Detect methodological equivalence to known methods."""
         prompt = _EQUIVALENCE_PROMPT.format(
-            paper_content=content, reference_papers=refs_text
+            paper_content=content, reference_papers=refs_text, decomposition=decomposition
         )
         response = self._llm(prompt)
         raw["equivalence"] = response
@@ -521,9 +540,14 @@ class NoveltyEvaluator:
     def _decompose_idea(
         self, content: str, raw: dict[str, str]
     ) -> IdeaDecomposition:
-        """Ask the LLM to decompose the paper's core idea into components."""
+        """Ask the LLM to decompose the paper's core idea into components.
+
+        Uses ``self._decomposition_llm`` so that a more capable reasoning
+        model (e.g. o3-mini, o4-mini) can be employed specifically for this
+        step without affecting the rest of the pipeline.
+        """
         prompt = _IDEA_DECOMPOSITION_PROMPT.format(paper_content=content)
-        response = self._llm(prompt)
+        response = self._decomposition_llm(prompt)
         raw["idea_decomposition"] = response
         return _parse_decomposition_response(response)
 
@@ -561,6 +585,7 @@ class NoveltyEvaluator:
         combo: NoveltyDimension,
         equiv: NoveltyDimension,
         raw: dict[str, str],
+        decomposition: str = "",
     ) -> tuple[str, str, str]:
         """Ask the LLM to synthesise the three dimension results."""
         prompt = _SYNTHESIS_PROMPT.format(
@@ -568,6 +593,7 @@ class NoveltyEvaluator:
             duplication_result=f"Verdict: {dup.verdict}\n{dup.explanation}",
             combination_result=f"Verdict: {combo.verdict}\n{combo.explanation}",
             equivalence_result=f"Verdict: {equiv.verdict}\n{equiv.explanation}",
+            decomposition=decomposition,
         )
         response = self._llm(prompt)
         raw["synthesis"] = response
@@ -593,6 +619,51 @@ class NoveltyEvaluator:
 
 
 # ---------------------------------------------------------------------------
+# Concept-tree helpers (used by prompts and by report_generator)
+# ---------------------------------------------------------------------------
+
+def _render_concept_tree_text(node: "ConceptNode") -> str:
+    """Render *node* and its subtree as a compact ASCII tree string.
+
+    Used when embedding the concept tree in LLM prompts so that all
+    downstream analysis passes have the hierarchical structure visible.
+    Mirrors the box-drawing style produced by :func:`report_generator._render_concept_tree_ascii`.
+    """
+    lines: list[str] = [node.label]
+
+    def _recurse(n: "ConceptNode", prefix: str, is_last: bool) -> None:
+        connector = "└── " if is_last else "├── "
+        lines.append(prefix + connector + n.label)
+        child_prefix = prefix + ("    " if is_last else "│   ")
+        for i, child in enumerate(n.children):
+            _recurse(child, child_prefix, i == len(n.children) - 1)
+
+    for i, child in enumerate(node.children):
+        _recurse(child, "", i == len(node.children) - 1)
+
+    return "\n".join(lines)
+
+
+def _format_decomp_context(idea_decomp: "IdeaDecomposition") -> str:
+    """Build a compact decomposition string for inclusion in analysis prompts.
+
+    Includes the core concept and, when available, the full ASCII concept
+    tree so that the LLM can trace every branch of the methodology back to
+    its logical origin.  Returns an empty string when the decomposition
+    object has no meaningful content.
+    """
+    parts: list[str] = []
+    if idea_decomp.core_concept:
+        parts.append(f"Core concept: {idea_decomp.core_concept}")
+    if idea_decomp.concept_tree is not None:
+        parts.append("Concept tree:")
+        parts.append(_render_concept_tree_text(idea_decomp.concept_tree))
+    elif idea_decomp.sub_ideas:
+        parts.append("Key components: " + "; ".join(idea_decomp.sub_ideas))
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
 # Prompt templates
 # ---------------------------------------------------------------------------
 
@@ -603,6 +674,9 @@ known or referenced work. Direct duplication means the core ideas,
 methods, or results are essentially identical to prior art, even if the
 wording or framing differ.
 
+PAPER DECOMPOSITION (structured breakdown of the submitted paper's core idea and method):
+{decomposition}
+
 SUBMITTED PAPER:
 {paper_content}
 
@@ -612,7 +686,8 @@ REFERENCE PAPERS (most similar by text):
 INSTRUCTIONS:
 - Respond with a structured analysis.
 - Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = paper is NOT a duplicate).
-- Then write EXPLANATION: one or two paragraphs.
+- Then write EXPLANATION: one or two paragraphs. Where possible, reference specific
+  nodes from the concept tree above to ground your claims.
 - Then write REFERENCES: comma-separated IDs of papers that are duplicated
   (or "none").
 """
@@ -623,6 +698,9 @@ TASK: Determine whether the submitted paper is merely a simple combination
 of existing works without a unifying contribution. Identify the individual
 components, trace each to its origin, and assess whether their combination
 constitutes a genuine insight.
+
+PAPER DECOMPOSITION (structured breakdown of the submitted paper's core idea and method):
+{decomposition}
 
 SUBMITTED PAPER:
 {paper_content}
@@ -635,6 +713,7 @@ INSTRUCTIONS:
 - Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = not a simple combination).
 - Then write EXPLANATION: one or two paragraphs describing which components
   come from which prior works, and whether the combination adds value.
+  Trace each branch of the concept tree above to its likely prior-art source.
 - Then write REFERENCES: comma-separated IDs of source papers (or "none").
 """
 
@@ -644,6 +723,9 @@ TASK: Identify whether the methods proposed in the submitted paper are
 subtly equivalent to well-established methodologies, even if the notation,
 framing, or application domain differ. Look for mathematical equivalences,
 algorithmic re-derivations, or conceptual renamings.
+
+PAPER DECOMPOSITION (structured breakdown of the submitted paper's core idea and method):
+{decomposition}
 
 SUBMITTED PAPER:
 {paper_content}
@@ -655,7 +737,8 @@ INSTRUCTIONS:
 - Respond with a structured analysis.
 - Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = no equivalence found).
 - Then write EXPLANATION: describe any equivalences found, citing the
-  established method.
+  established method. Inspect the Method branches in the concept tree above
+  carefully for re-derivations or renamings.
 - Then write REFERENCES: comma-separated IDs of equivalent papers (or "none").
 """
 
@@ -663,6 +746,9 @@ _SYNTHESIS_PROMPT = """You are a senior programme-committee member.
 
 Given the individual novelty analyses below for the paper titled
 "{paper_title}", produce a final holistic verdict.
+
+PAPER DECOMPOSITION (structured breakdown of the paper's core idea and method):
+{decomposition}
 
 DUPLICATION ANALYSIS:
 {duplication_result}
@@ -678,7 +764,8 @@ Respond with:
 OVERALL_VERDICT: <NOVEL|MARGINAL|NOT_NOVEL>
 CONFIDENCE: <HIGH|MEDIUM|LOW>
 SUMMARY: two to four sentences explaining the overall conclusion and the
-main reasons behind it.
+main reasons behind it. Ground your summary in specific elements from the
+concept tree and dimension analyses above.
 """
 
 _IDEA_DECOMPOSITION_PROMPT = """You are an expert research analyst.

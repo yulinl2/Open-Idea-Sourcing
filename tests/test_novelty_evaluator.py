@@ -11,6 +11,7 @@ from open_idea_sourcing.novelty_evaluator import (
     NoveltyReport,
     SimilarityAnnotation,
     _extract_field,
+    _format_decomp_context,
     _parse_concept_tree_text,
     _parse_decomposition_response,
     _parse_dimension_response,
@@ -18,6 +19,7 @@ from open_idea_sourcing.novelty_evaluator import (
     _parse_numbered_list,
     _parse_similar_paper_annotations_response,
     _parse_synthesis_response,
+    _render_concept_tree_text,
 )
 from open_idea_sourcing.paper_parser import ParsedPaper
 from open_idea_sourcing.reference_store import ReferencePaper, ReferenceStore
@@ -916,3 +918,224 @@ class TestAnnotateSimilarPapersMethod:
         assert isinstance(result, list)
         assert len(result) >= 1
         assert isinstance(result[0], SimilarityAnnotation)
+
+
+# ---------------------------------------------------------------------------
+# _render_concept_tree_text helper
+# ---------------------------------------------------------------------------
+
+class TestRenderConceptTreeText:
+    def _make_tree(self) -> ConceptNode:
+        return ConceptNode(
+            label="Root",
+            children=[
+                ConceptNode(
+                    label="Branch A",
+                    children=[ConceptNode(label="Leaf A1")],
+                ),
+                ConceptNode(label="Branch B"),
+            ],
+        )
+
+    def test_root_is_first_line(self):
+        text = _render_concept_tree_text(self._make_tree())
+        assert text.startswith("Root\n")
+
+    def test_last_branch_uses_corner(self):
+        text = _render_concept_tree_text(self._make_tree())
+        assert "└── Branch B" in text
+
+    def test_non_last_branch_uses_tee(self):
+        text = _render_concept_tree_text(self._make_tree())
+        assert "├── Branch A" in text
+
+    def test_leaf_indented_correctly(self):
+        text = _render_concept_tree_text(self._make_tree())
+        assert "└── Leaf A1" in text
+
+    def test_single_node_is_just_label(self):
+        text = _render_concept_tree_text(ConceptNode(label="Only"))
+        assert text == "Only"
+
+
+# ---------------------------------------------------------------------------
+# _format_decomp_context helper
+# ---------------------------------------------------------------------------
+
+class TestFormatDecompContext:
+    def test_core_concept_included(self):
+        d = IdeaDecomposition(core_concept="A novel approach.")
+        ctx = _format_decomp_context(d)
+        assert "A novel approach." in ctx
+
+    def test_concept_tree_rendered_when_present(self):
+        tree = ConceptNode(
+            label="Paper",
+            children=[ConceptNode(label="Problem"), ConceptNode(label="Method")],
+        )
+        d = IdeaDecomposition(core_concept="Core.", concept_tree=tree)
+        ctx = _format_decomp_context(d)
+        assert "Paper" in ctx
+        assert "Problem" in ctx
+        assert "Method" in ctx
+
+    def test_sub_ideas_used_when_no_tree(self):
+        d = IdeaDecomposition(
+            core_concept="Core.",
+            sub_ideas=["ComponentA", "ComponentB"],
+        )
+        ctx = _format_decomp_context(d)
+        assert "ComponentA" in ctx
+        assert "ComponentB" in ctx
+
+    def test_empty_decomposition_returns_empty(self):
+        d = IdeaDecomposition(core_concept="")
+        ctx = _format_decomp_context(d)
+        assert ctx == ""
+
+    def test_concept_tree_label_appears_as_tree(self):
+        tree = ConceptNode(label="Root", children=[ConceptNode(label="Child")])
+        d = IdeaDecomposition(core_concept="x", concept_tree=tree)
+        ctx = _format_decomp_context(d)
+        assert "Concept tree:" in ctx
+        assert "Root" in ctx
+        assert "Child" in ctx
+
+
+# ---------------------------------------------------------------------------
+# decomposition_llm routing in NoveltyEvaluator
+# ---------------------------------------------------------------------------
+
+class TestDecompositionLlm:
+    """Verify that a separate decomposition_llm is used for the decomposition
+    pass and that the main llm is not called for that step."""
+
+    def test_decomposition_llm_receives_decomp_prompt(self):
+        """The decomposition_llm should be called with the decomposition prompt."""
+        decomp_calls: list[str] = []
+        main_calls: list[str] = []
+
+        def decomp_llm(prompt: str) -> str:
+            decomp_calls.append(prompt)
+            return _DECOMP_RESPONSE
+
+        def main_llm(prompt: str) -> str:
+            main_calls.append(prompt)
+            return "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none"
+
+        evaluator = NoveltyEvaluator(
+            llm=main_llm,
+            decomposition_llm=decomp_llm,
+        )
+        evaluator.evaluate(SAMPLE_PAPER)
+        # Decomposition pass should go to decomp_llm
+        assert len(decomp_calls) == 1
+        assert "CONCEPT_TREE" in decomp_calls[0] or "decompose" in decomp_calls[0].lower()
+
+    def test_main_llm_not_called_for_decomposition(self):
+        """When decomposition_llm is set, main llm should NOT be called for decomp."""
+        decomp_calls: list[str] = []
+        main_calls: list[str] = []
+
+        def decomp_llm(prompt: str) -> str:
+            decomp_calls.append(prompt)
+            return _DECOMP_RESPONSE
+
+        def main_llm(prompt: str) -> str:
+            main_calls.append(prompt)
+            return "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none"
+
+        evaluator = NoveltyEvaluator(
+            llm=main_llm,
+            decomposition_llm=decomp_llm,
+        )
+        evaluator.evaluate(SAMPLE_PAPER)
+        # Main llm should be called for analysis+synthesis+domain refs (5 calls, not 6)
+        assert len(main_calls) == 5
+        assert len(decomp_calls) == 1
+
+    def test_decomposition_model_label_in_job_agent(self):
+        """When decomposition_model is set, the job agent string should reflect it."""
+        from open_idea_sourcing.novelty_evaluator import RunMetadata
+
+        meta = RunMetadata(model="gpt-main", input_source="test.txt")
+
+        evaluator = NoveltyEvaluator(
+            llm=_make_full_llm(),
+            decomposition_model="o3-mini",
+        )
+        evaluator.evaluate(SAMPLE_PAPER, metadata=meta)
+        decomp_job = next(j for j in meta.jobs if j.name == "Idea decomposition")
+        assert "o3-mini" in decomp_job.agent
+
+    def test_without_decomposition_llm_uses_main_llm(self):
+        """When decomposition_llm is None, main llm should handle all 6 calls."""
+        calls: list[str] = []
+
+        def main_llm(prompt: str) -> str:
+            calls.append(prompt)
+            return "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none"
+
+        evaluator = NoveltyEvaluator(llm=main_llm)
+        evaluator.evaluate(SAMPLE_PAPER)
+        assert len(calls) == 6
+
+
+# ---------------------------------------------------------------------------
+# Decomposition context fed into analysis prompts
+# ---------------------------------------------------------------------------
+
+class TestDecompositionFedIntoAnalysis:
+    """Verify that the rendered concept tree is included in analysis prompts."""
+
+    def _capture_prompts(self):
+        """Return (evaluator, prompts list) for a standard evaluate() call."""
+        prompts: list[str] = []
+        idx = {"i": 0}
+        responses = [
+            _DECOMP_RESPONSE,
+            _DUP_RESPONSE,
+            _COMBO_RESPONSE,
+            _EQUIV_RESPONSE,
+            _SYNTH_RESPONSE,
+            _DOMAIN_REFS_RESPONSE,
+        ]
+
+        def llm(prompt: str) -> str:
+            prompts.append(prompt)
+            r = responses[min(idx["i"], len(responses) - 1)]
+            idx["i"] += 1
+            return r
+
+        evaluator = NoveltyEvaluator(llm=llm)
+        evaluator.evaluate(SAMPLE_PAPER)
+        return prompts
+
+    def test_concept_tree_root_in_duplication_prompt(self):
+        prompts = self._capture_prompts()
+        # Prompt index 1 = duplication
+        dup_prompt = prompts[1]
+        # DECOMP_RESPONSE includes "A Novel Attention Mechanism" as tree root
+        assert "A Novel Attention Mechanism" in dup_prompt
+
+    def test_concept_tree_root_in_combination_prompt(self):
+        prompts = self._capture_prompts()
+        combo_prompt = prompts[2]
+        assert "A Novel Attention Mechanism" in combo_prompt
+
+    def test_concept_tree_root_in_equivalence_prompt(self):
+        prompts = self._capture_prompts()
+        equiv_prompt = prompts[3]
+        assert "A Novel Attention Mechanism" in equiv_prompt
+
+    def test_decomp_context_in_synthesis_prompt(self):
+        prompts = self._capture_prompts()
+        synth_prompt = prompts[4]
+        # Core concept should be present in synthesis
+        assert "dynamic masking" in synth_prompt.lower()
+
+    def test_decomp_section_header_present(self):
+        prompts = self._capture_prompts()
+        # All analysis prompts (indices 1-4) should have the decomp section
+        for prompt in prompts[1:5]:
+            assert "PAPER DECOMPOSITION" in prompt or "Core concept" in prompt

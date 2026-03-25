@@ -1021,3 +1021,116 @@ class TestOnlineSearchIntegration:
         from review_paper import _parse_args
         args = _parse_args(["paper.txt", "--format", "text", "--no-online-search"])
         assert args.no_online_search is True
+
+
+# ---------------------------------------------------------------------------
+# --decomposition-model CLI argument
+# ---------------------------------------------------------------------------
+
+class TestDecompositionModelArg:
+    """Tests for the --decomposition-model CLI flag."""
+
+    def test_default_is_empty_string(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text"])
+        assert args.decomposition_model == ""
+
+    def test_explicit_value_stored(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text", "--decomposition-model", "o3-mini"])
+        assert args.decomposition_model == "o3-mini"
+
+    def test_env_var_honoured(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_DECOMPOSITION_MODEL", "o4-mini")
+        from review_paper import _parse_args
+        import importlib, review_paper as rp
+        importlib.reload(rp)
+        args = rp._parse_args(["paper.txt", "--format", "text"])
+        assert args.decomposition_model == "o4-mini"
+        monkeypatch.delenv("OPENAI_DECOMPOSITION_MODEL", raising=False)
+
+
+# ---------------------------------------------------------------------------
+# _build_llm reasoning model detection
+# ---------------------------------------------------------------------------
+
+class TestBuildLlmReasoningModel:
+    """_build_llm must omit temperature for o1/o3/o4 reasoning models."""
+
+    def _make_fake_openai(self, captured: list):
+        """Return a mock openai module that records kwargs passed to create()."""
+        class FakeCompletion:
+            class choices:
+                pass
+
+        class FakeMessage:
+            content = "ok"
+
+        class FakeChoice:
+            message = FakeMessage()
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured.append(kwargs)
+                result = MagicMock()
+                result.choices = [FakeChoice()]
+                return result
+
+        class FakeChat:
+            completions = FakeCompletions()
+
+        class FakeClient:
+            chat = FakeChat()
+            def __init__(self, api_key):
+                pass
+
+        class FakeOpenAI:
+            OpenAI = FakeClient
+            OpenAIError = Exception
+
+        return FakeOpenAI()
+
+    def test_standard_model_sends_temperature(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        captured: list = []
+        fake_openai = self._make_fake_openai(captured)
+        with patch.dict("sys.modules", {"openai": fake_openai}):
+            llm = _build_llm("gpt-4o")
+            llm("hello")
+        assert "temperature" in captured[0]
+
+    def test_o3_mini_omits_temperature(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        captured: list = []
+        fake_openai = self._make_fake_openai(captured)
+        with patch.dict("sys.modules", {"openai": fake_openai}):
+            llm = _build_llm("o3-mini")
+            llm("hello")
+        assert "temperature" not in captured[0]
+
+    def test_o4_mini_omits_temperature(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        captured: list = []
+        fake_openai = self._make_fake_openai(captured)
+        with patch.dict("sys.modules", {"openai": fake_openai}):
+            llm = _build_llm("o4-mini")
+            llm("hello")
+        assert "temperature" not in captured[0]
+
+    def test_o1_preview_omits_temperature(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        captured: list = []
+        fake_openai = self._make_fake_openai(captured)
+        with patch.dict("sys.modules", {"openai": fake_openai}):
+            llm = _build_llm("o1-preview")
+            llm("hello")
+        assert "temperature" not in captured[0]
+
+    def test_gpt_4o_model_name_passed_through(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        captured: list = []
+        fake_openai = self._make_fake_openai(captured)
+        with patch.dict("sys.modules", {"openai": fake_openai}):
+            llm = _build_llm("gpt-4o")
+            llm("hello")
+        assert captured[0]["model"] == "gpt-4o"

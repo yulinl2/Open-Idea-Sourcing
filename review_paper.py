@@ -236,7 +236,12 @@ def _download_paper(url: str, dest_dir: str) -> Path:
 
 
 def _build_llm(model: str):
-    """Create a simple OpenAI chat-completion callable."""
+    """Create a simple OpenAI chat-completion callable.
+
+    Reasoning models (o1, o3, o4 series) do not accept a ``temperature``
+    parameter; this function auto-detects them and omits it so that
+    requests to those models succeed without caller changes.
+    """
     try:
         import openai
     except ImportError as exc:
@@ -253,13 +258,18 @@ def _build_llm(model: str):
 
     client = openai.OpenAI(api_key=api_key)
 
+    # Reasoning models (o1-*, o3-*, o4-*) do not support `temperature`.
+    _is_reasoning = model.startswith(("o1", "o3", "o4"))
+
     def call_llm(prompt: str) -> str:
         try:
-            response = client.chat.completions.create(
+            kwargs: dict = dict(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
             )
+            if not _is_reasoning:
+                kwargs["temperature"] = 0.2
+            response = client.chat.completions.create(**kwargs)
             return response.choices[0].message.content or ""
         except openai.OpenAIError as exc:
             raise RuntimeError(str(exc)) from exc
@@ -365,6 +375,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--model",
         default=os.environ.get("OPENAI_MODEL", "gpt-4o"),
         help="OpenAI model name (default: gpt-4o or OPENAI_MODEL env var).",
+    )
+    parser.add_argument(
+        "--decomposition-model",
+        default=os.environ.get("OPENAI_DECOMPOSITION_MODEL", ""),
+        metavar="MODEL",
+        help=(
+            "OpenAI model to use specifically for the idea decomposition / "
+            "concept-tree step (default: same as --model). "
+            "Use a stronger reasoning model here, e.g. o3-mini or o4-mini, "
+            "to produce deeper and more technically precise concept trees "
+            "without increasing cost for the rest of the pipeline. "
+            "The OPENAI_DECOMPOSITION_MODEL environment variable is also "
+            "honoured."
+        ),
     )
     parser.add_argument(
         "--top-k",
@@ -495,6 +519,24 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         except SystemExit as exc:
             return _fail(str(exc.code), args.format)
 
+        # --- Build optional decomposition LLM ---
+        # When --decomposition-model (or OPENAI_DECOMPOSITION_MODEL) is set to
+        # a value different from --model, build a separate callable so the
+        # concept-tree step can use a stronger reasoning model (e.g. o3-mini)
+        # without increasing cost for the rest of the pipeline.
+        decomposition_model: str = (getattr(args, "decomposition_model", "") or "").strip()
+        decomposition_llm = None
+        if decomposition_model and decomposition_model != args.model:
+            print(
+                f"Using decomposition model: {decomposition_model} "
+                f"(main model: {args.model})",
+                file=sys.stderr,
+            )
+            try:
+                decomposition_llm = _build_llm(decomposition_model)
+            except SystemExit as exc:
+                return _fail(str(exc.code), args.format)
+
         # --- Stage 3 — Online reference search (Retrieve) ---
         # This stage runs after parsing (Stage 1) and is positioned at the
         # retrieval layer so that online results augment the reference store
@@ -575,7 +617,12 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             query_preview += "…"
 
         # Create the evaluator here so Stage 3d can use it for domain refs.
-        evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
+        evaluator = NoveltyEvaluator(
+            llm=llm,
+            top_k_similar=args.top_k,
+            decomposition_llm=decomposition_llm,
+            decomposition_model=decomposition_model if decomposition_llm else "",
+        )
 
         # --- Stage 3d — Domain reference finder (Retrieve) ---
         # Domain reference finding is a *retrieval* task: it contextualises
