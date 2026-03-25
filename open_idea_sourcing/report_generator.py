@@ -25,6 +25,7 @@ from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .novelty_evaluator import (
+    ConceptNode,
     IdeaDecomposition,
     DomainReference,
     SimilarityAnnotation,
@@ -72,6 +73,14 @@ def _escape_table_cell(text: str) -> str:
     delimiters.
     """
     return text.replace('\n', ' ').replace('|', r'\|')
+
+
+def _concept_node_to_dict(node: ConceptNode) -> dict:
+    """Recursively serialise a :class:`ConceptNode` to a plain ``dict``."""
+    result: dict = {"label": node.label}
+    if node.children:
+        result["children"] = [_concept_node_to_dict(c) for c in node.children]
+    return result
 
 
 @lru_cache(maxsize=None)
@@ -271,6 +280,10 @@ class ReportGenerator:
                 lines.append("  Limitations:")
                 for i, item in enumerate(d.limitations, 1):
                     lines.append(f"    {i}. {item}")
+            if d.concept_tree is not None:
+                lines.append("  Deep Concept Tree:")
+                for tree_line in _render_concept_tree_ascii(d.concept_tree).splitlines():
+                    lines.append(f"    {tree_line}")
             lines.append("")
 
         lines += [
@@ -508,14 +521,26 @@ class ReportGenerator:
                 for item in d.limitations:
                     lines.append(f"- {item}")
                 lines.append("")
-            mindmap_diagram = _build_mindmap(d, r.paper_title)
-            if mindmap_diagram:
+            # Prefer the deep ASCII concept tree when available; fall back to
+            # the Mermaid mindmap when the tree is absent (e.g. older reports).
+            if d.concept_tree is not None:
                 lines += [
-                    "### Idea Mind Map",
+                    "### Deep Concept Tree",
                     "",
-                    mindmap_diagram,
+                    "```",
+                    _render_concept_tree_ascii(d.concept_tree),
+                    "```",
                     "",
                 ]
+            else:
+                mindmap_diagram = _build_mindmap(d, r.paper_title)
+                if mindmap_diagram:
+                    lines += [
+                        "### Idea Mind Map",
+                        "",
+                        mindmap_diagram,
+                        "",
+                    ]
 
         lines += [
             f"**Overall verdict:** {ov} **{r.overall_verdict}** "
@@ -709,12 +734,15 @@ class ReportGenerator:
             }
         if r.idea_decomposition:
             d = r.idea_decomposition
-            data["idea_decomposition"] = {
+            idea_decomp_data: dict = {
                 "core_concept": d.core_concept,
                 "sub_ideas": d.sub_ideas,
                 "assumptions": d.assumptions,
                 "limitations": d.limitations,
             }
+            if d.concept_tree is not None:
+                idea_decomp_data["concept_tree"] = _concept_node_to_dict(d.concept_tree)
+            data["idea_decomposition"] = idea_decomp_data
         if r.domain_references:
             data["domain_references"] = [
                 {
@@ -823,4 +851,38 @@ def _build_mindmap(decomp: IdeaDecomposition, paper_title: str = "") -> str:
             lines.append(f"      {_safe(item)}")
 
     lines.append("```")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Deep concept tree (ASCII)
+# ---------------------------------------------------------------------------
+
+def _render_concept_tree_ascii(root: ConceptNode) -> str:
+    """Render a :class:`ConceptNode` tree as an ASCII tree string.
+
+    The output uses the classic ``tree``-command characters (``├──``,
+    ``└──``, ``│``) so the hierarchy is visually unambiguous.  The root
+    node is the first line; all children are indented relative to it.
+
+    Example output for a two-level tree::
+
+        Dynamic Masking Transformer
+        ├── Problem: Standard attention lacks input-dependent masking
+        │   └── Gap: Fixed mask patterns cannot adapt to content
+        └── Method: Dynamic attention masking mechanism
+            └── Implementation: Learnable gating function
+    """
+    lines: list[str] = [root.label]
+
+    def _recurse(node: ConceptNode, prefix: str) -> None:
+        last_idx = len(node.children) - 1
+        for i, child in enumerate(node.children):
+            is_last = i == last_idx
+            connector = "└── " if is_last else "├── "
+            lines.append(f"{prefix}{connector}{child.label}")
+            child_prefix = prefix + ("    " if is_last else "│   ")
+            _recurse(child, child_prefix)
+
+    _recurse(root, "")
     return "\n".join(lines)

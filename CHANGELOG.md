@@ -35,6 +35,26 @@ The `release.yml` workflow will:
 
 ## [Unreleased]
 
+---
+
+## [2.0.0] — 2026-03-25
+
+### Added
+
+**Deep concept tree (IdeaDecomposition — Stage 2)**
+- `ConceptNode` dataclass (`label: str`, `children: list[ConceptNode]`) — represents a node in a multi-level hierarchical concept tree.
+- `IdeaDecomposition` gains a new `concept_tree: ConceptNode | None = None` field.  The flat `sub_ideas`, `assumptions`, and `limitations` fields are retained for backward compatibility and quick scanning.
+- `_IDEA_DECOMPOSITION_PROMPT` updated to request a `CONCEPT_TREE:` section in addition to the existing flat fields.  The prompt instructs the LLM to produce a 2-space-indented outline with at least 3 levels of depth, focusing on technical elements, mathematical structures, algorithmic decisions, and implementation specifics (≥ 15–30 nodes).
+- `_parse_concept_tree_text(text)` — parses an indented-text outline into a `ConceptNode` tree.  The indent unit (2 or 4 spaces, or a tab) is auto-detected from the first indented line.  Returns `None` for empty/whitespace-only input so callers can distinguish "LLM produced no tree" from an empty root.
+- `_parse_decomposition_response()` updated to call `_parse_concept_tree_text` and populate `concept_tree`.
+- `_render_concept_tree_ascii(root)` in `report_generator.py` — renders a `ConceptNode` tree as a classic `tree`-command ASCII diagram (`├──`, `└──`, `│`) inside a fenced code block.
+- `_concept_node_to_dict(node)` helper for recursive JSON serialisation of `ConceptNode`.
+
+**Report output changes**
+- *Markdown*: A new `### Deep Concept Tree` section replaces the Mermaid mindmap (`### Idea Mind Map`) when `concept_tree` is present.  When `concept_tree` is absent (e.g. reports generated with older code) the Mermaid mindmap is shown as a fallback.
+- *Plain text*: A `Deep Concept Tree:` subsection renders the ASCII tree indented under `IDEA DECOMPOSITION`.
+- *JSON*: `idea_decomposition.concept_tree` is serialised as a nested `{"label": …, "children": […]}` dict; leaf nodes omit the `children` key for compact output.  The field is absent when `concept_tree is None`.
+
 ### Fixed
 
 **Paper parser**

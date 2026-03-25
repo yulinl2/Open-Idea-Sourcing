@@ -119,6 +119,22 @@ class NoveltyDimension:
 
 
 @dataclass
+class ConceptNode:
+    """A node in the hierarchical deep concept tree.
+
+    Attributes
+    ----------
+    label:
+        Text label for this node (e.g. ``"Method: conformal prediction"``).
+    children:
+        Ordered child nodes representing sub-concepts or implementations.
+    """
+
+    label: str
+    children: list["ConceptNode"] = field(default_factory=list)
+
+
+@dataclass
 class IdeaDecomposition:
     """Structured decomposition of the paper's core idea.
 
@@ -132,12 +148,18 @@ class IdeaDecomposition:
         Underlying assumptions the work makes.
     limitations:
         Acknowledged or implicit limitations of the approach.
+    concept_tree:
+        Optional multi-level hierarchical concept tree that makes logical
+        relationships between concepts and implementations explicit.  When
+        present this is the primary decomposition artefact; the flat lists
+        above are retained for backward compatibility and quick scanning.
     """
 
     core_concept: str
     sub_ideas: list[str] = field(default_factory=list)
     assumptions: list[str] = field(default_factory=list)
     limitations: list[str] = field(default_factory=list)
+    concept_tree: Optional["ConceptNode"] = None
 
 
 @dataclass
@@ -660,9 +682,11 @@ SUMMARY: two to four sentences explaining the overall conclusion and the
 main reasons behind it.
 """
 
-_IDEA_DECOMPOSITION_PROMPT = """You are an expert research analyst.
+_IDEA_DECOMPOSITION_PROMPT = """You are an expert research analyst specialising in deep technical breakdowns.
 
-TASK: Decompose the following paper's core idea into its fundamental components.
+TASK: Decompose the following paper's core idea into its fundamental components,
+then produce a multi-level hierarchical concept tree that makes logical
+relationships between concepts and implementations explicit.
 
 SUBMITTED PAPER:
 {paper_content}
@@ -684,6 +708,22 @@ ASSUMPTIONS:
 LIMITATIONS:
 1. <first acknowledged or implicit limitation>
 2. <additional limitations as needed>
+
+CONCEPT_TREE:
+<paper title or core concept label — this is the tree root>
+  <High-level category, e.g. "Problem: ..." or "Method: ...">
+    <Sub-element, e.g. "Gap: ..." or "Key assumption: ...">
+      <Implementation detail or deeper sub-element>
+    <Another sub-element>
+  <Another high-level category>
+    <Sub-element>
+
+Rules for the concept tree:
+- Use exactly 2-space indentation per level (root = 0 spaces, first children = 2 spaces, grandchildren = 4 spaces, etc.)
+- Every node is a single line; do not wrap text across lines.
+- Include at least 3 levels of depth where the paper warrants it.
+- Focus on technical elements, mathematical structures, algorithmic decisions, and implementation specifics — not surface-level summaries.
+- Aim for 15–30 nodes total to give reviewers a thorough structural map of the contribution.
 """
 
 _DOMAIN_REFERENCES_PROMPT = """You are an expert research librarian.
@@ -802,22 +842,68 @@ def _parse_numbered_list(text: str) -> list[str]:
     return items
 
 
+def _parse_concept_tree_text(text: str) -> "ConceptNode | None":
+    """Parse an indented-text outline into a :class:`ConceptNode` tree.
+
+    The first non-empty line becomes the root node.  Subsequent lines are
+    assigned as children based on their indentation depth.  The indent unit
+    is auto-detected from the first indented line (typically 2 spaces).
+
+    Returns *None* when *text* is empty or contains only whitespace.
+    """
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return None
+
+    # Auto-detect indent unit from the first indented line.
+    indent_unit = 2
+    for ln in lines[1:]:
+        stripped = ln.lstrip()
+        if stripped:
+            indent = len(ln) - len(stripped)
+            if indent > 0:
+                indent_unit = indent
+                break
+
+    root = ConceptNode(label=lines[0].strip())
+    # Stack of (indent_level, node) — root lives at level 0.
+    stack: list[tuple[int, ConceptNode]] = [(0, root)]
+
+    for ln in lines[1:]:
+        stripped = ln.strip()
+        if not stripped:
+            continue
+        indent = len(ln) - len(ln.lstrip())
+        level = max(1, indent // indent_unit) if indent_unit > 0 else 1
+
+        node = ConceptNode(label=stripped)
+        # Pop until the top of the stack is a valid parent.
+        while len(stack) > 1 and stack[-1][0] >= level:
+            stack.pop()
+        stack[-1][1].children.append(node)
+        stack.append((level, node))
+
+    return root
+
+
 def _parse_decomposition_response(text: str) -> "IdeaDecomposition":
     """Extract an :class:`IdeaDecomposition` from an LLM response.
 
     Falls back gracefully: if ``CORE_CONCEPT`` is missing the full
     response text is used; if a list section is missing it defaults to
-    an empty list.
+    an empty list; if ``CONCEPT_TREE`` is missing *concept_tree* is *None*.
     """
     core_concept = _extract_field(text, "CORE_CONCEPT", default=text.strip())
     sub_ideas_raw = _extract_field(text, "SUB_IDEAS", default="")
     assumptions_raw = _extract_field(text, "ASSUMPTIONS", default="")
     limitations_raw = _extract_field(text, "LIMITATIONS", default="")
+    concept_tree_raw = _extract_field(text, "CONCEPT_TREE", default="")
     return IdeaDecomposition(
         core_concept=core_concept,
         sub_ideas=_parse_numbered_list(sub_ideas_raw),
         assumptions=_parse_numbered_list(assumptions_raw),
         limitations=_parse_numbered_list(limitations_raw),
+        concept_tree=_parse_concept_tree_text(concept_tree_raw),
     )
 
 

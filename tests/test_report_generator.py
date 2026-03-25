@@ -1283,3 +1283,230 @@ class TestSimilarPaperAnnotationsInJSON:
         assert "differences" not in p
         assert "derivation" not in p
 
+
+
+# ---------------------------------------------------------------------------
+# _render_concept_tree_ascii
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import ConceptNode
+from open_idea_sourcing.report_generator import _render_concept_tree_ascii
+
+
+def _sample_tree() -> ConceptNode:
+    """Build a small three-level concept tree for testing."""
+    return ConceptNode(
+        label="Dynamic Masking Transformer",
+        children=[
+            ConceptNode(
+                label="Problem: lacks input-dependent masking",
+                children=[
+                    ConceptNode(label="Gap: fixed patterns cannot adapt"),
+                ],
+            ),
+            ConceptNode(
+                label="Method: dynamic masking",
+                children=[
+                    ConceptNode(label="Component: gating function"),
+                    ConceptNode(label="Integration: Transformer encoder"),
+                ],
+            ),
+        ],
+    )
+
+
+class TestRenderConceptTreeAscii:
+    def test_returns_string(self):
+        assert isinstance(_render_concept_tree_ascii(_sample_tree()), str)
+
+    def test_root_is_first_line(self):
+        out = _render_concept_tree_ascii(_sample_tree())
+        assert out.splitlines()[0] == "Dynamic Masking Transformer"
+
+    def test_contains_branch_connector(self):
+        out = _render_concept_tree_ascii(_sample_tree())
+        assert "├── " in out
+
+    def test_contains_last_connector(self):
+        out = _render_concept_tree_ascii(_sample_tree())
+        assert "└── " in out
+
+    def test_contains_vertical_pipe(self):
+        out = _render_concept_tree_ascii(_sample_tree())
+        assert "│" in out
+
+    def test_child_labels_present(self):
+        out = _render_concept_tree_ascii(_sample_tree())
+        assert "Problem: lacks input-dependent masking" in out
+        assert "Method: dynamic masking" in out
+
+    def test_grandchild_labels_present(self):
+        out = _render_concept_tree_ascii(_sample_tree())
+        assert "Gap: fixed patterns cannot adapt" in out
+        assert "Component: gating function" in out
+
+    def test_last_child_uses_elbow(self):
+        """The final child at each level must use ``└──`` not ``├──``."""
+        out = _render_concept_tree_ascii(_sample_tree())
+        lines = out.splitlines()
+        # "Method:" is the last top-level child → must use └──
+        method_line = next(l for l in lines if "Method" in l)
+        assert method_line.startswith("└── ")
+
+    def test_non_last_child_uses_tee(self):
+        """Non-final children must use ``├──``."""
+        out = _render_concept_tree_ascii(_sample_tree())
+        lines = out.splitlines()
+        problem_line = next(l for l in lines if "Problem" in l)
+        assert problem_line.startswith("├── ")
+
+    def test_single_node_tree(self):
+        node = ConceptNode(label="Solo")
+        out = _render_concept_tree_ascii(node)
+        assert out == "Solo"
+
+    def test_two_level_tree_structure(self):
+        root = ConceptNode(label="Root", children=[
+            ConceptNode(label="Only child"),
+        ])
+        out = _render_concept_tree_ascii(root)
+        assert out == "Root\n└── Only child"
+
+    def test_grandchildren_indented_under_pipe(self):
+        """Grandchildren of a non-last child must be indented with '│   '."""
+        out = _render_concept_tree_ascii(_sample_tree())
+        lines = out.splitlines()
+        gap_line = next(l for l in lines if "Gap" in l)
+        # Problem is first (non-last) child, so gap should be under │
+        assert gap_line.startswith("│   └── ")
+
+    def test_grandchildren_of_last_child_use_spaces(self):
+        """Grandchildren of the last child must be indented with '    '."""
+        out = _render_concept_tree_ascii(_sample_tree())
+        lines = out.splitlines()
+        component_line = next(l for l in lines if "Component" in l)
+        assert component_line.startswith("    ├── ")
+
+
+# ---------------------------------------------------------------------------
+# Deep Concept Tree in Markdown report
+# ---------------------------------------------------------------------------
+
+def _sample_report_with_tree() -> NoveltyReport:
+    report = _sample_report_enriched()
+    report.idea_decomposition.concept_tree = _sample_tree()
+    return report
+
+
+class TestConceptTreeInMarkdown:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_with_tree()
+
+    def test_markdown_contains_concept_tree_section(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "### Deep Concept Tree" in out
+
+    def test_markdown_concept_tree_in_code_block(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        # ASCII tree should be wrapped in a fenced code block
+        assert "```\nDynamic Masking Transformer" in out or "```\r\nDynamic Masking Transformer" in out
+
+    def test_markdown_concept_tree_root_present(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "Dynamic Masking Transformer" in out
+
+    def test_markdown_concept_tree_branch_connectors(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "├── " in out or "└── " in out
+
+    def test_markdown_concept_tree_before_verdict(self):
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert out.index("### Deep Concept Tree") < out.index("**Overall verdict:**")
+
+    def test_markdown_no_mindmap_when_concept_tree_present(self):
+        """When concept_tree is set the Mermaid mindmap must NOT appear."""
+        out = self.gen.generate(self.report, fmt="markdown")
+        assert "### Idea Mind Map" not in out
+
+    def test_markdown_mindmap_shown_when_no_concept_tree(self):
+        """When concept_tree is absent the Mermaid mindmap fallback is used."""
+        report = _sample_report_enriched()
+        # concept_tree is None by default in _sample_decomposition()
+        out = self.gen.generate(report, fmt="markdown")
+        assert "### Idea Mind Map" in out
+
+    def test_markdown_concept_tree_section_absent_when_tree_is_none(self):
+        report = _sample_report_enriched()
+        out = self.gen.generate(report, fmt="markdown")
+        assert "### Deep Concept Tree" not in out
+
+
+# ---------------------------------------------------------------------------
+# Deep Concept Tree in plain text report
+# ---------------------------------------------------------------------------
+
+class TestConceptTreeInText:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_with_tree()
+
+    def test_text_contains_concept_tree_label(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "Deep Concept Tree" in out
+
+    def test_text_contains_root_node(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "Dynamic Masking Transformer" in out
+
+    def test_text_contains_child_node(self):
+        out = self.gen.generate(self.report, fmt="text")
+        assert "Problem: lacks input-dependent masking" in out
+
+    def test_text_no_concept_tree_section_when_tree_none(self):
+        report = _sample_report_enriched()
+        out = self.gen.generate(report, fmt="text")
+        assert "Deep Concept Tree" not in out
+
+
+# ---------------------------------------------------------------------------
+# Deep Concept Tree in JSON output
+# ---------------------------------------------------------------------------
+
+class TestConceptTreeInJSON:
+    def setup_method(self):
+        self.gen = ReportGenerator()
+        self.report = _sample_report_with_tree()
+
+    def test_json_idea_decomposition_has_concept_tree(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        assert "concept_tree" in data["idea_decomposition"]
+
+    def test_json_concept_tree_has_label(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        ct = data["idea_decomposition"]["concept_tree"]
+        assert ct["label"] == "Dynamic Masking Transformer"
+
+    def test_json_concept_tree_has_children(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        ct = data["idea_decomposition"]["concept_tree"]
+        assert "children" in ct
+        assert len(ct["children"]) == 2
+
+    def test_json_concept_tree_nested(self):
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        ct = data["idea_decomposition"]["concept_tree"]
+        grandchild = ct["children"][0]["children"][0]
+        assert grandchild["label"] == "Gap: fixed patterns cannot adapt"
+
+    def test_json_no_concept_tree_when_none(self):
+        report = _sample_report_enriched()
+        data = json.loads(self.gen.generate(report, fmt="json"))
+        assert "concept_tree" not in data["idea_decomposition"]
+
+    def test_json_leaf_nodes_have_no_children_key(self):
+        """Leaf nodes should omit the 'children' key for compact JSON."""
+        data = json.loads(self.gen.generate(self.report, fmt="json"))
+        ct = data["idea_decomposition"]["concept_tree"]
+        leaf = ct["children"][0]["children"][0]
+        assert "children" not in leaf

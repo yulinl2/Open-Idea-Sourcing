@@ -3,6 +3,7 @@
 import pytest
 
 from open_idea_sourcing.novelty_evaluator import (
+    ConceptNode,
     DomainReference,
     IdeaDecomposition,
     NoveltyDimension,
@@ -10,6 +11,7 @@ from open_idea_sourcing.novelty_evaluator import (
     NoveltyReport,
     SimilarityAnnotation,
     _extract_field,
+    _parse_concept_tree_text,
     _parse_decomposition_response,
     _parse_dimension_response,
     _parse_domain_references_response,
@@ -90,7 +92,17 @@ _DECOMP_RESPONSE = (
     "ASSUMPTIONS:\n"
     "1. Input sequences are tokenised uniformly\n"
     "LIMITATIONS:\n"
-    "1. Only evaluated on NLP benchmarks"
+    "1. Only evaluated on NLP benchmarks\n"
+    "CONCEPT_TREE:\n"
+    "Dynamic Masking Transformer\n"
+    "  Problem: Standard attention lacks input-dependent masking\n"
+    "    Gap: Fixed mask patterns cannot adapt to content\n"
+    "  Method: Dynamic attention masking mechanism\n"
+    "    Component: Learnable gating function\n"
+    "      Implementation: Element-wise sigmoid activation\n"
+    "    Integration: Standard Transformer encoder blocks\n"
+    "  Evaluation: NLP benchmarks only\n"
+    "    Limitation: Narrow evaluation scope\n"
 )
 _DOMAIN_REFS_RESPONSE = (
     "REFERENCES:\n"
@@ -788,3 +800,189 @@ class TestAnnotateSimilarPapersMethod:
         assert isinstance(result, list)
         assert len(result) >= 1
         assert isinstance(result[0], SimilarityAnnotation)
+
+
+# ---------------------------------------------------------------------------
+# ConceptNode dataclass
+# ---------------------------------------------------------------------------
+
+class TestConceptNode:
+    def test_default_children_empty(self):
+        node = ConceptNode(label="Root")
+        assert node.children == []
+
+    def test_label_stored(self):
+        node = ConceptNode(label="My node")
+        assert node.label == "My node"
+
+    def test_children_stored(self):
+        child = ConceptNode(label="Child")
+        root = ConceptNode(label="Root", children=[child])
+        assert len(root.children) == 1
+        assert root.children[0].label == "Child"
+
+    def test_nested_children(self):
+        grandchild = ConceptNode(label="Grandchild")
+        child = ConceptNode(label="Child", children=[grandchild])
+        root = ConceptNode(label="Root", children=[child])
+        assert root.children[0].children[0].label == "Grandchild"
+
+
+# ---------------------------------------------------------------------------
+# _parse_concept_tree_text
+# ---------------------------------------------------------------------------
+
+_TREE_TEXT = (
+    "Dynamic Masking Transformer\n"
+    "  Problem: Standard attention lacks input-dependent masking\n"
+    "    Gap: Fixed mask patterns cannot adapt to content\n"
+    "  Method: Dynamic attention masking mechanism\n"
+    "    Component: Learnable gating function\n"
+    "    Integration: Standard Transformer encoder blocks\n"
+)
+
+
+class TestParseConceptTreeText:
+    def test_returns_concept_node_instance(self):
+        result = _parse_concept_tree_text(_TREE_TEXT)
+        assert isinstance(result, ConceptNode)
+
+    def test_root_label(self):
+        result = _parse_concept_tree_text(_TREE_TEXT)
+        assert result.label == "Dynamic Masking Transformer"
+
+    def test_root_has_two_children(self):
+        result = _parse_concept_tree_text(_TREE_TEXT)
+        assert len(result.children) == 2
+
+    def test_first_child_label(self):
+        result = _parse_concept_tree_text(_TREE_TEXT)
+        assert result.children[0].label == "Problem: Standard attention lacks input-dependent masking"
+
+    def test_second_child_label(self):
+        result = _parse_concept_tree_text(_TREE_TEXT)
+        assert result.children[1].label == "Method: Dynamic attention masking mechanism"
+
+    def test_grandchild_of_problem(self):
+        result = _parse_concept_tree_text(_TREE_TEXT)
+        problem_node = result.children[0]
+        assert len(problem_node.children) == 1
+        assert "Gap" in problem_node.children[0].label
+
+    def test_method_has_two_children(self):
+        result = _parse_concept_tree_text(_TREE_TEXT)
+        method_node = result.children[1]
+        assert len(method_node.children) == 2
+
+    def test_empty_text_returns_none(self):
+        assert _parse_concept_tree_text("") is None
+
+    def test_whitespace_only_returns_none(self):
+        assert _parse_concept_tree_text("   \n  \n") is None
+
+    def test_single_line_returns_root_only(self):
+        result = _parse_concept_tree_text("Just a root node\n")
+        assert result is not None
+        assert result.label == "Just a root node"
+        assert result.children == []
+
+    def test_blank_lines_ignored(self):
+        text = "Root\n\n  Child 1\n\n  Child 2\n"
+        result = _parse_concept_tree_text(text)
+        assert len(result.children) == 2
+
+    def test_four_space_indent(self):
+        text = "Root\n    Child A\n        Grandchild A1\n    Child B\n"
+        result = _parse_concept_tree_text(text)
+        assert len(result.children) == 2
+        assert len(result.children[0].children) == 1
+
+    def test_deep_nesting(self):
+        text = (
+            "Root\n"
+            "  L1\n"
+            "    L2\n"
+            "      L3\n"
+            "        L4\n"
+        )
+        result = _parse_concept_tree_text(text)
+        l1 = result.children[0]
+        l2 = l1.children[0]
+        l3 = l2.children[0]
+        l4 = l3.children[0]
+        assert l4.label == "L4"
+
+    def test_multiple_top_level_subtrees(self):
+        """Siblings at the same level should all be children of root."""
+        text = "Root\n  A\n    A1\n  B\n    B1\n  C\n"
+        result = _parse_concept_tree_text(text)
+        assert len(result.children) == 3
+
+    def test_parses_decomp_response_tree(self):
+        """The tree embedded in _DECOMP_RESPONSE should parse without error."""
+        concept_tree_raw = (
+            "Dynamic Masking Transformer\n"
+            "  Problem: Standard attention lacks input-dependent masking\n"
+            "    Gap: Fixed mask patterns cannot adapt to content\n"
+            "  Method: Dynamic attention masking mechanism\n"
+            "    Component: Learnable gating function\n"
+            "      Implementation: Element-wise sigmoid activation\n"
+            "    Integration: Standard Transformer encoder blocks\n"
+            "  Evaluation: NLP benchmarks only\n"
+            "    Limitation: Narrow evaluation scope\n"
+        )
+        result = _parse_concept_tree_text(concept_tree_raw)
+        assert result is not None
+        assert result.label == "Dynamic Masking Transformer"
+        assert len(result.children) == 3
+
+
+# ---------------------------------------------------------------------------
+# IdeaDecomposition — concept_tree field
+# ---------------------------------------------------------------------------
+
+class TestIdeaDecompositionConceptTree:
+    def test_concept_tree_defaults_to_none(self):
+        d = IdeaDecomposition(core_concept="A new method.")
+        assert d.concept_tree is None
+
+    def test_concept_tree_can_be_set(self):
+        tree = ConceptNode(label="Root", children=[ConceptNode(label="Child")])
+        d = IdeaDecomposition(core_concept="Core.", concept_tree=tree)
+        assert d.concept_tree is not None
+        assert d.concept_tree.label == "Root"
+
+
+# ---------------------------------------------------------------------------
+# _parse_decomposition_response — with CONCEPT_TREE section
+# ---------------------------------------------------------------------------
+
+class TestParseDecompositionWithConceptTree:
+    def test_parses_concept_tree_from_full_response(self):
+        d = _parse_decomposition_response(_DECOMP_RESPONSE)
+        assert d.concept_tree is not None
+
+    def test_concept_tree_root_label(self):
+        d = _parse_decomposition_response(_DECOMP_RESPONSE)
+        assert d.concept_tree.label == "Dynamic Masking Transformer"
+
+    def test_concept_tree_has_children(self):
+        d = _parse_decomposition_response(_DECOMP_RESPONSE)
+        assert len(d.concept_tree.children) > 0
+
+    def test_concept_tree_none_when_absent(self):
+        response = (
+            "CORE_CONCEPT: Simple idea.\n"
+            "SUB_IDEAS:\n1. Item\n"
+            "ASSUMPTIONS:\n1. Uniform input\n"
+            "LIMITATIONS:\n1. Narrow scope\n"
+        )
+        d = _parse_decomposition_response(response)
+        assert d.concept_tree is None
+
+    def test_flat_fields_still_populated(self):
+        """Flat fields must still work alongside the concept tree."""
+        d = _parse_decomposition_response(_DECOMP_RESPONSE)
+        assert len(d.sub_ideas) == 2
+        assert len(d.assumptions) == 1
+        assert len(d.limitations) == 1
