@@ -235,8 +235,13 @@ def _download_paper(url: str, dest_dir: str) -> Path:
     return dest
 
 
-def _build_llm(model: str):
-    """Create a simple OpenAI chat-completion callable."""
+def _build_llm(model: str, temperature: float = 0.2):
+    """Create an OpenAI chat-completion callable.
+
+    For reasoning models (o1-*, o3-*, o4-*) the ``temperature`` parameter
+    is intentionally omitted because the OpenAI API rejects it for those
+    model families.
+    """
     try:
         import openai
     except ImportError as exc:
@@ -252,14 +257,18 @@ def _build_llm(model: str):
         )
 
     client = openai.OpenAI(api_key=api_key)
+    _REASONING_PREFIXES = ("o1-", "o3-", "o4-", "o1", "o3", "o4")
+    is_reasoning = any(model.startswith(p) for p in _REASONING_PREFIXES)
 
     def call_llm(prompt: str) -> str:
         try:
-            response = client.chat.completions.create(
+            kwargs: dict = dict(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
             )
+            if not is_reasoning:
+                kwargs["temperature"] = temperature
+            response = client.chat.completions.create(**kwargs)
             return response.choices[0].message.content or ""
         except openai.OpenAIError as exc:
             raise RuntimeError(str(exc)) from exc
@@ -365,6 +374,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--model",
         default=os.environ.get("OPENAI_MODEL", "gpt-4o"),
         help="OpenAI model name (default: gpt-4o or OPENAI_MODEL env var).",
+    )
+    parser.add_argument(
+        "--decomposition-model",
+        default=os.environ.get("OPENAI_DECOMPOSITION_MODEL"),
+        metavar="MODEL",
+        help=(
+            "OpenAI model to use for the concept-tree decomposition step only "
+            "(default: same as --model). Useful for running a stronger reasoning "
+            "model (e.g. o3, o4-mini) on decomposition while using a faster model "
+            "for the other steps. Set OPENAI_DECOMPOSITION_MODEL env var to apply "
+            "globally."
+        ),
     )
     parser.add_argument(
         "--top-k",
@@ -575,7 +596,16 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             query_preview += "…"
 
         # Create the evaluator here so Stage 3d can use it for domain refs.
-        evaluator = NoveltyEvaluator(llm=llm, top_k_similar=args.top_k)
+        decomp_llm = (
+            _build_llm(args.decomposition_model)
+            if args.decomposition_model
+            else None
+        )
+        evaluator = NoveltyEvaluator(
+            llm=llm,
+            top_k_similar=args.top_k,
+            decomposition_llm=decomp_llm,
+        )
 
         # --- Stage 3d — Domain reference finder (Retrieve) ---
         # Domain reference finding is a *retrieval* task: it contextualises

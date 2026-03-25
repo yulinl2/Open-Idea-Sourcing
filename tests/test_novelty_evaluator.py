@@ -101,10 +101,11 @@ _DOMAIN_REFS_RESPONSE = (
 )
 
 
-def _make_full_llm():
+def _make_full_llm(with_annotation: bool = False):
     """LLM that returns appropriate canned responses for each pass."""
     responses_in_order = [
         _DECOMP_RESPONSE,
+        *([_ANNOTATION_RESPONSE] if with_annotation else []),
         _DUP_RESPONSE,
         _COMBO_RESPONSE,
         _EQUIV_RESPONSE,
@@ -371,7 +372,7 @@ class TestNoveltyEvaluator:
 
     def test_duplication_high_leads_to_not_novel(self):
         """When duplication is HIGH, synthesis should reflect that."""
-        evaluator = NoveltyEvaluator(llm=_make_full_llm())
+        evaluator = NoveltyEvaluator(llm=_make_full_llm(with_annotation=True))
         report = evaluator.evaluate(SAMPLE_PAPER, similar_papers=self._make_similar())
         # Our canned synthesis says NOT_NOVEL
         assert report.overall_verdict == "NOT_NOVEL"

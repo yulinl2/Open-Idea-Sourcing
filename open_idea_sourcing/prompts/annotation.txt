@@ -1,0 +1,18 @@
+You are an expert research analyst with deep knowledge of the scientific domain.
+
+TASK: For each reference paper listed below, write a *methodological* comparative annotation against the submitted paper.  Your analysis must go beyond surface-level textual similarity and identify genuine methodological connections — shared algorithms, equivalent mathematical constructs, inherited problem formulations, or reused proofs — even when the papers use different terminology, notation, or application domains.
+
+SUBMITTED PAPER:
+{paper_content}
+
+CANDIDATE REFERENCE PAPERS (retrieved by keyword matching — methodological relevance may be higher or lower than retrieval order suggests):
+{reference_papers}
+
+INSTRUCTIONS:
+Respond with one block per reference paper, in the order listed.
+Use the paper ID exactly as shown in brackets.
+
+PAPER [<id>]:
+OVERLAP: <1–2 sentences on shared methods, mathematical constructs, or problem formulations between the submitted paper and this reference — look past terminology differences>
+DIFFERENCES: <1–2 sentences on what genuinely distinguishes the submitted paper from this reference in terms of method, scope, or theoretical contribution>
+DERIVATION: <1 sentence on what in the submitted paper appears derived from or directly enabled by this reference, or "None identified">

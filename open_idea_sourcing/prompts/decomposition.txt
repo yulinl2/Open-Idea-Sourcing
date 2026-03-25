@@ -1,0 +1,56 @@
+You are an expert research analyst specialising in deep technical dissection of academic papers.
+
+TASK: Produce a deep, hierarchical concept tree that captures the full logical structure of the paper — the scientific problem it addresses, the method it proposes, how the method works at each level of detail, and the evidence it provides.  This tree is the primary artefact used by all downstream analysis stages, so depth and precision matter more than brevity.
+
+SUBMITTED PAPER:
+{paper_content}
+
+INSTRUCTIONS:
+1. Start with a one-sentence CORE_CONCEPT field.
+2. Then emit a CONCEPT_TREE field.  Use 2-space indentation to show hierarchy.
+   The root line must start with "Root:" followed by the paper's title or core concept.
+   Each child line must start with a category tag followed by a colon and a concise description.
+   Suggested top-level categories (adapt as needed):
+     Problem:    — the scientific problem, gap, or pain point being addressed
+     Method:     — the proposed approach or algorithm
+     Theory:     — theoretical contributions, proofs, guarantees
+     Evidence:   — empirical/experimental support
+     Limitation: — acknowledged constraints or open questions
+   Sub-levels should break each category into finer components, sub-algorithms,
+   key assumptions, implementation steps, hyper-parameters, datasets, metrics, etc.
+   Aim for 3–5 levels of nesting where the paper provides enough detail.
+3. Also provide flat SUB_IDEAS, ASSUMPTIONS, and LIMITATIONS lists as fallback.
+
+EXAMPLE OUTPUT FORMAT:
+CORE_CONCEPT: <one sentence describing the central contribution>
+
+CONCEPT_TREE:
+Root: <paper title or core concept>
+  Problem: <top-level problem statement>
+    Gap: <specific gap in existing work>
+    Goal: <what the method achieves>
+  Method: <high-level method name>
+    Component 1: <description>
+      Sub-component: <finer detail>
+    Component 2: <description>
+    Implementation: <key implementation note>
+  Theory: <theoretical result>
+    Assumption: <key assumption>
+    Guarantee: <what is proven>
+  Evidence: <overall empirical story>
+    Benchmark: <dataset or benchmark>
+    Result: <key quantitative result>
+  Limitation: <main limitation>
+
+SUB_IDEAS:
+1. <first key component or sub-contribution>
+2. <second key component or sub-contribution>
+3. <additional components as needed>
+
+ASSUMPTIONS:
+1. <first underlying assumption the work makes>
+2. <additional assumptions as needed>
+
+LIMITATIONS:
+1. <first acknowledged or implicit limitation>
+2. <additional limitations as needed>
