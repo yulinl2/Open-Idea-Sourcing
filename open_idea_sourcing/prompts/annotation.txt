@@ -5,6 +5,9 @@ TASK: For each reference paper listed below, write a *methodological* comparativ
 SUBMITTED PAPER:
 {paper_content}
 
+STRUCTURAL DECOMPOSITION OF THE SUBMITTED PAPER:
+{decomposition}
+
 CANDIDATE REFERENCE PAPERS (retrieved by keyword matching — methodological relevance may be higher or lower than retrieval order suggests):
 {reference_papers}
 

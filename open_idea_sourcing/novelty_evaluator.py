@@ -373,7 +373,7 @@ class NoveltyEvaluator:
         annotations: list[SimilarityAnnotation] = []
         t2 = t1
         if similar_papers:
-            annotations = self._annotate_similar_papers(content, similar_papers, raw)
+            annotations = self._annotate_similar_papers(content, similar_papers, raw, idea_decomp)
             t2 = time.monotonic()
 
         dup = self._check_duplication(content, refs_text, raw, idea_decomp, annotations)
@@ -582,15 +582,23 @@ class NoveltyEvaluator:
         return _parse_domain_references_response(response)
 
     def _annotate_similar_papers(
-        self, content: str, similar: list[SimilarityResult], raw: dict[str, str]
+        self,
+        content: str,
+        similar: list[SimilarityResult],
+        raw: dict[str, str],
+        decomp: "IdeaDecomposition | None" = None,
     ) -> list[SimilarityAnnotation]:
         """Ask the LLM to annotate each similar paper with comparative analysis.
 
         Generates per-paper overlap, differences, and derivation annotations
         comparing the submitted paper against each pre-matched reference.
+        The optional *decomp* argument supplies the structural concept-tree
+        context so the LLM can ground comparisons in the paper's explicit
+        methodological breakdown (Stage 4 of the ideal architecture).
         """
         prompt = _SIMILAR_PAPERS_ANNOTATION_PROMPT.format(
             paper_content=content,
+            decomposition=_format_decomp_context(decomp) if decomp is not None else "(No decomposition available yet.)",
             reference_papers=self.format_references(similar),
         )
         response = self._llm(prompt)

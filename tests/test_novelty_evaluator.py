@@ -994,3 +994,45 @@ class TestAnnotateSimilarPapersMethod:
         assert isinstance(result, list)
         assert len(result) >= 1
         assert isinstance(result[0], SimilarityAnnotation)
+
+    def test_decomp_context_included_in_prompt(self):
+        """Stage 4: annotation prompt receives the decomposition context."""
+        captured: list[str] = []
+
+        def capture_llm(prompt: str) -> str:
+            captured.append(prompt)
+            return _ANNOTATION_RESPONSE
+
+        evaluator = NoveltyEvaluator(llm=capture_llm)
+        paper_ref = ReferencePaper(
+            id="ref-001",
+            title="Some Paper",
+            abstract="abstract",
+        )
+        similar = [SimilarityResult(paper=paper_ref, score=0.5)]
+        decomp = IdeaDecomposition(
+            core_concept="Conformal prediction for causal inference",
+            sub_ideas=["weighted conformal bands", "cross-fitting"],
+        )
+        evaluator._annotate_similar_papers("content", similar, {}, decomp)
+        assert len(captured) == 1
+        assert "Conformal prediction for causal inference" in captured[0]
+
+    def test_decomp_context_absent_uses_placeholder(self):
+        """Without decomp, the placeholder text is used instead of crashing."""
+        captured: list[str] = []
+
+        def capture_llm(prompt: str) -> str:
+            captured.append(prompt)
+            return _ANNOTATION_RESPONSE
+
+        evaluator = NoveltyEvaluator(llm=capture_llm)
+        paper_ref = ReferencePaper(
+            id="ref-001",
+            title="Some Paper",
+            abstract="abstract",
+        )
+        similar = [SimilarityResult(paper=paper_ref, score=0.5)]
+        evaluator._annotate_similar_papers("content", similar, {}, decomp=None)
+        assert len(captured) == 1
+        assert "No decomposition available yet" in captured[0]
