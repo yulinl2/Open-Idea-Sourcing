@@ -51,7 +51,7 @@ class ReferenceStore:
             The reference paper to add.
         source:
             Where this paper originated.  Conventional labels are
-            ``"bundled"``, ``"user"``, ``"paper-cited"``, and
+            ``"user"``, ``"paper-cited"``, and
             ``"online"``.  Defaults to ``"unknown"`` for backward
             compatibility.
         """
@@ -87,7 +87,7 @@ class ReferenceStore:
         data = [asdict(p) for p in self._papers.values()]
         Path(path).write_text(json.dumps(data, indent=2), encoding="utf-8")
 
-    def load(self, path: str | Path, source: str = "bundled") -> None:
+    def load(self, path: str | Path, source: str = "user") -> None:
         """Load papers from a JSON file, merging into the current store.
 
         Parameters
@@ -97,7 +97,7 @@ class ReferenceStore:
             objects (as produced by :meth:`save`).
         source:
             Source label applied to every paper loaded from this file.
-            Defaults to ``"bundled"`` (the most common call-site usage).
+            Defaults to ``"user"`` (the most common call-site usage).
         """
         raw = json.loads(Path(path).read_text(encoding="utf-8"))
         for item in raw:

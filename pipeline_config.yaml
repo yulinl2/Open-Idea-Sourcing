@@ -13,8 +13,8 @@
 # Skip online reference search
 # no_online_search: false
 
-# Skip bundled reference corpus
-# no_bundled_refs: false
+# Skip user reference corpus (data/references.json)
+# no_user_refs: false
 
 # Only include papers published from this year onwards
 # since_year: null

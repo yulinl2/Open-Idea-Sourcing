@@ -67,7 +67,7 @@ except ImportError:  # pragma: no cover - dependency is declared in requirements
 
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MiB safety limit for downloads
 
-# Path to the bundled default reference store shipped with the repository.
+# Path to the user reference corpus shipped with the repository.
 _BUNDLED_REFERENCES = Path(__file__).resolve().parent / "data" / "references.json"
 
 from open_idea_sourcing import __version__
@@ -354,7 +354,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=str(_BUNDLED_REFERENCES),
         help=(
             "Path to a JSON file containing reference papers to compare against. "
-            "Defaults to the bundled baseline corpus (data/references.json). "
+            "Defaults to the user corpus (data/references.json). "
             "Pass an empty string ('') to disable reference comparison."
         ),
     )
@@ -429,13 +429,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--no-bundled-refs",
+        "--no-user-refs",
         action="store_true",
-        default=bool(int(os.environ.get("NO_BUNDLED_REFS", "0"))),
+        default=bool(int(os.environ.get("NO_USER_REFS", "0"))),
         help=(
-            "Skip loading the bundled baseline corpus (data/references.json). "
+            "Skip loading the user reference corpus (data/references.json). "
             "Useful for ablation studies that isolate online retrieval only. "
-            "Controlled by NO_BUNDLED_REFS=1 env var."
+            "Controlled by NO_USER_REFS=1 env var."
         ),
     )
     parser.add_argument(
@@ -622,23 +622,23 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         stage_runtimes = ctx.stage_runtimes
 
         # --- Load reference store ---
-        # By default --references points to the bundled baseline corpus
+        # By default --references points to the user corpus
         # (data/references.json).  Pass an empty string ('') to skip ALL
-        # reference loading (bundled corpus + any user-supplied file).
-        # Any user-supplied store that differs from the bundled path is
+        # reference loading (user corpus + any user-supplied file).
+        # Any user-supplied store that differs from the user corpus path is
         # loaded and merged on top so that the full combined corpus is
         # available to the similarity search.
         store = ReferenceStore()
-        if args.references != "" and not args.no_bundled_refs:
+        if args.references != "" and not args.no_user_refs:
             if _BUNDLED_REFERENCES.exists():
-                store.load(_BUNDLED_REFERENCES, source="bundled")
+                store.load(_BUNDLED_REFERENCES, source="user")
                 print(
-                    f"Loaded {len(store)} bundled reference(s) from"
+                    f"Loaded {len(store)} user reference(s) from"
                     f" {_BUNDLED_REFERENCES.name}",
                     file=sys.stderr,
                 )
-        elif args.no_bundled_refs:
-            print("Skipping bundled corpus (--no-bundled-refs).", file=sys.stderr)
+        elif args.no_user_refs:
+            print("Skipping user corpus (--no-user-refs).", file=sys.stderr)
         if args.references != "" and args.references != str(_BUNDLED_REFERENCES):
             ref_path = Path(args.references)
             if ref_path.exists():
@@ -928,10 +928,10 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             _src = store.get_source(_p.id) or "unknown"
             _source_counts[_src] = _source_counts.get(_src, 0) + 1
         _SOURCE_DISPLAY = {
-            "bundled": "Bundled corpus",
-            "user": "User-provided",
+            "user": "User corpus",
             "paper-cited": "Paper citations",
             "online": "Online search",
+            "domain": "Domain refs",
             "unknown": "Unknown",
         }
         _src_table_rows = "\n".join(

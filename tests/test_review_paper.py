@@ -914,7 +914,7 @@ class TestBundledReferences:
 
     def test_bundled_references_file_exists(self):
         assert _BUNDLED_REFS_PATH.exists(), (
-            "data/references.json must exist as the bundled reference store"
+            "data/references.json must exist as the user reference store"
         )
 
     def test_bundled_references_is_valid_json_list(self):
@@ -958,7 +958,7 @@ _SAMPLE_TEXT = (
 
 
 class TestBundledReferencesLoadedByDefault:
-    """Verify that _review_one() always loads bundled references."""
+    """Verify that _review_one() always loads user references."""
 
     def test_bundled_refs_loaded_even_without_references_flag(self, tmp_path, capsys):
         """Running without --references must still load the bundled store."""
@@ -977,7 +977,7 @@ class TestBundledReferencesLoadedByDefault:
 
         assert rc == 0
         err = capsys.readouterr().err
-        assert "bundled reference" in err.lower()
+        assert "user reference" in err.lower()
 
     def test_user_references_merged_on_top_of_bundled(self, tmp_path, capsys):
         """When --references is given, user refs are added to the bundled set."""
@@ -1017,7 +1017,7 @@ class TestBundledReferencesLoadedByDefault:
         assert rc == 0
         err = capsys.readouterr().err
         # Both the bundled load and user references load messages should appear
-        assert "bundled reference" in err.lower()
+        assert "user reference" in err.lower()
         assert "user_refs.json" in err
 
     def test_bundled_refs_path_constant_is_set(self):
@@ -1040,7 +1040,7 @@ class TestBundledReferencesLoadedByDefault:
         assert args.references == custom
 
     def test_empty_references_disables_all_reference_loading(self, tmp_path, capsys):
-        """Passing --references '' must skip the bundled reference store too."""
+        """Passing --references '' must skip the user reference store too."""
         paper = tmp_path / "paper.txt"
         paper.write_text(_SAMPLE_TEXT, encoding="utf-8")
         fake_llm = MagicMock(return_value=(
@@ -1061,7 +1061,7 @@ class TestBundledReferencesLoadedByDefault:
         assert rc == 0
         err = capsys.readouterr().err
         # Neither bundled nor user reference loading should be reported.
-        assert "bundled reference" not in err.lower()
+        assert "user reference" not in err.lower()
         assert "loading reference store" not in err.lower()
 
 
@@ -1241,15 +1241,15 @@ class TestSimilarityThresholdArg:
 # ---------------------------------------------------------------------------
 
 class TestStageToggles:
-    def test_no_bundled_refs_flag_parsed(self):
+    def test_no_user_refs_flag_parsed(self):
         from review_paper import _parse_args
-        args = _parse_args(["paper.txt", "--no-bundled-refs"])
-        assert args.no_bundled_refs is True
+        args = _parse_args(["paper.txt", "--no-user-refs"])
+        assert args.no_user_refs is True
 
-    def test_no_bundled_refs_default_is_false(self):
+    def test_no_user_refs_default_is_false(self):
         from review_paper import _parse_args
         args = _parse_args(["paper.txt"])
-        assert args.no_bundled_refs is False
+        assert args.no_user_refs is False
 
     def test_no_paper_cited_refs_flag_parsed(self):
         from review_paper import _parse_args

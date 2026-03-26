@@ -133,8 +133,8 @@ class TestReferenceStoreSourceTracking:
         import json
         path.write_text(json.dumps(papers), encoding="utf-8")
         store = ReferenceStore()
-        store.load(str(path), source="bundled")
-        assert store.get_source("p1") == "bundled"
+        store.load(str(path), source="user")
+        assert store.get_source("p1") == "user"
 
     def test_load_user_source_label(self, tmp_path):
         papers = [{"id": "u1", "title": "User Paper", "abstract": "B.", "authors": [], "year": 2021}]
@@ -152,7 +152,7 @@ class TestReferenceStoreSourceTracking:
         path.write_text(json.dumps(papers), encoding="utf-8")
         store = ReferenceStore()
         store.load(str(path))
-        assert store.get_source("b1") == "bundled"
+        assert store.get_source("b1") == "user"
 
     def test_remove_also_clears_source(self):
         store = ReferenceStore()
@@ -164,15 +164,15 @@ class TestReferenceStoreSourceTracking:
     def test_overwrite_updates_source(self):
         store = ReferenceStore()
         paper = ReferencePaper(id="p1", title="Paper 1", abstract="")
-        store.add(paper, source="bundled")
+        store.add(paper, source="user")
         store.add(paper, source="online")
         assert store.get_source("p1") == "online"
 
     def test_multiple_sources_tracked_independently(self):
         store = ReferenceStore()
-        store.add(ReferencePaper(id="b1", title="B", abstract=""), source="bundled")
+        store.add(ReferencePaper(id="b1", title="B", abstract=""), source="user")
         store.add(ReferencePaper(id="u1", title="U", abstract=""), source="user")
         store.add(ReferencePaper(id="o1", title="O", abstract=""), source="online")
-        assert store.get_source("b1") == "bundled"
+        assert store.get_source("b1") == "user"
         assert store.get_source("u1") == "user"
         assert store.get_source("o1") == "online"

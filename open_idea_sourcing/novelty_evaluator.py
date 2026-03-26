@@ -241,7 +241,7 @@ class PipelineContext:
     search_queries: list[str] = field(default_factory=list)
     online_papers: list = field(default_factory=list)
     stage_runtimes: dict[str, float] = field(default_factory=dict)
-    # Maps paper_id → source label ("bundled", "user", "paper-cited", "online")
+    # Maps paper_id → source label ("user", "paper-cited", "online", "domain")
     ref_sources: dict[str, str] = field(default_factory=dict)
 
 
