@@ -301,10 +301,10 @@ class ReportGenerator:
                 "  (Scores are TF-IDF cosine similarity, 0–1; "
                 "higher = more textual overlap)"
             )
-            for res in r.similar_papers:
+            for i, res in enumerate(r.similar_papers, 1):
                 p = res.paper
                 year = f" ({p.year})" if p.year else ""
-                lines.append(f"  [{res.score:.2f}] {p.title}{year}")
+                lines.append(f"  REF-{i} [{res.score:.2f}] {p.title}{year}")
                 if p.url:
                     lines.append(f"    URL: {p.url}")
             lines.append("")
@@ -324,6 +324,21 @@ class ReportGenerator:
                     for item in ann.novel_elements:
                         lines.append(f"    - {item}")
                 lines.append("")
+
+            lines += ["REFERENCE INDEX", "-" * 70]
+            for i, res in enumerate(r.similar_papers, 1):
+                p = res.paper
+                year_str = f" ({p.year})" if p.year else ""
+                authors_str = (
+                    f" — {', '.join(p.authors[:3])}"
+                    + (" et al." if len(p.authors) > 3 else "")
+                    if p.authors
+                    else ""
+                )
+                lines.append(f"  REF-{i}: {p.title}{year_str}{authors_str}")
+                if p.url:
+                    lines.append(f"    URL: {p.url}")
+            lines.append("")
 
         if r.domain_references:
             lines += ["MAIN DOMAIN REFERENCES", "-" * 70]
@@ -551,15 +566,15 @@ class ReportGenerator:
                 "Higher scores indicate greater textual overlap between "
                 "the paper's key content and the reference.",
                 "",
-                "| Score | Title | Year |",
-                "|-------|-------|------|",
+                "| Ref | Score | Title | Year |",
+                "|-----|-------|-------|------|",
             ]
-            for res in r.similar_papers:
+            for i, res in enumerate(r.similar_papers, 1):
                 p = res.paper
                 year = str(p.year) if p.year else "—"
                 title_text = p.title.replace("|", "\\|")
                 title_cell = f"[{title_text}]({p.url})" if p.url else title_text
-                lines.append(f"| {res.score:.2f} | {title_cell} | {year} |")
+                lines.append(f"| REF-{i} | {res.score:.2f} | {title_cell} | {year} |")
             lines.append("")
 
             # 1-to-all derivation analysis
@@ -584,6 +599,23 @@ class ReportGenerator:
                     for item in ann.novel_elements:
                         lines.append(f"- {item}")
                     lines.append("")
+
+            # Reference Index — resolves every REF-N used in dimension analysis
+            lines += ["### Reference Index", ""]
+            for i, res in enumerate(r.similar_papers, 1):
+                p = res.paper
+                year_str = f" ({p.year})" if p.year else ""
+                authors_str = (
+                    f" — {', '.join(p.authors[:3])}"
+                    + (" et al." if len(p.authors) > 3 else "")
+                    if p.authors
+                    else ""
+                )
+                title_link = f"[{p.title}]({p.url})" if p.url else p.title
+                lines.append(
+                    f"**REF-{i}**: {title_link}{year_str}{authors_str}"
+                )
+            lines.append("")
 
         if r.domain_references:
             lines += [

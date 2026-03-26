@@ -1,0 +1,55 @@
+name: Auto-wake Copilot on CI timeout
+
+# Triggers whenever the "CI" workflow finishes.  If it timed out and
+# there is an open PR associated with the run's branch, post a wake-up
+# comment so the Copilot agent picks up where it left off.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  wake-copilot:
+    if: github.event.workflow_run.conclusion == 'timed_out'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Post wake-up comment on associated PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const headBranch = run.head_branch;
+            const headOwner = run.head_repository.owner.login;
+
+            // Find open PRs whose head matches this branch + owner.
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              head: `${headOwner}:${headBranch}`,
+            });
+
+            if (prs.length === 0) {
+              console.log('No open PRs found for branch: ' + headBranch);
+              return;
+            }
+
+            const runUrl = run.html_url;
+            const runNumber = run.run_number;
+            const body =
+              `⏰ **CI run [#${runNumber}](${runUrl}) timed out.** ` +
+              `Waking up Copilot to continue from where it left off.\n\n` +
+              `↑ @copilot 👀 Keep on going`;
+
+            for (const pr of prs) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body,
+              });
+              console.log(`Posted wake-up comment on PR #${pr.number}`);
+            }

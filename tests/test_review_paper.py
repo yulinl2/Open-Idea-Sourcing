@@ -823,13 +823,24 @@ class TestMainBatchMode:
             {"path": str(paper2)},
         ])
 
-        fake_llm = MagicMock(return_value=(
-    "TITLE: Attention Is All You Need\n"
-    "ABSTRACT: We propose the Transformer.\n"
-    "AUTHORS: Vaswani et al.\n"
-    "VERDICT: NOVEL\n"
-    "EXPLANATION: original.\n"
-))
+        # The side_effect returns a BERT-themed response when the prompt contains
+        # "BERT" or "bidirectional" (unique to paper2's raw content injected into
+        # the LLM parse/evaluation prompts), and an Attention-themed response
+        # otherwise.  This ensures the two batched papers produce distinct
+        # filenames so both reports are retained on disk.
+        fake_llm = MagicMock(side_effect=lambda prompt: (
+            "TITLE: BERT: Pre-training Deep Bidirectional Transformers\n"
+            "ABSTRACT: We introduce BERT for language representation.\n"
+            "AUTHORS: Devlin et al.\n"
+            "VERDICT: NOVEL\n"
+            "EXPLANATION: original.\n"
+        ) if "BERT" in prompt or "bidirectional" in prompt.lower() else (
+            "TITLE: Attention Is All You Need\n"
+            "ABSTRACT: We propose the Transformer.\n"
+            "AUTHORS: Vaswani et al.\n"
+            "VERDICT: NOVEL\n"
+            "EXPLANATION: original.\n"
+        ))
         reports_dir = tmp_path / "reports"
 
         with patch("review_paper._build_llm", return_value=fake_llm):
