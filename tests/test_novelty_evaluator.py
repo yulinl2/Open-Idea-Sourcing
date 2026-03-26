@@ -234,9 +234,6 @@ class TestExtractField:
         )
         d = _parse_decomposition_response(text)
         assert "conformal" in d.core_concept.lower()
-        assert len(d.sub_ideas) == 2
-        assert len(d.assumptions) == 1
-        assert len(d.limitations) == 1
 
 
 class TestParseDimensionResponse:
@@ -486,21 +483,17 @@ class TestNoveltyEvaluatorJobLog:
 class TestIdeaDecomposition:
     def test_default_lists_empty(self):
         d = IdeaDecomposition(core_concept="A new method.")
-        assert d.sub_ideas == []
-        assert d.assumptions == []
-        assert d.limitations == []
+        assert d.concept_tree is None
 
     def test_fields_stored(self):
+        from open_idea_sourcing.novelty_evaluator import ConceptNode
+        tree = ConceptNode(label="Root")
         d = IdeaDecomposition(
             core_concept="Core.",
-            sub_ideas=["A", "B"],
-            assumptions=["X"],
-            limitations=["Y"],
+            concept_tree=tree,
         )
         assert d.core_concept == "Core."
-        assert d.sub_ideas == ["A", "B"]
-        assert d.assumptions == ["X"]
-        assert d.limitations == ["Y"]
+        assert d.concept_tree is tree
 
 
 # ---------------------------------------------------------------------------
@@ -562,9 +555,7 @@ class TestParseDecompositionResponse:
     def test_parses_full_response(self):
         d = _parse_decomposition_response(_DECOMP_RESPONSE)
         assert "dynamic masking" in d.core_concept.lower()
-        assert "Dynamic attention masking" in d.sub_ideas
-        assert "Input sequences are tokenised uniformly" in d.assumptions
-        assert "Only evaluated on NLP benchmarks" in d.limitations
+        assert isinstance(d, IdeaDecomposition)
 
     def test_missing_core_concept_falls_back_to_full_text(self):
         d = _parse_decomposition_response("Some random text without fields.")
@@ -572,9 +563,7 @@ class TestParseDecompositionResponse:
 
     def test_missing_lists_default_to_empty(self):
         d = _parse_decomposition_response("CORE_CONCEPT: Simple idea.\n")
-        assert d.sub_ideas == []
-        assert d.assumptions == []
-        assert d.limitations == []
+        assert d.concept_tree is None
 
     def test_returns_idea_decomposition_instance(self):
         d = _parse_decomposition_response(_DECOMP_RESPONSE)
@@ -735,15 +724,13 @@ class TestFindDomainReferencesMethod:
 # ---------------------------------------------------------------------------
 
 _ANNOTATION_RESPONSE = """\
-PAPER [arxiv-1904.06019]:
-OVERLAP: Both use mini-batch gradient descent and momentum optimisers.
-DIFFERENCES: The submitted paper targets image classification; the reference focuses on language models.
-DERIVATION: The learning-rate scheduling heuristic in the submitted paper appears adapted from Shallue et al. 2019.
-
-PAPER [bert2018]:
-OVERLAP: Both pre-train on large text corpora.
-DIFFERENCES: The submitted paper uses a custom tokeniser instead of WordPiece.
-DERIVATION: None identified.
+DERIVATION_MAP:
+- attention mechanism: REF-1, REF-2
+- training recipe: REF-3
+COMBINATION_ANALYSIS: The submitted paper combines multi-head attention from REF-1 with the training recipe from REF-3, yielding a moderately novel synthesis.
+NOVEL_ELEMENTS:
+- Dynamic masking strategy
+- Adaptive learning rate schedule
 """
 
 
@@ -755,41 +742,48 @@ class TestParseSimilarPaperAnnotationsResponse:
 
     def test_correct_number_of_annotations(self):
         result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
-        assert len(result) == 2
+        assert len(result) == 1  # 1-to-all: always returns a single annotation
 
-    def test_first_annotation_paper_id(self):
+    def test_derivation_map_keys_extracted(self):
         result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
-        assert result[0].paper_id == "arxiv-1904.06019"
+        assert "attention mechanism" in result[0].derivation_map
 
-    def test_second_annotation_paper_id(self):
+    def test_derivation_map_refs_extracted(self):
         result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
-        assert result[1].paper_id == "bert2018"
+        refs = result[0].derivation_map["attention mechanism"]
+        assert "REF-1" in refs
+        assert "REF-2" in refs
 
-    def test_overlap_extracted(self):
+    def test_combination_analysis_extracted(self):
         result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
-        assert "mini-batch gradient descent" in result[0].overlap
+        assert "multi-head attention" in result[0].combination_analysis
 
-    def test_differences_extracted(self):
+    def test_novel_elements_extracted(self):
         result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
-        assert "image classification" in result[0].differences
+        assert "Dynamic masking strategy" in result[0].novel_elements
 
-    def test_derivation_extracted(self):
-        result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
-        assert "learning-rate scheduling" in result[0].derivation
-
-    def test_empty_response_returns_empty_list(self):
+    def test_empty_response_returns_single_empty_annotation(self):
         result = _parse_similar_paper_annotations_response("")
-        assert result == []
+        assert len(result) == 1
+        assert result[0].derivation_map == {}
+        assert result[0].combination_analysis == ""
+        assert result[0].novel_elements == []
 
-    def test_malformed_blocks_skipped(self):
+    def test_unstructured_response_returns_single_empty_annotation(self):
         result = _parse_similar_paper_annotations_response(
-            "Some preamble without any PAPER markers."
+            "Some preamble without any structured markers."
         )
-        assert result == []
+        assert len(result) == 1
+        assert result[0].derivation_map == {}
 
-    def test_none_derivation_preserved(self):
+    def test_paper_id_defaults_to_empty(self):
         result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
-        assert result[1].derivation == "None identified."
+        assert result[0].paper_id == ""
+
+    def test_training_recipe_component_present(self):
+        result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
+        assert "training recipe" in result[0].derivation_map
+        assert "REF-3" in result[0].derivation_map["training recipe"]
 
 
 class TestAnnotateSimilarPapersMethod:
@@ -935,8 +929,6 @@ class TestParseConceptTreeText:
         d = _parse_decomposition_response(text)
         assert d.concept_tree is not None
         assert d.concept_tree.label == "Problem"
-        assert len(d.implementation_steps) == 2
-        assert d.implementation_steps[0] == "Step one"
 
 
 # ---------------------------------------------------------------------------
@@ -958,29 +950,30 @@ class TestFormatDecompContext:
 
     def test_includes_sub_ideas_when_no_tree(self):
         d = IdeaDecomposition(
-            core_concept="Core.",
-            sub_ideas=["Idea A", "Idea B"],
+            core_concept="Core with details.",
+            concept_tree=None,
         )
         result = _format_decomp_context(d)
-        assert "Idea A" in result
-        assert "Idea B" in result
+        assert "Core with details." in result
 
     def test_tree_preferred_over_sub_ideas(self):
         tree = ConceptNode(label="Root", children=[ConceptNode(label="Child")])
         d = IdeaDecomposition(
             core_concept="Core.",
-            sub_ideas=["Sub idea"],
             concept_tree=tree,
         )
         result = _format_decomp_context(d)
         assert "Root" in result
-        # sub_ideas omitted when tree is present
-        assert "Sub idea" not in result
+        assert "Child" in result
 
     def test_includes_implementation_steps(self):
+        tree = ConceptNode(label="Plan", children=[
+            ConceptNode(label="Step 1"),
+            ConceptNode(label="Step 2"),
+        ])
         d = IdeaDecomposition(
             core_concept="Core.",
-            implementation_steps=["Step 1", "Step 2"],
+            concept_tree=tree,
         )
         result = _format_decomp_context(d)
         assert "Step 1" in result

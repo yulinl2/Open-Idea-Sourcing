@@ -220,14 +220,18 @@ class TestLLMPaperParser:
         assert "body content" in paper.full_text
 
     def test_falls_back_on_llm_failure(self):
-        """A failing LLM falls back to the regex parser without crashing."""
+        """A failing LLM raises RuntimeError after 3 retries."""
+        import pytest
+        call_count = 0
         def failing_llm(prompt: str) -> str:
+            nonlocal call_count
+            call_count += 1
             raise RuntimeError("LLM unavailable")
 
         parser = LLMPaperParser(failing_llm)
-        paper = parser.parse_text("Some Title\nAbstract: A short abstract.\nBody text.")
-        assert isinstance(paper.title, str)
-        assert isinstance(paper.abstract, str)
+        with pytest.raises(RuntimeError, match="failed to extract"):
+            parser.parse_text("Some Title\nAbstract: A short abstract.\nBody text.")
+        assert call_count == 3
 
     def test_falls_back_on_empty_llm_output(self):
         """When LLM returns no title+abstract, fall back to regex parser."""

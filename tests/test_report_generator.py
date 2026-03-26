@@ -738,11 +738,25 @@ from open_idea_sourcing.report_generator import _build_mindmap
 
 
 def _sample_decomposition() -> IdeaDecomposition:
+    from open_idea_sourcing.novelty_evaluator import ConceptNode
+    tree = ConceptNode(
+        label="Dynamic masking extension of Transformer attention",
+        children=[
+            ConceptNode(label="Dynamic attention masking"),
+            ConceptNode(label="Standard Transformer integration"),
+            ConceptNode(
+                label="Assumptions",
+                children=[ConceptNode(label="Uniform tokenisation")],
+            ),
+            ConceptNode(
+                label="Limitations",
+                children=[ConceptNode(label="Evaluated on NLP benchmarks only")],
+            ),
+        ],
+    )
     return IdeaDecomposition(
         core_concept="A dynamic masking extension of Transformer attention.",
-        sub_ideas=["Dynamic attention masking", "Standard Transformer integration"],
-        assumptions=["Uniform tokenisation"],
-        limitations=["Evaluated on NLP benchmarks only"],
+        concept_tree=tree,
     )
 
 
@@ -820,15 +834,15 @@ class TestIdeaDecompositionInMarkdown:
 
     def test_markdown_contains_sub_ideas_list(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        assert "- Dynamic attention masking" in out
+        assert "Dynamic attention masking" in out
 
     def test_markdown_contains_assumptions_list(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        assert "- Uniform tokenisation" in out
+        assert "Uniform tokenisation" in out
 
     def test_markdown_contains_limitations_list(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        assert "- Evaluated on NLP benchmarks only" in out
+        assert "Evaluated on NLP benchmarks only" in out
 
     def test_markdown_no_decomposition_when_none(self):
         report = _sample_report()
@@ -847,8 +861,7 @@ class TestMindMapInMarkdown:
 
     def test_markdown_contains_mindmap_section(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        # Mindmap replaced by sub-ideas bullet list when concept_tree is absent
-        assert "**Sub-ideas:**" in out
+        assert "## Idea Decomposition" in out
 
     def test_markdown_contains_mermaid_mindmap_block(self):
         out = self.gen.generate(self.report, fmt="markdown")
@@ -866,36 +879,68 @@ class TestMindMapInMarkdown:
         assert "mindmap" not in out
 
     def test_build_mindmap_contains_sub_ideas(self):
-        d = _sample_decomposition()
+        from types import SimpleNamespace
+        d = SimpleNamespace(
+            core_concept="A dynamic masking extension of Transformer attention.",
+            sub_ideas=["Dynamic attention masking", "Standard Transformer integration"],
+            assumptions=[],
+            limitations=[],
+        )
         diagram = _build_mindmap(d, "Test Paper")
         assert "Dynamic attention masking" in diagram
         assert "Standard Transformer integration" in diagram
 
     def test_build_mindmap_contains_assumptions(self):
-        d = _sample_decomposition()
+        from types import SimpleNamespace
+        d = SimpleNamespace(
+            core_concept="A dynamic masking extension of Transformer attention.",
+            sub_ideas=[],
+            assumptions=["Uniform tokenisation"],
+            limitations=[],
+        )
         diagram = _build_mindmap(d, "Test Paper")
         assert "Uniform tokenisation" in diagram
 
     def test_build_mindmap_contains_limitations(self):
-        d = _sample_decomposition()
+        from types import SimpleNamespace
+        d = SimpleNamespace(
+            core_concept="A dynamic masking extension of Transformer attention.",
+            sub_ideas=[],
+            assumptions=[],
+            limitations=["Evaluated on NLP benchmarks only"],
+        )
         diagram = _build_mindmap(d, "Test Paper")
         assert "NLP benchmarks" in diagram
 
     def test_build_mindmap_uses_paper_title_as_root(self):
-        d = _sample_decomposition()
+        from types import SimpleNamespace
+        d = SimpleNamespace(
+            core_concept="A dynamic masking extension of Transformer attention.",
+            sub_ideas=["Dynamic attention masking"],
+            assumptions=[],
+            limitations=[],
+        )
         diagram = _build_mindmap(d, "My Paper Title")
         assert "My Paper Title" in diagram
 
     def test_build_mindmap_falls_back_to_core_concept_when_no_title(self):
-        d = _sample_decomposition()
+        from types import SimpleNamespace
+        d = SimpleNamespace(
+            core_concept="A dynamic masking extension of Transformer attention.",
+            sub_ideas=["Dynamic attention masking"],
+            assumptions=[],
+            limitations=[],
+        )
         diagram = _build_mindmap(d)
         assert "dynamic masking" in diagram.lower()
 
     def test_build_mindmap_escapes_parens(self):
-        import re
-        d = IdeaDecomposition(
+        from types import SimpleNamespace
+        d = SimpleNamespace(
             core_concept="Method (improved)",
             sub_ideas=["Component (A)"],
+            assumptions=[],
+            limitations=[],
         )
         diagram = _build_mindmap(d, "Paper (v2)")
         # Strip the mandatory root((...)) wrapper, then verify no raw parens remain
@@ -975,13 +1020,11 @@ class TestEnrichedFieldsInJSON:
         data = json.loads(self.gen.generate(self.report, fmt="json"))
         d = data["idea_decomposition"]
         assert "core_concept" in d
-        assert "sub_ideas" in d
-        assert "assumptions" in d
-        assert "limitations" in d
+        assert "concept_tree" in d
 
     def test_json_idea_decomposition_sub_ideas_are_list(self):
         data = json.loads(self.gen.generate(self.report, fmt="json"))
-        assert isinstance(data["idea_decomposition"]["sub_ideas"], list)
+        assert data["idea_decomposition"]["concept_tree"] is not None
 
     def test_json_contains_domain_references(self):
         data = json.loads(self.gen.generate(self.report, fmt="json"))
@@ -1133,40 +1176,41 @@ class TestMindMapEmptyBranches:
         self.gen = ReportGenerator()
 
     def test_mindmap_hidden_when_all_branch_lists_empty(self):
-        """A decomposition with no sub-ideas/assumptions/limitations should not
-        produce an 'Idea Mind Map' section (just a lone root circle is useless)."""
+        """A decomposition with no concept_tree should not produce a mindmap section."""
         report = _sample_report()
         report.idea_decomposition = IdeaDecomposition(
             core_concept="Core concept only",
-            sub_ideas=[],
-            assumptions=[],
-            limitations=[],
+            concept_tree=None,
         )
         out = self.gen.generate(report, fmt="markdown")
         assert "### Idea Mind Map" not in out
         assert "mindmap" not in out
 
     def test_mindmap_shown_when_sub_ideas_present(self):
+        from open_idea_sourcing.novelty_evaluator import ConceptNode
         report = _sample_report()
         report.idea_decomposition = IdeaDecomposition(
             core_concept="Core",
-            sub_ideas=["Idea A"],
+            concept_tree=ConceptNode(label="Core idea", children=[ConceptNode(label="Idea A")]),
         )
         out = self.gen.generate(report, fmt="markdown")
-        # Sub-ideas are now shown as a bullet list, not a Mermaid mindmap
         assert "Idea A" in out
-        assert "**Sub-ideas:**" in out
+        assert "### Concept Tree" in out
 
     def test_build_mindmap_returns_empty_string_when_no_branches(self):
-        d = IdeaDecomposition(core_concept="X", sub_ideas=[], assumptions=[], limitations=[])
+        from types import SimpleNamespace
+        d = SimpleNamespace(core_concept="X", sub_ideas=[], assumptions=[], limitations=[])
         result = _build_mindmap(d, "Paper")
         assert result == ""
 
     def test_build_mindmap_truncates_long_items(self):
+        from types import SimpleNamespace
         long_text = "A" * 100  # definitely over 60 chars
-        d = IdeaDecomposition(
+        d = SimpleNamespace(
             core_concept="Core",
             sub_ideas=[long_text],
+            assumptions=[],
+            limitations=[],
         )
         diagram = _build_mindmap(d, "Paper")
         # The truncated label should appear in the diagram (60 chars + ellipsis)
@@ -1175,19 +1219,25 @@ class TestMindMapEmptyBranches:
         assert "…" in diagram
 
     def test_build_mindmap_does_not_truncate_exactly_max_length(self):
+        from types import SimpleNamespace
         exact_text = "B" * 60  # exactly at the limit — must NOT be truncated
-        d = IdeaDecomposition(
+        d = SimpleNamespace(
             core_concept="Core",
             sub_ideas=[exact_text],
+            assumptions=[],
+            limitations=[],
         )
         diagram = _build_mindmap(d, "Paper")
         assert "B" * 60 in diagram
         assert "…" not in diagram
 
     def test_build_mindmap_removes_brackets_and_braces(self):
-        d = IdeaDecomposition(
+        from types import SimpleNamespace
+        d = SimpleNamespace(
             core_concept="Core",
             sub_ideas=["Method [A] and {B}"],
+            assumptions=[],
+            limitations=[],
         )
         diagram = _build_mindmap(d, "Paper")
         assert "[" not in diagram.split("root")[1]  # not in branches
@@ -1208,10 +1258,12 @@ def _sample_report_with_annotations() -> NoveltyReport:
     report.similar_papers[0].paper.url = "https://arxiv.org/abs/1706.03762"
     report.similar_paper_annotations = [
         SimilarityAnnotation(
-            paper_id="att2017",
-            overlap="Both use self-attention as core mechanism.",
-            differences="Submitted paper adds dynamic masking; original is static.",
-            derivation="The multi-head attention design is directly derived from Vaswani et al.",
+            derivation_map={
+                "attention mechanism": ["REF-1"],
+                "dynamic masking": [],
+            },
+            combination_analysis="The multi-head attention design is directly derived from Vaswani et al.",
+            novel_elements=["adaptive position encoding"],
         )
     ]
     return report
@@ -1224,23 +1276,24 @@ class TestSimilarPaperAnnotationsInMarkdown:
 
     def test_markdown_shows_reference_annotations_section(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        assert "### Reference Annotations" in out
+        assert "### Derivation Analysis" in out
 
     def test_markdown_annotations_use_comparison_table(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        # Annotations now render as inline comparison tables, not <details> blocks.
-        ann_pos = out.index("### Reference Annotations")
+        # Annotations now render as derivation map and analysis sections.
+        ann_pos = out.index("### Derivation Analysis")
         section = out[ann_pos:]
-        assert "| Dimension | Notes |" in section
-        assert "**Overlap**" in section
-        assert "**Differences**" in section
+        assert "**Derivation map:**" in section
+        assert "**Combination analysis:**" in section
 
     def test_markdown_shows_overlap(self):
         out = self.gen.generate(self.report, fmt="markdown")
-        assert "Both use self-attention" in out
+        # derivation_map entry for "attention mechanism" should appear
+        assert "attention mechanism" in out
 
     def test_markdown_shows_differences(self):
         out = self.gen.generate(self.report, fmt="markdown")
+        # derivation_map entry for "dynamic masking" should appear
         assert "dynamic masking" in out
 
     def test_markdown_shows_derivation(self):
@@ -1254,7 +1307,7 @@ class TestSimilarPaperAnnotationsInMarkdown:
     def test_markdown_no_annotations_section_when_empty(self):
         report = _sample_report()  # no annotations
         out = self.gen.generate(report, fmt="markdown")
-        assert "### Reference Annotations" not in out
+        assert "### Derivation Analysis" not in out
 
 
 class TestSimilarPaperAnnotationsInJSON:
@@ -1268,24 +1321,21 @@ class TestSimilarPaperAnnotationsInJSON:
 
     def test_json_similar_paper_has_overlap(self):
         data = json.loads(self.gen.generate(self.report, fmt="json"))
-        assert "overlap" in data["similar_papers"][0]
-        assert "self-attention" in data["similar_papers"][0]["overlap"]
+        assert "derivation_analysis" in data
+        assert "derivation_map" in data["derivation_analysis"]
 
     def test_json_similar_paper_has_differences(self):
         data = json.loads(self.gen.generate(self.report, fmt="json"))
-        assert "differences" in data["similar_papers"][0]
+        assert "combination_analysis" in data["derivation_analysis"]
 
     def test_json_similar_paper_has_derivation(self):
         data = json.loads(self.gen.generate(self.report, fmt="json"))
-        assert "derivation" in data["similar_papers"][0]
+        assert "novel_elements" in data["derivation_analysis"]
 
     def test_json_similar_paper_no_annotations_when_none(self):
         report = _sample_report()  # no annotations
         data = json.loads(self.gen.generate(report, fmt="json"))
-        p = data["similar_papers"][0]
-        assert "overlap" not in p
-        assert "differences" not in p
-        assert "derivation" not in p
+        assert "derivation_analysis" not in data
 
 
 # ---------------------------------------------------------------------------
@@ -1378,12 +1428,18 @@ class TestConceptTreeInJson:
     def test_json_includes_implementation_steps(self):
         gen = ReportGenerator()
         report = _sample_report()
+        tree = ConceptNode(label="Core", children=[
+            ConceptNode(label="Step 1"),
+            ConceptNode(label="Step 2"),
+        ])
         report.idea_decomposition = IdeaDecomposition(
             core_concept="Core.",
-            implementation_steps=["Step 1", "Step 2"],
+            concept_tree=tree,
         )
         data = json.loads(gen.generate(report, fmt="json"))
-        assert data["idea_decomposition"]["implementation_steps"] == ["Step 1", "Step 2"]
+        ct = data["idea_decomposition"]["concept_tree"]
+        assert ct is not None
+        assert len(ct["children"]) == 2
 
     def test_json_concept_tree_null_when_absent(self):
         gen = ReportGenerator()
@@ -1413,12 +1469,16 @@ class TestConceptTreeInMarkdown:
     def test_markdown_contains_implementation_roadmap(self):
         gen = ReportGenerator()
         report = _sample_report()
+        tree = ConceptNode(label="Plan", children=[
+            ConceptNode(label="Step A"),
+            ConceptNode(label="Step B"),
+        ])
         report.idea_decomposition = IdeaDecomposition(
             core_concept="Core.",
-            implementation_steps=["Step A", "Step B"],
+            concept_tree=tree,
         )
         out = gen.generate(report, fmt="markdown")
-        assert "Implementation roadmap" in out
+        assert "### Concept Tree" in out
         assert "Step A" in out
 
     def test_markdown_ascii_tree_in_code_block(self):

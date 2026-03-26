@@ -173,7 +173,13 @@ class TestMainWithUrl:
         return fake_download
 
     def test_url_input_invokes_download(self, tmp_path):
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with (
             patch("review_paper._download_paper", side_effect=self._make_fake_download(tmp_path)),
@@ -200,7 +206,13 @@ class TestMainWithUrl:
         def fake_download(url: str, dest_dir: str) -> Path:
             return dest
 
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: done.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: done.\n"
+))
 
         with (
             patch("review_paper.tempfile.mkdtemp", side_effect=tracking_mkdtemp),
@@ -217,7 +229,13 @@ class TestMainWithUrl:
         """Passing a local file path must continue to work as before."""
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "text", "--reports-dir", str(tmp_path)])
@@ -395,7 +413,13 @@ class TestMainOutputFlag:
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
         out_file = tmp_path / "report.md"
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "markdown", "--output", str(out_file)])
@@ -408,7 +432,13 @@ class TestMainOutputFlag:
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
         out_file = tmp_path / "report.md"
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             main([str(paper), "--format", "markdown", "--output", str(out_file)])
@@ -422,7 +452,13 @@ class TestMainOutputFlag:
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
         out_file = tmp_path / "report.json"
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "json", "--output", str(out_file)])
@@ -444,7 +480,13 @@ class TestMainMetadata:
     def test_metadata_present_in_markdown_output(self, tmp_path, capsys):
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "markdown", "--model", "gpt-4o-test",
@@ -459,7 +501,13 @@ class TestMainMetadata:
         import json as _json
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "json", "--reports-dir", str(tmp_path)])
@@ -476,7 +524,13 @@ class TestMainMetadata:
         import json as _json
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             main([str(paper), "--format", "json", "--reports-dir", str(tmp_path)])
@@ -489,7 +543,13 @@ class TestMainMetadata:
         import json as _json
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             main([str(paper), "--format", "json", "--reports-dir", str(tmp_path)])
@@ -505,7 +565,13 @@ class TestMainMetadata:
         import json as _json
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             main([str(paper), "--format", "json", "--reports-dir", str(tmp_path)])
@@ -528,7 +594,13 @@ class TestMainReportsDir:
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
         reports_dir = tmp_path / "my_reports"
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "markdown",
@@ -543,7 +615,13 @@ class TestMainReportsDir:
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
         reports_dir = tmp_path / "new_dir" / "nested"
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "text",
@@ -556,7 +634,13 @@ class TestMainReportsDir:
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
         reports_dir = tmp_path / "reports"
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             main([str(paper), "--format", "markdown",
@@ -573,7 +657,13 @@ class TestMainReportsDir:
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
         out_file = tmp_path / "explicit.md"
         reports_dir = tmp_path / "reports"
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "markdown",
@@ -733,7 +823,13 @@ class TestMainBatchMode:
             {"path": str(paper2)},
         ])
 
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
         reports_dir = tmp_path / "reports"
 
         with patch("review_paper._build_llm", return_value=fake_llm):
@@ -756,7 +852,13 @@ class TestMainBatchMode:
             {"path": str(tmp_path / "missing.txt")},  # does not exist
         ])
 
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([
@@ -862,7 +964,13 @@ class TestBundledReferencesLoadedByDefault:
         """Running without --references must still load the bundled store."""
         paper = tmp_path / "paper.txt"
         paper.write_text(_SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: ok.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "text", "--reports-dir", str(tmp_path)])
@@ -891,7 +999,13 @@ class TestBundledReferencesLoadedByDefault:
         user_refs_path = tmp_path / "user_refs.json"
         user_refs_path.write_text(_json.dumps(user_refs), encoding="utf-8")
 
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: ok.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([
@@ -929,7 +1043,13 @@ class TestBundledReferencesLoadedByDefault:
         """Passing --references '' must skip the bundled reference store too."""
         paper = tmp_path / "paper.txt"
         paper.write_text(_SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: ok.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([
@@ -964,7 +1084,13 @@ class TestOnlineSearchIntegration:
         """OnlineReferenceSearch.search must be called when the flag is absent."""
         paper = tmp_path / "paper.txt"
         paper.write_text(_ONLINE_SEARCH_SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
         call_count = {"n": 0}
 
         def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None):
@@ -987,7 +1113,13 @@ class TestOnlineSearchIntegration:
         """OnlineReferenceSearch.search must NOT be called with --no-online-search."""
         paper = tmp_path / "paper.txt"
         paper.write_text(_ONLINE_SEARCH_SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
         call_count = {"n": 0}
 
         def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None):
