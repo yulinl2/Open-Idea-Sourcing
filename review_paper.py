@@ -805,7 +805,6 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
 
         # --- Stage 3e: Look up domain refs via Semantic Scholar ---
         if not getattr(args, 'no_online_search', False) and domain_refs:
-            from open_idea_sourcing.online_search import OnlineReferenceSearch
             _domain_searcher = OnlineReferenceSearch(max_results=10, min_year=getattr(args, 'since_year', None))
             domain_papers = _domain_searcher.lookup_domain_refs(domain_refs)
             for dp in domain_papers:
