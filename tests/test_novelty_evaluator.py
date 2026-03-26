@@ -1227,30 +1227,28 @@ class TestAccumulatedStage5Context:
 
     def test_evaluate_chains_context_through_stages(self):
         """evaluate() should chain dup→combo→equiv with accumulated context."""
-        call_order = []
         prior_verdicts_in_combo = []
         prior_verdicts_in_equiv = []
 
         def llm(prompt: str) -> str:
-            if "direct duplicate" in prompt.lower() or "TASK: Determine whether the submitted paper is a direct duplicate" in prompt:
-                call_order.append("dup")
-                return "VERDICT: HIGH\nEXPLANATION: Strongly similar to REF-1.\nREFERENCES: REF-1"
-            if "simple combination" in prompt.lower() or ("PRIOR ANALYSIS" in prompt and "Combination" not in prompt.split("PRIOR ANALYSIS")[0]):
-                call_order.append("combo")
-                if "PRIOR ANALYSIS" in prompt:
-                    prior_verdicts_in_combo.append(prompt)
-                return "VERDICT: MEDIUM\nEXPLANATION: Partly assembled.\nREFERENCES: REF-1"
-            if "subtly equivalent" in prompt.lower() or ("PRIOR ANALYSIS" in prompt and "Combination" in prompt):
-                call_order.append("equiv")
+            # Equivalence prompt uniquely contains "Combination Check" in its PRIOR ANALYSIS
+            if "PRIOR ANALYSIS — Combination Check" in prompt:
                 if "PRIOR ANALYSIS" in prompt:
                     prior_verdicts_in_equiv.append(prompt)
                 return "VERDICT: LOW\nEXPLANATION: No equivalence.\nREFERENCES: none"
+            # Combination prompt uniquely contains "Duplication Check" but NOT "Combination Check"
+            if "PRIOR ANALYSIS — Duplication Check" in prompt:
+                if "PRIOR ANALYSIS" in prompt:
+                    prior_verdicts_in_combo.append(prompt)
+                return "VERDICT: MEDIUM\nEXPLANATION: Partly assembled.\nREFERENCES: REF-1"
             return _mock_llm_response(prompt)
 
         evaluator = NoveltyEvaluator(llm=llm)
         paper = ParsedPaper(title="T", abstract="A", full_text="F")
         report = evaluator.evaluate(paper)
-        assert len([x for x in call_order if x in ("dup", "combo", "equiv")]) >= 3 or True
+        # Combo prompt should contain the dup verdict; equiv should contain both priors
+        assert len(prior_verdicts_in_combo) >= 1, "combination prompt should include duplication prior"
+        assert len(prior_verdicts_in_equiv) >= 1, "equivalence prompt should include prior analyses"
 
     def test_no_prior_context_when_not_provided(self):
         """When prior_dup is None, combination prompt should still work."""
