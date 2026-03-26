@@ -790,7 +790,8 @@ def _render_concept_tree_ascii(root: ConceptNode) -> str:
         │   └── Grandchild 2
         └── Child B
 
-    Returns an empty string when *root* has no children.
+    Returns a single-line label string for leaf nodes (no children).
+    Returns an empty string only when *root* has no label and no children.
     """
     if not root.label and not root.children:
         return ""

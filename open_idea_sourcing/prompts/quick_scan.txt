@@ -1,0 +1,28 @@
+You are a research analyst performing a quick relevance triage.
+
+TASK: For each reference paper listed below, rate how conceptually relevant it is
+to the submitted paper's core contribution, on a scale of 0–10:
+  10 = essentially the same work / direct prior art
+   7 = highly relevant (overlapping problem + approach)
+   4 = moderately relevant (same domain, different method)
+   1 = tangentially related
+   0 = unrelated
+
+Provide one short sentence explaining each score.
+
+SUBMITTED PAPER:
+{paper_content}
+
+CONCEPT DECOMPOSITION:
+{decomposition}
+
+REFERENCE PAPERS:
+{reference_papers}
+
+Respond ONLY with a valid JSON array — one object per reference paper, in the same
+order as the papers above.  No extra text outside the JSON.
+
+[
+  {{"ref": "REF-1", "score": 8, "headline": "Directly solves the same scheduling problem using a similar greedy approach."}},
+  {{"ref": "REF-2", "score": 3, "headline": "Addresses graph optimization but in a different domain (network routing)."}}
+]

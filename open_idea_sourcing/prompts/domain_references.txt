@@ -7,6 +7,9 @@ reader would need to understand the context of this contribution.
 SUBMITTED PAPER:
 {paper_content}
 
+IDEA DECOMPOSITION:
+{decomposition}
+
 ALREADY IDENTIFIED SIMILAR PAPERS (from text similarity search):
 {reference_papers}
 

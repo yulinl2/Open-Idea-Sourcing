@@ -72,6 +72,38 @@ The `release.yml` workflow will:
 
 ---
 
+## [3.0.0] — 2026-03-26
+
+### Added
+
+**Stage 4a: Quick-scan attention router**
+- `SimilarityScan` dataclass — `{paper_id, relevance_score, headline}` — output of the new Stage 4a pass.
+- `NoveltyEvaluator._quick_scan_papers()` — single LLM call that scores each candidate paper 0–10 for conceptual relevance before the expensive 1-to-all annotation pass.
+- `PipelineContext.attention_scan` field — stores all scan results for inspection and downstream filtering.
+- `NoveltyReport.attention_scan` field — included in every report for full provenance.
+- Papers scoring < 3 are filtered out before the deep annotation pass; at least 3 papers are always forwarded as a floor.
+- `prompts/quick_scan.txt` — new prompt template for the attention-routing pass.
+- Two new pipeline job log entries: **Quick relevance scan** and the updated **Reference annotation** now shows how many papers were forwarded.
+
+**Stage 3: `include_paper_citations` parameter**
+- `OnlineReferenceSearch.search(include_paper_citations=True)` — when `False`, skips the entire Phase 1 block (both the arXiv path *and* the title-lookup fallback), correctly honouring `--no-paper-cited-refs`.
+- Fixes the pre-existing bug where `--no-paper-cited-refs` blanked `arxiv_id` but the title→S2 lookup still ran.
+
+**Stage 3d: `{decomposition}` slot in domain references prompt**
+- `domain_references.txt` now includes an `IDEA DECOMPOSITION:` section, giving the LLM conceptual context when identifying field-defining papers.
+- `_find_domain_references()` accepts and uses the `decomp` argument (previously accepted but silently ignored).
+- All callers (`evaluate()`, `evaluate_with_context()`, `find_domain_references()`) thread `decomp` through.
+
+### Fixed
+
+- `_concept_tree_to_text()` — virtual-root nodes (empty label) no longer emit a blank leading line; children are rendered at the correct indent level.
+- Decomposition job log `output_summary` — now shows the concept tree node count (e.g. `"7 node(s)"`) instead of the misleading `"concept tree"` string.
+- `get_source()` docstring — clarified that `""` means "not in store" while tracked papers always have a non-empty label (at minimum `"unknown"`).
+- `_render_concept_tree_ascii()` docstring — corrected to say leaf nodes return a single-label string, not an empty string.
+- CHANGELOG compare links — added missing `[2.1.0]`, `[2.2.0]`, `[2.3.0]`, `[2.4.0]`, `[2.5.0]` link definitions; updated `[Unreleased]` to compare from `v2.5.0`.
+
+---
+
 ## [Unreleased]
 
 ### Fixed
@@ -259,7 +291,12 @@ The `release.yml` workflow will:
 ---
 
 <!-- Links are auto-maintained — update when a new version is tagged -->
-[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.4.0...v2.5.0
+[2.4.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.3.0...v2.4.0
+[2.3.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.2.0...v2.3.0
+[2.2.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.3.0...v2.0.0
 [1.3.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.1.0...v1.2.0

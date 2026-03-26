@@ -1254,3 +1254,401 @@ class TestAccumulatedStage5Context:
         evaluator = NoveltyEvaluator(llm=lambda p: "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none")
         result = evaluator._check_equivalence("paper", "refs", {})
         assert result.verdict == "LOW"
+
+
+# ---------------------------------------------------------------------------
+# SimilarityScan dataclass
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import SimilarityScan
+
+
+class TestSimilarityScan:
+    def test_fields(self):
+        scan = SimilarityScan(paper_id="p1", relevance_score=7.5, headline="Very relevant.")
+        assert scan.paper_id == "p1"
+        assert scan.relevance_score == 7.5
+        assert scan.headline == "Very relevant."
+
+    def test_headline_defaults_to_empty(self):
+        scan = SimilarityScan(paper_id="p2", relevance_score=3.0)
+        assert scan.headline == ""
+
+
+# ---------------------------------------------------------------------------
+# _parse_quick_scan_response
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import _parse_quick_scan_response
+
+
+_QUICK_SCAN_RESPONSE = """\
+[
+  {"ref": "REF-1", "score": 9, "headline": "Direct prior art — same problem, same method."},
+  {"ref": "REF-2", "score": 3, "headline": "Same domain but unrelated approach."}
+]
+"""
+
+
+class TestParseQuickScanResponse:
+    def _make_similar(self, ids):
+        papers = [
+            ReferencePaper(id=pid, title=f"Title {pid}", abstract="Abstract.")
+            for pid in ids
+        ]
+        return [SimilarityResult(paper=p, score=0.5) for p in papers]
+
+    def test_returns_one_scan_per_paper(self):
+        similar = self._make_similar(["p1", "p2"])
+        result = _parse_quick_scan_response(_QUICK_SCAN_RESPONSE, similar)
+        assert len(result) == 2
+
+    def test_scores_parsed_correctly(self):
+        similar = self._make_similar(["p1", "p2"])
+        result = _parse_quick_scan_response(_QUICK_SCAN_RESPONSE, similar)
+        assert result[0].relevance_score == 9.0
+        assert result[1].relevance_score == 3.0
+
+    def test_headlines_parsed(self):
+        similar = self._make_similar(["p1", "p2"])
+        result = _parse_quick_scan_response(_QUICK_SCAN_RESPONSE, similar)
+        assert "Direct prior art" in result[0].headline
+
+    def test_paper_ids_correct(self):
+        similar = self._make_similar(["p1", "p2"])
+        result = _parse_quick_scan_response(_QUICK_SCAN_RESPONSE, similar)
+        assert result[0].paper_id == "p1"
+        assert result[1].paper_id == "p2"
+
+    def test_fallback_score_for_missing_entry(self):
+        """Papers not returned by LLM get a default score of 5.0."""
+        similar = self._make_similar(["p1", "p2", "p3"])
+        result = _parse_quick_scan_response(_QUICK_SCAN_RESPONSE, similar)
+        assert len(result) == 3
+        assert result[2].relevance_score == 5.0
+
+    def test_score_clamped_to_range(self):
+        response = '[{"ref": "REF-1", "score": 99, "headline": "High"}]'
+        similar = self._make_similar(["p1"])
+        result = _parse_quick_scan_response(response, similar)
+        assert result[0].relevance_score <= 10.0
+
+    def test_empty_similar_returns_empty(self):
+        result = _parse_quick_scan_response(_QUICK_SCAN_RESPONSE, [])
+        assert result == []
+
+    def test_markdown_fenced_response(self):
+        fenced = f"```json\n{_QUICK_SCAN_RESPONSE}\n```"
+        similar = self._make_similar(["p1", "p2"])
+        result = _parse_quick_scan_response(fenced, similar)
+        assert len(result) == 2
+        assert result[0].relevance_score == 9.0
+
+    def test_malformed_response_returns_defaults(self):
+        similar = self._make_similar(["p1", "p2"])
+        result = _parse_quick_scan_response("not json", similar)
+        assert len(result) == 2
+        assert all(s.relevance_score == 5.0 for s in result)
+
+
+# ---------------------------------------------------------------------------
+# NoveltyEvaluator._quick_scan_papers
+# ---------------------------------------------------------------------------
+
+
+class TestQuickScanPapersMethod:
+    def _make_similar(self, n=2):
+        papers = [
+            ReferencePaper(id=f"p{i}", title=f"Title {i}", abstract="Abstract.")
+            for i in range(1, n + 1)
+        ]
+        return [SimilarityResult(paper=p, score=0.5) for p in papers]
+
+    def test_calls_llm_and_stores_in_raw(self):
+        calls = []
+        def llm(prompt: str) -> str:
+            calls.append(prompt)
+            return _QUICK_SCAN_RESPONSE
+
+        similar = self._make_similar(2)
+        evaluator = NoveltyEvaluator(llm=llm)
+        raw: dict = {}
+        result = evaluator._quick_scan_papers("content", similar, raw)
+        assert len(calls) == 1
+        assert "quick_scan" in raw
+
+    def test_returns_one_scan_per_paper(self):
+        similar = self._make_similar(2)
+        evaluator = NoveltyEvaluator(llm=lambda _: _QUICK_SCAN_RESPONSE)
+        result = evaluator._quick_scan_papers("content", similar, {})
+        assert len(result) == 2
+        assert all(isinstance(s, SimilarityScan) for s in result)
+
+    def test_empty_similar_returns_empty(self):
+        evaluator = NoveltyEvaluator(llm=lambda _: "[]")
+        result = evaluator._quick_scan_papers("content", [], {})
+        assert result == []
+
+    def test_prompt_contains_paper_content(self):
+        received = []
+        def llm(prompt: str) -> str:
+            received.append(prompt)
+            return _QUICK_SCAN_RESPONSE
+
+        similar = self._make_similar(1)
+        evaluator = NoveltyEvaluator(llm=llm)
+        evaluator._quick_scan_papers("unique_content_xyz", similar, {})
+        assert "unique_content_xyz" in received[0]
+
+
+# ---------------------------------------------------------------------------
+# Quick-scan attention routing in evaluate()
+# ---------------------------------------------------------------------------
+
+
+class TestQuickScanAttentionRouting:
+    """evaluate() and evaluate_with_context() should run the quick scan and
+    filter papers before the 1-to-all annotation pass."""
+
+    _FULL_LLM_RESPONSE = (
+        "CORE_CONCEPT: Test concept.\n"
+        "CONCEPT_TREE:\n  Topic\n"
+        "VERDICT: LOW\nEXPLANATION: fine\nREFERENCES: none\n"
+        "OVERALL_VERDICT: NOVEL\nCONFIDENCE: HIGH\nSUMMARY: ok\n"
+        "1. TITLE: Foundational Paper | AUTHORS: Smith | YEAR: 2020 | RELEVANCE: key\n"
+        "DERIVATION_MAP:\n- Topic: appears novel\n"
+        "COMBINATION_ANALYSIS: No combination.\n"
+        "NOVEL_ELEMENTS:\n- All of it\n"
+    )
+
+    def _make_refs(self, n=3):
+        refs = [
+            ReferencePaper(id=f"ref{i}", title=f"Ref {i}", abstract="Abstract.")
+            for i in range(n)
+        ]
+        return [SimilarityResult(paper=r, score=0.5) for r in refs]
+
+    def test_report_includes_attention_scan(self):
+        """NoveltyReport.attention_scan is populated after evaluate()."""
+        scan_response = (
+            '[{"ref": "REF-1", "score": 8, "headline": "Relevant."}, '
+            '{"ref": "REF-2", "score": 2, "headline": "Not relevant."}, '
+            '{"ref": "REF-3", "score": 7, "headline": "Also relevant."}]'
+        )
+        responses = iter([
+            "CORE_CONCEPT: Test.\nCONCEPT_TREE:\n  Topic",
+            "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none",
+            "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none",
+            "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none",
+            "OVERALL_VERDICT: NOVEL\nCONFIDENCE: HIGH\nSUMMARY: ok",
+            "1. TITLE: Paper | AUTHORS: A | YEAR: 2020 | RELEVANCE: key",
+            scan_response,
+            "DERIVATION_MAP:\n- Topic: appears novel\nCOMBINATION_ANALYSIS: none\nNOVEL_ELEMENTS:\n- all",
+        ])
+
+        paper = ParsedPaper(title="T", abstract="A", full_text="Paper content.")
+        metadata = RunMetadata(model="test-model")
+        evaluator = NoveltyEvaluator(llm=lambda _: next(responses))
+        report = evaluator.evaluate(
+            paper,
+            similar_papers=self._make_refs(3),
+            metadata=metadata,
+        )
+        assert hasattr(report, "attention_scan")
+        assert isinstance(report.attention_scan, list)
+        assert len(report.attention_scan) == 3
+
+    def test_pipeline_context_attention_scan_populated(self):
+        """evaluate_with_context() writes attention_scan to ctx."""
+        scan_response = (
+            '[{"ref": "REF-1", "score": 8, "headline": "Relevant."}, '
+            '{"ref": "REF-2", "score": 2, "headline": "Low."}]'
+        )
+        responses = iter([
+            "CORE_CONCEPT: Test.\nCONCEPT_TREE:\n  Topic",
+            "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none",
+            "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none",
+            "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none",
+            "OVERALL_VERDICT: NOVEL\nCONFIDENCE: HIGH\nSUMMARY: ok",
+            "1. TITLE: Paper | AUTHORS: A | YEAR: 2020 | RELEVANCE: key",
+            scan_response,
+            "DERIVATION_MAP:\n- Topic: appears novel\nCOMBINATION_ANALYSIS: none\nNOVEL_ELEMENTS:\n- all",
+        ])
+
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        ctx = PipelineContext(paper=paper, metadata=RunMetadata(model="test"))
+        ctx.similar_papers = self._make_refs(2)
+        evaluator = NoveltyEvaluator(llm=lambda _: next(responses))
+        evaluator.evaluate_with_context(ctx)
+        assert len(ctx.attention_scan) == 2
+
+
+# ---------------------------------------------------------------------------
+# _concept_tree_to_text virtual-root blank line fix
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import _concept_tree_to_text, ConceptNode
+
+
+class TestConceptTreeToTextVirtualRoot:
+    def test_virtual_root_no_leading_blank_line(self):
+        """Empty-label root must not produce a leading blank line."""
+        root = ConceptNode(label="", children=[
+            ConceptNode(label="Child A"),
+            ConceptNode(label="Child B"),
+        ])
+        result = _concept_tree_to_text(root)
+        assert not result.startswith("\n")
+        assert "Child A" in result
+        assert "Child B" in result
+
+    def test_real_root_still_shown(self):
+        """Non-empty root label is included as usual."""
+        root = ConceptNode(label="Root", children=[ConceptNode(label="Child")])
+        result = _concept_tree_to_text(root)
+        assert result.startswith("Root")
+        assert "Child" in result
+
+    def test_virtual_root_children_at_top_indent(self):
+        """Virtual root children are rendered at indent 0, not indent 1."""
+        root = ConceptNode(label="", children=[
+            ConceptNode(label="Top"),
+        ])
+        result = _concept_tree_to_text(root)
+        # The child should start at column 0 (no leading spaces).
+        assert result == "Top"
+
+
+# ---------------------------------------------------------------------------
+# _count_concept_tree_nodes
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import _count_concept_tree_nodes
+
+
+class TestCountConceptTreeNodes:
+    def test_none_returns_zero(self):
+        assert _count_concept_tree_nodes(None) == 0
+
+    def test_single_node(self):
+        node = ConceptNode(label="leaf")
+        assert _count_concept_tree_nodes(node) == 1
+
+    def test_empty_label_not_counted(self):
+        node = ConceptNode(label="")
+        assert _count_concept_tree_nodes(node) == 0
+
+    def test_tree_with_children(self):
+        root = ConceptNode(label="Root", children=[
+            ConceptNode(label="Child A"),
+            ConceptNode(label="Child B", children=[
+                ConceptNode(label="Grandchild"),
+            ]),
+        ])
+        assert _count_concept_tree_nodes(root) == 4
+
+    def test_virtual_root_excluded(self):
+        root = ConceptNode(label="", children=[
+            ConceptNode(label="A"),
+            ConceptNode(label="B"),
+        ])
+        assert _count_concept_tree_nodes(root) == 2
+
+
+# ---------------------------------------------------------------------------
+# include_paper_citations flag in OnlineReferenceSearch.search()
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.online_search import OnlineReferenceSearch
+from unittest.mock import patch, MagicMock
+
+
+class TestIncludePaperCitationsFlag:
+    def test_paper_citations_skipped_when_false(self):
+        """When include_paper_citations=False, _fetch_references must not be called."""
+        with patch.object(OnlineReferenceSearch, "_fetch_references") as mock_fetch, \
+             patch.object(OnlineReferenceSearch, "_query", return_value=[]):
+            searcher = OnlineReferenceSearch(max_results=5)
+            searcher.search(
+                title="A Paper",
+                arxiv_id="2001.00001",
+                include_paper_citations=False,
+            )
+            mock_fetch.assert_not_called()
+
+    def test_paper_citations_used_when_true(self):
+        """When include_paper_citations=True, _fetch_references should be called."""
+        with patch.object(OnlineReferenceSearch, "_fetch_references", return_value=[]) as mock_fetch, \
+             patch.object(OnlineReferenceSearch, "_query", return_value=[]):
+            searcher = OnlineReferenceSearch(max_results=5)
+            searcher.search(
+                title="A Paper",
+                arxiv_id="2001.00001",
+                include_paper_citations=True,
+            )
+            mock_fetch.assert_called_once()
+
+    def test_title_lookup_skipped_when_include_citations_false(self):
+        """Even the title-based fallback is skipped when include_paper_citations=False."""
+        with patch.object(OnlineReferenceSearch, "_lookup_paper_id_by_title") as mock_lookup, \
+             patch.object(OnlineReferenceSearch, "_query", return_value=[]):
+            searcher = OnlineReferenceSearch(max_results=5)
+            # No arxiv_id — would normally trigger title lookup
+            searcher.search(
+                title="My Paper",
+                include_paper_citations=False,
+            )
+            mock_lookup.assert_not_called()
+
+    def test_default_is_true(self):
+        """include_paper_citations defaults to True (original behaviour)."""
+        import inspect
+        sig = inspect.signature(OnlineReferenceSearch.search)
+        assert sig.parameters["include_paper_citations"].default is True
+
+
+# ---------------------------------------------------------------------------
+# domain_references.txt now includes {decomposition} slot
+# ---------------------------------------------------------------------------
+
+
+class TestDomainReferencesDecompSlot:
+    def test_decomp_threaded_into_domain_refs_prompt(self):
+        """_find_domain_references must include the decomp context in the LLM prompt."""
+        received_prompts = []
+        def llm(prompt: str) -> str:
+            received_prompts.append(prompt)
+            return "1. TITLE: Paper | AUTHORS: A | YEAR: 2020 | RELEVANCE: key"
+
+        tree = ConceptNode(label="MyUniqueTopicXYZ")
+        decomp = IdeaDecomposition(core_concept="Core.", concept_tree=tree)
+        evaluator = NoveltyEvaluator(llm=llm)
+        evaluator._find_domain_references("content", "refs", {}, decomp=decomp)
+        assert received_prompts, "LLM was not called"
+        assert "MyUniqueTopicXYZ" in received_prompts[0]
+
+    def test_no_decomp_still_works(self):
+        """_find_domain_references works fine when decomp=None."""
+        evaluator = NoveltyEvaluator(
+            llm=lambda _: "1. TITLE: Paper | AUTHORS: A | YEAR: 2020 | RELEVANCE: key"
+        )
+        result = evaluator._find_domain_references("content", "refs", {}, decomp=None)
+        assert isinstance(result, list)
+
+
+# ---------------------------------------------------------------------------
+# PipelineContext has attention_scan field
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineContextAttentionScan:
+    def test_attention_scan_field_exists(self):
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        ctx = PipelineContext(paper=paper, metadata=RunMetadata())
+        assert hasattr(ctx, "attention_scan")
+        assert isinstance(ctx.attention_scan, list)
+
+    def test_attention_scan_default_empty(self):
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        ctx = PipelineContext(paper=paper, metadata=RunMetadata())
+        assert ctx.attention_scan == []

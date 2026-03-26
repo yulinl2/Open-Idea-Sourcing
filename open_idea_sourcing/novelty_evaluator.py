@@ -198,6 +198,31 @@ class SimilarityAnnotation:
 
 
 @dataclass
+class SimilarityScan:
+    """Stage 4a attention-routing result for one reference paper.
+
+    The quick scan runs a lightweight per-paper LLM pass *before* the
+    expensive 1-to-all annotation (Stage 4b).  It scores each candidate
+    reference by conceptual relevance so that only the most promising
+    papers are forwarded to the deep derivation pass.
+
+    Attributes
+    ----------
+    paper_id:
+        Semantic Scholar paper ID of the reference being scored.
+    relevance_score:
+        Relevance score on a 0–10 scale (10 = essentially the same work,
+        0 = entirely unrelated).
+    headline:
+        One-sentence human-readable explanation of the score.
+    """
+
+    paper_id: str
+    relevance_score: float
+    headline: str = ""
+
+
+@dataclass
 class NoveltyReport:
     """Aggregated novelty evaluation for a single paper."""
 
@@ -211,6 +236,7 @@ class NoveltyReport:
     metadata: RunMetadata | None = None
     idea_decomposition: IdeaDecomposition | None = None
     domain_references: list[DomainReference] = field(default_factory=list)
+    attention_scan: list[SimilarityScan] = field(default_factory=list)
     similar_paper_annotations: list[SimilarityAnnotation] = field(default_factory=list)
 
 
@@ -236,6 +262,7 @@ class PipelineContext:
     idea_decomposition: IdeaDecomposition | None = None
     similar_papers: list[SimilarityResult] = field(default_factory=list)
     domain_references: list[DomainReference] = field(default_factory=list)
+    attention_scan: list[SimilarityScan] = field(default_factory=list)
     similar_paper_annotations: list[SimilarityAnnotation] = field(default_factory=list)
     dimensions: list[NoveltyDimension] = field(default_factory=list)
     search_queries: list[str] = field(default_factory=list)
@@ -317,7 +344,7 @@ class NoveltyEvaluator:
             LLM-identified key references contextualising the paper in its
             field.
         """
-        return self._find_domain_references(content, refs_text, raw)
+        return self._find_domain_references(content, refs_text, raw, decomp=decomp)
 
     def decompose_idea(self, paper: ParsedPaper, raw: dict[str, str]) -> IdeaDecomposition:
         """Decompose *paper*'s core idea into structured components (Stage 2).
@@ -422,15 +449,30 @@ class NoveltyEvaluator:
             t6 = t5  # domain refs time is accounted for at Stage 3d
         else:
             # Backward-compatible internal call (Stage 5d position).
-            domain_refs = self._find_domain_references(content, refs_text, raw)
+            domain_refs = self._find_domain_references(content, refs_text, raw, decomp=idea_decomp)
             t6 = time.monotonic()
+
+        # Stage 4a: quick scan (attention routing) before the deep pass.
+        # Scores each candidate paper 0–10; low-scoring papers are filtered
+        # out before the expensive 1-to-all annotation call.
+        scans: list[SimilarityScan] = []
+        focused_papers = similar_papers
+        t_scan0 = t6
+        if similar_papers:
+            scans = self._quick_scan_papers(content, similar_papers, raw, decomp=idea_decomp)
+            t_scan0 = time.monotonic()
+            # Retain papers scoring >= 3 out of 10; always keep at least 3.
+            scored = list(zip(similar_papers, scans))
+            focused_papers = [p for p, s in scored if s.relevance_score >= 3.0]
+            if not focused_papers:
+                focused_papers = [p for p, _ in scored[:3]]
 
         # Annotate each similar paper with overlap/differences/derivation.
         # Only runs when similar papers exist (avoids an unnecessary LLM call).
         annotations: list[SimilarityAnnotation] = []
-        t7 = t6
-        if similar_papers:
-            annotations = self._annotate_similar_papers(content, similar_papers, raw, decomp=idea_decomp)
+        t7 = t_scan0
+        if focused_papers:
+            annotations = self._annotate_similar_papers(content, focused_papers, raw, decomp=idea_decomp)
             t7 = time.monotonic()
 
         if metadata is not None:
@@ -442,7 +484,7 @@ class NoveltyEvaluator:
                     offset_s=round(t0 - run_start, 3),
                     duration_s=round(t1 - t0, 3),
                     input_summary="paper content",
-                    output_summary="concept tree" if idea_decomp.concept_tree else "core concept only",
+                    output_summary=f"{_count_concept_tree_nodes(idea_decomp.concept_tree)} node(s)" if idea_decomp.concept_tree else "core concept only",
                 ))
             jobs += [
                 PipelineJob(
@@ -493,11 +535,20 @@ class NoveltyEvaluator:
                 ))
             if similar_papers:
                 jobs.append(PipelineJob(
-                    name="Reference annotation",
+                    name="Quick relevance scan",
                     agent=agent,
                     offset_s=round(t6 - run_start, 3),
-                    duration_s=round(t7 - t6, 3),
-                    input_summary=f"paper + {len(similar_papers)} similar paper(s)",
+                    duration_s=round(t_scan0 - t6, 3),
+                    input_summary=f"{len(similar_papers)} candidate paper(s)",
+                    output_summary=f"{len(focused_papers)} paper(s) forwarded to deep pass",
+                ))
+            if focused_papers:
+                jobs.append(PipelineJob(
+                    name="Reference annotation",
+                    agent=agent,
+                    offset_s=round(t_scan0 - run_start, 3),
+                    duration_s=round(t7 - t_scan0, 3),
+                    input_summary=f"paper + {len(focused_papers)} focused paper(s)",
                     output_summary=f"{len(annotations)} annotation(s)",
                 ))
             metadata.jobs.extend(jobs)
@@ -512,6 +563,7 @@ class NoveltyEvaluator:
             raw_llm_responses=raw,
             idea_decomposition=idea_decomp,
             domain_references=domain_refs,
+            attention_scan=scans,
             similar_paper_annotations=annotations,
         )
 
@@ -589,16 +641,29 @@ class NoveltyEvaluator:
             domain_refs = ctx.domain_references
             t6 = t5
         else:
-            domain_refs = self._find_domain_references(content, refs_text, raw)
+            domain_refs = self._find_domain_references(content, refs_text, raw, decomp=idea_decomp)
             ctx.domain_references = domain_refs
             domain_refs_ran_internally = True
             t6 = time.monotonic()
 
-        annotations: list[SimilarityAnnotation] = []
-        t7 = t6
+        # Stage 4a: quick scan (attention routing) before the deep pass.
+        scans: list[SimilarityScan] = []
+        focused_papers = similar_papers
+        t_scan0 = t6
         if similar_papers:
+            scans = self._quick_scan_papers(content, similar_papers, raw, decomp=idea_decomp)
+            t_scan0 = time.monotonic()
+            ctx.attention_scan = scans
+            scored = list(zip(similar_papers, scans))
+            focused_papers = [p for p, s in scored if s.relevance_score >= 3.0]
+            if not focused_papers:
+                focused_papers = [p for p, _ in scored[:3]]
+
+        annotations: list[SimilarityAnnotation] = []
+        t7 = t_scan0
+        if focused_papers:
             annotations = self._annotate_similar_papers(
-                content, similar_papers, raw, decomp=idea_decomp
+                content, focused_papers, raw, decomp=idea_decomp
             )
             ctx.similar_paper_annotations = annotations
             t7 = time.monotonic()
@@ -614,7 +679,7 @@ class NoveltyEvaluator:
                     offset_s=round(t0 - run_start, 3),
                     duration_s=round(t1 - t0, 3),
                     input_summary="paper content",
-                    output_summary="concept tree" if idea_decomp.concept_tree else "core concept only",
+                    output_summary=f"{_count_concept_tree_nodes(idea_decomp.concept_tree)} node(s)" if idea_decomp.concept_tree else "core concept only",
                 ))
             jobs += [
                 PipelineJob(
@@ -659,13 +724,22 @@ class NoveltyEvaluator:
                     input_summary=f"paper content + {refs_summary}",
                     output_summary=f"{len(domain_refs)} domain reference(s)",
                 ))
-            if annotations:
+            if similar_papers:
+                jobs.append(PipelineJob(
+                    name="Quick relevance scan",
+                    agent=agent,
+                    offset_s=round(t6 - run_start, 3),
+                    duration_s=round(t_scan0 - t6, 3),
+                    input_summary=f"{len(similar_papers)} candidate paper(s)",
+                    output_summary=f"{len(focused_papers)} paper(s) forwarded to deep pass",
+                ))
+            if focused_papers:
                 jobs.append(PipelineJob(
                     name="Reference annotation",
                     agent=agent,
-                    offset_s=round(t6 - run_start, 3),
-                    duration_s=round(t7 - t6, 3),
-                    input_summary=f"paper + {len(similar_papers)} similar paper(s)",
+                    offset_s=round(t_scan0 - run_start, 3),
+                    duration_s=round(t7 - t_scan0, 3),
+                    input_summary=f"paper + {len(focused_papers)} focused paper(s)",
                     output_summary=f"{len(annotations)} annotation(s)",
                 ))
             ctx.metadata.jobs.extend(jobs)
@@ -681,6 +755,7 @@ class NoveltyEvaluator:
             metadata=ctx.metadata,
             idea_decomposition=idea_decomp,
             domain_references=domain_refs,
+            attention_scan=scans,
             similar_paper_annotations=annotations,
         )
 
@@ -798,11 +873,14 @@ class NoveltyEvaluator:
         return _parse_decomposition_response(response)
 
     def _find_domain_references(
-        self, content: str, refs_text: str, raw: dict[str, str]
+        self, content: str, refs_text: str, raw: dict[str, str],
+        decomp: "IdeaDecomposition | None" = None,
     ) -> list[DomainReference]:
         """Ask the LLM to identify key domain references for this paper."""
         prompt = _DOMAIN_REFERENCES_PROMPT.format(
-            paper_content=content, reference_papers=refs_text
+            paper_content=content,
+            reference_papers=refs_text,
+            decomposition=_format_decomp_context(decomp),
         )
         response = self._llm(prompt)
         raw["domain_references"] = response
@@ -825,6 +903,47 @@ class NoveltyEvaluator:
         response = self._llm(prompt)
         raw["similar_paper_annotations"] = response
         return _parse_similar_paper_annotations_response(response)
+
+    def _quick_scan_papers(
+        self,
+        content: str,
+        similar: list[SimilarityResult],
+        raw: dict[str, str],
+        decomp: IdeaDecomposition | None = None,
+    ) -> list[SimilarityScan]:
+        """Stage 4a: score each candidate paper's relevance before the deep pass.
+
+        Issues a single LLM call that assigns a 0–10 relevance score and a
+        one-sentence headline to every paper in *similar*.  The results are
+        stored in ``raw["quick_scan"]`` for report transparency.
+
+        Parameters
+        ----------
+        content:
+            Key content of the submitted paper.
+        similar:
+            Candidate reference papers (from similarity search).
+        raw:
+            Mutable dict for storing the raw LLM response.
+        decomp:
+            Idea decomposition for contextualising the relevance scores.
+
+        Returns
+        -------
+        list[SimilarityScan]
+            One entry per paper in *similar*, in the same order.  Falls back to
+            a default score of 5.0 for any paper that cannot be parsed.
+        """
+        if not similar:
+            return []
+        prompt = _QUICK_SCAN_PROMPT.format(
+            paper_content=content,
+            decomposition=_format_decomp_context(decomp),
+            reference_papers=self.format_references(similar),
+        )
+        response = self._llm(prompt)
+        raw["quick_scan"] = response
+        return _parse_quick_scan_response(response, similar)
 
     def _synthesise(
         self,
@@ -875,6 +994,7 @@ _SYNTHESIS_PROMPT = _load_prompt("synthesis")
 _IDEA_DECOMPOSITION_PROMPT = _load_prompt("decomposition")
 _DOMAIN_REFERENCES_PROMPT = _load_prompt("domain_references")
 _SIMILAR_PAPERS_ANNOTATION_PROMPT = _load_prompt("annotation")
+_QUICK_SCAN_PROMPT = _load_prompt("quick_scan")
 
 
 # ---------------------------------------------------------------------------
@@ -998,6 +1118,77 @@ def _parse_domain_references_response(text: str) -> "list[DomainReference]":
     return results
 
 
+def _parse_quick_scan_response(
+    text: str,
+    similar: "list[SimilarityResult]",
+) -> "list[SimilarityScan]":
+    """Parse the LLM quick-scan response into a list of :class:`SimilarityScan`.
+
+    The LLM is asked to return a JSON array with one entry per reference paper,
+    ordered the same as the ``REF-N`` labels in the prompt.  Entries that
+    cannot be parsed fall back to a neutral score of 5.0.
+
+    Parameters
+    ----------
+    text:
+        Raw LLM response string.
+    similar:
+        The same reference list passed to the LLM, used to map REF-N indices
+        back to paper IDs.
+    """
+    import json as _json
+    import re as _re
+
+    # Strip possible markdown code fences.
+    raw = text.strip()
+    if raw.startswith("```"):
+        raw = _re.sub(r"^```[a-z]*\n?", "", raw, flags=_re.MULTILINE)
+        raw = _re.sub(r"\n?```$", "", raw.strip())
+
+    # Try to find a JSON array in the response.
+    m = _re.search(r"\[.*\]", raw, _re.DOTALL)
+    parsed = []
+    if m:
+        try:
+            parsed = _json.loads(m.group())
+        except (_json.JSONDecodeError, ValueError):
+            parsed = []
+
+    # Build a mapping from "REF-N" → paper_id.
+    ref_to_id = {f"REF-{i}": r.paper.id for i, r in enumerate(similar, 1)}
+
+    results: list[SimilarityScan] = []
+    parsed_map: dict[str, SimilarityScan] = {}
+    for entry in parsed:
+        if not isinstance(entry, dict):
+            continue
+        ref_key = str(entry.get("ref", "")).strip()
+        paper_id = ref_to_id.get(ref_key)
+        if not paper_id:
+            continue
+        try:
+            score = float(entry.get("score", 5.0))
+            score = max(0.0, min(10.0, score))
+        except (TypeError, ValueError):
+            score = 5.0
+        headline = str(entry.get("headline", "")).strip()
+        parsed_map[paper_id] = SimilarityScan(
+            paper_id=paper_id,
+            relevance_score=score,
+            headline=headline,
+        )
+
+    # Return in the same order as *similar*, filling gaps with score=5.0.
+    for r in similar:
+        results.append(
+            parsed_map.get(
+                r.paper.id,
+                SimilarityScan(paper_id=r.paper.id, relevance_score=5.0),
+            )
+        )
+    return results
+
+
 def _parse_similar_paper_annotations_response(
     text: str,
 ) -> "list[SimilarityAnnotation]":
@@ -1080,12 +1271,27 @@ def _concept_tree_to_text(node: "ConceptNode", indent: int = 0) -> str:
 
     Uses 2-space indentation per level.  Suitable for embedding in LLM
     prompts where box-drawing characters may confuse the tokeniser.
+
+    Virtual-root nodes (empty label) are not emitted as a line; only their
+    children are rendered, so no leading blank line is produced.
     """
     prefix = "  " * indent
-    lines = [f"{prefix}{node.label}"]
+    lines = []
+    if node.label:
+        lines.append(f"{prefix}{node.label}")
     for child in node.children:
-        lines.append(_concept_tree_to_text(child, indent + 1))
+        lines.append(_concept_tree_to_text(child, indent + 1 if node.label else indent))
     return "\n".join(lines)
+
+
+def _count_concept_tree_nodes(node: "ConceptNode | None") -> int:
+    """Return the total number of non-empty-label nodes in the concept tree."""
+    if node is None:
+        return 0
+    count = 1 if node.label else 0
+    for child in node.children:
+        count += _count_concept_tree_nodes(child)
+    return count
 
 
 def _format_decomp_context(decomp: "IdeaDecomposition | None") -> str:

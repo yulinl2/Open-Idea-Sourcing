@@ -101,7 +101,8 @@ class ReferenceStore:
 
         Returns an empty string when *paper_id* is not tracked (i.e. has never
         been added to this store).  For tracked papers the returned label is
-        always non-empty (at minimum ``"unknown"``).
+        always non-empty: papers added without an explicit source use the label
+        ``"unknown"`` (the lowest-priority fallback in :func:`add`).
         """
         return self._sources.get(paper_id, "")
 

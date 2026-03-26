@@ -229,15 +229,18 @@ class OnlineReferenceSearch:
         abstract: str = "",
         arxiv_id: str = "",
         queries: list[str] | None = None,
+        include_paper_citations: bool = True,
     ) -> list[ReferencePaper]:
         """Return papers related to the submitted paper.
 
         Strategy
         --------
-        1. **arXiv references** (when *arxiv_id* is given): fetch the paper's
-           reference list from Semantic Scholar's ``/paper/arXiv:{id}/references``
-           endpoint.  These are the papers the authors cited — depth signal for
-           detecting duplicates and near-equivalent prior work.
+        1. **Paper citations** (when *include_paper_citations* is ``True``):
+           fetch the paper's reference list via Semantic Scholar.  For arXiv
+           papers the ``/paper/arXiv:{id}/references`` endpoint is used directly;
+           for non-arXiv papers a title lookup finds the S2 paper ID first.
+           These are the papers the authors cited — depth signal for detecting
+           duplicates and near-equivalent prior work.
         2. **Conceptual keyword search** (breadth): when LLM-generated *queries*
            are provided, each query is issued independently against
            ``/paper/search``; results are merged.  This surfaces work that is
@@ -257,11 +260,16 @@ class OnlineReferenceSearch:
         abstract:
             Abstract text used as a last-resort fallback query.  May be empty.
         arxiv_id:
-            arXiv identifier (e.g. ``"2006.06138"``).  When supplied,
-            the references endpoint runs in addition to keyword queries.
+            arXiv identifier (e.g. ``"2006.06138"``).  When supplied (and
+            *include_paper_citations* is ``True``), the references endpoint runs
+            in addition to keyword queries.
         queries:
             LLM-generated conceptual queries (from :func:`generate_search_queries`).
             When provided these replace the title-based keyword search.
+        include_paper_citations:
+            When ``False``, Phase 1 (the paper's own reference list) is skipped
+            entirely — both the arXiv path and the title-lookup fallback.  Use
+            this to honour ``--no-paper-cited-refs``.
 
         Returns
         -------
@@ -276,14 +284,16 @@ class OnlineReferenceSearch:
         # For arXiv papers use the dedicated arXiv endpoint; for non-arXiv papers
         # fall back to Semantic Scholar title lookup to find the S2 paper ID so
         # the references endpoint can still be called.
-        if arxiv_id:
-            for paper in self._fetch_references(f"arXiv:{arxiv_id}"):
-                results[paper.id] = paper
-        elif title:
-            s2_id = self._lookup_paper_id_by_title(title)
-            if s2_id:
-                for paper in self._fetch_references(s2_id):
+        # Skipped entirely when include_paper_citations=False.
+        if include_paper_citations:
+            if arxiv_id:
+                for paper in self._fetch_references(f"arXiv:{arxiv_id}"):
                     results[paper.id] = paper
+            elif title:
+                s2_id = self._lookup_paper_id_by_title(title)
+                if s2_id:
+                    for paper in self._fetch_references(s2_id):
+                        results[paper.id] = paper
 
         # Phase 2: conceptual keyword search (breadth).
         # Use LLM-generated queries when available; fall back to the raw title.

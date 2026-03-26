@@ -1104,7 +1104,7 @@ class TestOnlineSearchIntegration:
 ))
         call_count = {"n": 0}
 
-        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None):
+        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None, include_paper_citations=True):
             call_count["n"] += 1
             return []  # empty so the rest of the pipeline is unaffected
 
@@ -1133,7 +1133,7 @@ class TestOnlineSearchIntegration:
 ))
         call_count = {"n": 0}
 
-        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None):
+        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None, include_paper_citations=True):
             call_count["n"] += 1
             return []
 
@@ -1164,6 +1164,41 @@ class TestOnlineSearchIntegration:
         from review_paper import _parse_args
         args = _parse_args(["paper.txt", "--format", "text", "--no-online-search"])
         assert args.no_online_search is True
+
+    def test_no_paper_cited_refs_passes_include_citations_false(self, tmp_path):
+        """--no-paper-cited-refs must pass include_paper_citations=False to search()."""
+        paper = tmp_path / "paper.txt"
+        paper.write_text(_ONLINE_SEARCH_SAMPLE_TEXT, encoding="utf-8")
+        fake_llm = MagicMock(return_value=(
+            "TITLE: Attention Is All You Need\n"
+            "ABSTRACT: We propose the Transformer.\n"
+            "AUTHORS: Vaswani et al.\n"
+            "VERDICT: NOVEL\n"
+            "EXPLANATION: original.\n"
+        ))
+        captured_kwargs: dict = {}
+
+        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None, include_paper_citations=True):
+            captured_kwargs["include_paper_citations"] = include_paper_citations
+            return []
+
+        with (
+            patch("review_paper._build_llm", return_value=fake_llm),
+            patch(
+                "open_idea_sourcing.online_search.OnlineReferenceSearch.search",
+                side_effect=tracking_search,
+            ),
+        ):
+            rc = main([
+                str(paper), "--format", "text",
+                "--no-paper-cited-refs",
+                "--reports-dir", str(tmp_path),
+            ])
+
+        assert rc == 0
+        assert captured_kwargs.get("include_paper_citations") is False, (
+            "--no-paper-cited-refs must pass include_paper_citations=False"
+        )
 
 # ---------------------------------------------------------------------------
 # _build_llm reasoning model support

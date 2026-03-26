@@ -733,8 +733,9 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             online_papers = online_searcher.search(
                 paper.title,
                 paper.abstract,
-                arxiv_id=arxiv_id if not args.no_paper_cited_refs else "",
+                arxiv_id=arxiv_id,
                 queries=search_queries or None,
+                include_paper_citations=not args.no_paper_cited_refs,
             )
             for ref_paper in online_papers:
                 store.add(ref_paper, source="online")
