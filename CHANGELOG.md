@@ -83,6 +83,32 @@ The `release.yml` workflow will:
 
 ---
 
+## [2.3.0] — 2026-03-26
+
+### Added
+
+**Stage 5: Accumulated context in dimension chain**
+- `_check_combination()` now receives `prior_dup` — the duplication verdict and
+  explanation — injected as `PRIOR ANALYSIS` context into `combination.txt`.
+- `_check_equivalence()` now receives both `prior_dup` and `prior_combo` — both
+  prior verdicts — injected as accumulated `PRIOR ANALYSIS` context into
+  `equivalence.txt`.
+- `evaluate()` and `evaluate_with_context()` chain results:
+  duplication → combination(dup) → equivalence(dup + combo).
+- Implements the "increasingly deep digestion" design principle from Issue #42:
+  each pass builds on the prior evidence rather than starting cold.
+
+**Stage 3: Sub-stage toggle flags**
+- `--no-bundled-refs` CLI flag (env: `NO_BUNDLED_REFS=1`) — skip loading
+  `data/references.json` to isolate online-retrieval-only runs.
+- `--no-paper-cited-refs` CLI flag (env: `NO_PAPER_CITED_REFS=1`) — skip the
+  paper's own citation list retrieval from Semantic Scholar to isolate keyword-
+  search-only retrieval.
+- Together with the existing `--no-online-search`, all three Stage 3 sub-stages
+  are now independently togglable for clean ablation studies.
+
+---
+
 ## [2.2.0] — 2026-03-25
 
 ### Added
