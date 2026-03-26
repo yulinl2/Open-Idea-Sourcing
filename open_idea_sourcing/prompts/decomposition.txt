@@ -1,32 +1,18 @@
-You are an expert research analyst.
+You are an expert research analyst with deep knowledge of the scientific publication process.
 
-TASK: Decompose the following paper's core idea into its fundamental components.
+TASK: Decompose the following paper's core intellectual contribution.
 
 SUBMITTED PAPER:
 {paper_content}
 
 INSTRUCTIONS:
-Respond with the following structured fields.
+Respond with exactly two fields.
 
-CORE_CONCEPT: One sentence describing the central contribution or idea.
+CORE_CONCEPT: One sentence stating the paper's central scientific claim or contribution.
 
 CONCEPT_TREE:
-Provide an indented text tree (2 spaces per level) breaking down the
-paper's core contributions. Add levels only where they add clarity —
-size the tree as needed (typically 2–4 levels for most papers). Example:
-
-Core contribution or problem
-  Key component or sub-problem
-    Supporting detail or metric
-  Another component
-Method or approach
-  Key technique
-
-IMPLEMENTATION_STEPS:
-List 3–8 concrete steps to implement the core technical idea (use numbered list).
-
-ASSUMPTIONS:
-List the underlying assumptions the work makes (use numbered list).
-
-LIMITATIONS:
-List acknowledged or implicit limitations (use numbered list).
+An indented outline (2 spaces per level) of the paper's contribution hierarchy.
+Do NOT impose any fixed structure — let the scientific content determine the depth
+and breadth. Focus on what actually constitutes the scientific value: what problem
+is genuinely hard, what approach is genuinely new, what the real intellectual leap
+is. Trace ideas back to their origins where visible.

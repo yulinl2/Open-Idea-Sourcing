@@ -1,0 +1,20 @@
+# Open-Idea-Sourcing pipeline configuration
+# All settings here are applied as defaults; CLI flags always take precedence.
+
+# LLM model to use for analysis (default: gpt-4o)
+# model: gpt-4o
+
+# Minimum cosine-similarity threshold for reference papers
+# similarity_threshold: 0.1
+
+# Safety ceiling on number of similar papers surfaced
+# top_k: 20
+
+# Skip online reference search
+# no_online_search: false
+
+# Skip bundled reference corpus
+# no_bundled_refs: false
+
+# Only include papers published from this year onwards
+# since_year: null

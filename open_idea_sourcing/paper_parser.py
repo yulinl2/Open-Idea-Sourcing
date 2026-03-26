@@ -252,9 +252,8 @@ class LLMPaperParser(PaperParser):
     """LLM-enhanced paper parser (Stage 1).
 
     Uses an LLM to extract structured fields (title, abstract, authors,
-    sections) from raw paper text.  Falls back to the regex-based
-    :class:`PaperParser` implementation when the LLM call fails or
-    produces unusable output (empty title and abstract).
+    sections) from raw paper text.  Never falls back to the regex-based
+    parser — raises :class:`RuntimeError` after all retries are exhausted.
 
     Parameters
     ----------
@@ -263,6 +262,7 @@ class LLMPaperParser(PaperParser):
     """
 
     _PARSE_PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "paper_parse.txt"
+    _MAX_RETRIES = 3
 
     def __init__(self, llm: Callable[[str], str]) -> None:
         self._llm = llm
@@ -271,8 +271,8 @@ class LLMPaperParser(PaperParser):
     def parse_text(self, text: str) -> ParsedPaper:
         """Use LLM to extract structured paper content.
 
-        Falls back to :meth:`PaperParser.parse_text` when the LLM call
-        fails or returns unusable output (empty title *and* abstract).
+        Retries up to 3 times on failure or empty output.  Never falls back
+        to regex — the LLM is the only extraction path.
 
         Parameters
         ----------
@@ -283,20 +283,30 @@ class LLMPaperParser(PaperParser):
         -------
         ParsedPaper
             Structured paper content.
+
+        Raises
+        ------
+        RuntimeError
+            When all retries are exhausted without extracting a usable title
+            or abstract.
         """
         text = self._normalise(text)
-        # Truncate to first 8000 chars to stay within typical token limits.
         snippet = text[:8000]
         prompt = self._prompt_template.format(raw_text=snippet)
-        try:
-            response = self._llm(prompt)
-        except Exception:
-            return super().parse_text(text)
-        parsed = self._parse_llm_response(response, text)
-        # Fall back when LLM returns nothing useful.
-        if not parsed.title and not parsed.abstract:
-            return super().parse_text(text)
-        return parsed
+        last_exc: Exception | None = None
+        for attempt in range(1, self._MAX_RETRIES + 1):
+            try:
+                response = self._llm(prompt)
+                parsed = self._parse_llm_response(response, text)
+                if parsed.title or parsed.abstract:
+                    return parsed
+            except Exception as exc:
+                last_exc = exc
+        raise RuntimeError(
+            f"LLMPaperParser: failed to extract paper structure after "
+            f"{self._MAX_RETRIES} attempts"
+            + (f": {last_exc}" if last_exc else "")
+        )
 
     def _parse_llm_response(self, response: str, full_text: str) -> ParsedPaper:
         """Parse the LLM-structured response into a :class:`ParsedPaper`."""

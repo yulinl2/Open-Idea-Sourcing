@@ -301,6 +301,53 @@ class OnlineReferenceSearch:
 
         return list(results.values())[: self._max_results]
 
+    def lookup_domain_refs(
+        self, domain_refs: list,  # list[DomainReference]
+    ) -> list:  # list[ReferencePaper]
+        """Look up domain reference papers by title via Semantic Scholar.
+
+        For each domain reference identified by the LLM, issues a title-based
+        search to Semantic Scholar to resolve it to a concrete paper with
+        abstract and year.  Papers that cannot be found are silently skipped.
+
+        Parameters
+        ----------
+        domain_refs:
+            DomainReference objects from the LLM domain-reference finder.
+
+        Returns
+        -------
+        list[ReferencePaper]
+            Resolved reference papers.  May be shorter than *domain_refs*
+            if some titles could not be matched.
+        """
+        results: list = []
+        seen_ids: set[str] = set()
+        for ref in domain_refs:
+            if not ref.title:
+                continue
+            try:
+                params = urllib.parse.urlencode({
+                    "query": ref.title,
+                    "fields": _FIELDS,
+                    "limit": 1,
+                })
+                url = f"{_SEMANTIC_SCHOLAR_SEARCH_URL}?{params}"
+                raw = self._http_get(url, label=f"domain-ref-lookup:{ref.title[:40]}")
+                if raw is None:
+                    continue
+                data = json.loads(raw)
+                items = data.get("data", [])
+                if not items:
+                    continue
+                paper = _parse_semantic_scholar_item(items[0])
+                if paper is not None and paper.id not in seen_ids:
+                    seen_ids.add(paper.id)
+                    results.append(paper)
+            except Exception:
+                continue
+        return results
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

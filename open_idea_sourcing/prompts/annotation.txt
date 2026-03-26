@@ -1,9 +1,9 @@
-You are an expert research analyst.
+You are an expert research analyst examining potential intellectual lineage.
 
-TASK: For each similar reference paper listed below, write a concise comparative
-annotation against the submitted paper. Describe shared aspects, key differences,
-and any elements in the submitted paper that appear derived from or inspired by
-that reference. Every claim should be grounded in the paper content provided.
+TASK: Analyze how the submitted paper relates to the entire pool of similar reference papers.
+Rather than annotating each reference individually, identify how the submitted paper's
+contribution was assembled — what combinations of prior work it builds on, and what
+(if anything) is genuinely new.
 
 SUBMITTED PAPER:
 {paper_content}
@@ -11,14 +11,21 @@ SUBMITTED PAPER:
 IDEA DECOMPOSITION:
 {decomposition}
 
-SIMILAR REFERENCE PAPERS (ranked by TF-IDF cosine similarity score):
+REFERENCE PAPERS (ranked by similarity):
 {reference_papers}
 
 INSTRUCTIONS:
-Respond with one block per reference paper, in the order listed.
-Use the paper ID exactly as shown in brackets.
+Respond with three sections:
 
-PAPER [<id>]:
-OVERLAP: <1–2 sentences on shared methods, concepts, or results between the submitted paper and this reference>
-DIFFERENCES: <1–2 sentences on what distinguishes the submitted paper from this reference>
-DERIVATION: <1 sentence on what in the submitted paper appears derived from or inspired by this reference, or "None identified">
+DERIVATION_MAP:
+For each component in the concept tree, identify which reference paper(s) it most
+closely derives from, using REF-N labels. Format as:
+  - <component>: REF-N [, REF-N...]  or  "appears novel"
+
+COMBINATION_ANALYSIS:
+In 2-3 sentences: Does the submitted paper appear to be a combination of specific subsets
+of the references? Which subsets? What would remain after removing the derived parts?
+
+NOVEL_ELEMENTS:
+List any elements in the submitted paper that do not appear to be derivable from any
+of the listed references.

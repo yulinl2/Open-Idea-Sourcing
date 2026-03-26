@@ -317,6 +317,22 @@ def _read_papers_file(path: Path) -> list[str]:
     return sources
 
 
+def _load_config(path: str | None) -> dict:
+    """Load a YAML pipeline configuration file.
+
+    Returns an empty dict when *path* is None or the file cannot be read.
+    """
+    if path is None:
+        return {}
+    try:
+        import yaml  # type: ignore[import]
+        with open(path, encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="review_paper",
@@ -340,6 +356,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Path to a JSON file containing reference papers to compare against. "
             "Defaults to the bundled baseline corpus (data/references.json). "
             "Pass an empty string ('') to disable reference comparison."
+        ),
+    )
+    parser.add_argument(
+        "--config",
+        metavar="FILE",
+        default=None,
+        help=(
+            "Path to a YAML pipeline configuration file. "
+            "Settings in the file are applied as defaults; "
+            "CLI flags always take precedence."
         ),
     )
     parser.add_argument(
@@ -375,7 +401,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--top-k",
         type=int,
         default=int(os.environ.get("TOP_K", "20")),
-        help="Maximum number of similar reference papers to surface (default: 20).",
+        help=(
+            "Safety ceiling on the number of similar papers to surface "
+            "(default: 20). Seldom reached — primary filtering is by "
+            "--similarity-threshold."
+        ),
     )
     parser.add_argument(
         "--papers-file",
@@ -435,7 +465,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Minimum cosine-similarity score for a reference paper to be "
             "included in the analysis (default: 0.1 or SIMILARITY_THRESHOLD env var). "
-            "Papers below this threshold are excluded regardless of --top-k."
+            "This is the primary filter controlling how many papers are surfaced; "
+            "--top-k is a safety ceiling that is seldom reached."
         ),
     )
     parser.add_argument(
@@ -461,6 +492,25 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "when the LLM call fails. Controlled by LLM_PARSER=1 env var."
         ),
     )
+    parser.add_argument(
+        "--save-reflection",
+        metavar="FILE",
+        default=None,
+        help=(
+            "Append a one-paragraph reflection summary to FILE after each "
+            "paper is reviewed. Useful for accumulating notes across batch runs."
+        ),
+    )
+
+    # Parse once to get --config flag value
+    partial, _ = parser.parse_known_args(argv)
+    config = _load_config(getattr(partial, "config", None))
+
+    # Apply config as defaults (CLI flags will override)
+    flat_config = {k: v for k, v in config.items() if k != "prompts" and v is not None}
+    if flat_config:
+        parser.set_defaults(**flat_config)
+
     return parser.parse_args(argv)
 
 
@@ -481,6 +531,27 @@ def _fail(message: str, fmt: str = "markdown") -> int:
     else:  # markdown (default)
         print(f"# Novelty Report\n\n> **Error:** {message}")
     return 1
+
+
+def _append_reflection(path: str, paper_title: str, report: "NoveltyReport") -> None:
+    """Append a one-paragraph reflection to *path*.
+
+    Creates the file if it does not exist.  Each reflection is separated by a
+    blank line so the file is human-readable as a running log.
+    """
+    verdict_line = (
+        f"**{paper_title}** — verdict: {report.overall_verdict} "
+        f"(confidence: {report.confidence})."
+    )
+    summary_snippet = report.summary[:300].replace("\n", " ").strip()
+    if len(report.summary) > 300:
+        summary_snippet += "…"
+    reflection = f"{verdict_line} {summary_snippet}\n"
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(reflection + "\n")
+    except OSError:
+        pass
 
 
 def _review_one(paper_source: str, args: argparse.Namespace) -> int:
@@ -518,23 +589,22 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             if not paper_path.exists():
                 return _fail(f"file not found: {paper_path}", args.format)
 
-        # --- Build LLM early when --llm-parser is requested so it can be
-        # shared with the parser before the normal LLM-build position. ---
+        # --- Build LLM early for parsing (always use LLM when available) ---
         llm = None
-        if getattr(args, "llm_parser", False):
-            try:
-                llm = _build_llm(args.model)
-            except SystemExit:
-                pass  # fall back to regex parser; LLM error surfaced later
+        try:
+            llm = _build_llm(args.model)
+        except SystemExit:
+            pass  # No LLM available; use regex parser
 
         # --- Parse the submitted paper ---
-        if getattr(args, "llm_parser", False) and llm is not None:
+        if llm is not None:
             from open_idea_sourcing.paper_parser import LLMPaperParser
             parser = LLMPaperParser(llm)
-            print(f"Parsing paper (LLM-enhanced): {paper_path.name} ...", file=sys.stderr)
+            print(f"Parsing paper (LLM): {paper_path.name} ...", file=sys.stderr)
         else:
+            # LLM not configured — regex parser only (e.g. unit-test environments).
             parser = PaperParser()
-            print(f"Parsing paper: {paper_path.name} ...", file=sys.stderr)
+            print(f"Parsing paper (regex fallback, no LLM): {paper_path.name} ...", file=sys.stderr)
         t0 = time.monotonic()
         try:
             paper = parser.parse_file(paper_path)
@@ -585,7 +655,6 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 llm = _build_llm(args.model)
             except SystemExit as exc:
                 return _fail(str(exc.code), args.format)
-
         # --- Build decomposition LLM (optional separate model for Stage 2) ---
         decomp_llm = None
         if hasattr(args, "decomposition_model") and args.decomposition_model:
@@ -616,8 +685,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         ctx.idea_decomposition = idea_decomp
         ctx.raw_llm_responses.update(_decomp_raw)
         print(
-            f"  Decomposed into concept tree"
-            f"{' with ' + str(len(idea_decomp.implementation_steps)) + ' implementation step(s)' if idea_decomp.implementation_steps else ''}.",
+            f"  Decomposed: {'concept tree' if idea_decomp.concept_tree else 'core concept only'}.",
             file=sys.stderr,
         )
 
@@ -684,7 +752,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         query = paper.key_content()
         t0 = time.monotonic()
         searcher = SimilaritySearch(store)
-        similar = searcher.search(query, top_k=args.top_k)
+        similar = searcher.search(query, top_k=len(store) or 1, threshold=args.similarity_threshold)
         sim_duration = round(time.monotonic() - t0, 2)
         stage_runtimes["similarity"] = sim_duration
         ctx.similar_papers = similar
@@ -735,6 +803,19 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
 
+        # --- Stage 3e: Look up domain refs via Semantic Scholar ---
+        if not getattr(args, 'no_online_search', False) and domain_refs:
+            from open_idea_sourcing.online_search import OnlineReferenceSearch
+            _domain_searcher = OnlineReferenceSearch(max_results=10, min_year=getattr(args, 'since_year', None))
+            domain_papers = _domain_searcher.lookup_domain_refs(domain_refs)
+            for dp in domain_papers:
+                store.add(dp, source="domain")
+            if domain_papers:
+                print(
+                    f"  Added {len(domain_papers)} domain reference paper(s) to store (source: domain).",
+                    file=sys.stderr,
+                )
+
         # Build early pipeline job records for pre-LLM stages
         # --- PaperParser job detail (title, abstract, authors, section list) ---
         _abstract_preview = (
@@ -777,14 +858,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 offset_s=round(parse_duration, 3),
                 duration_s=decomp_duration,
                 input_summary="paper content",
-                output_summary=(
-                    f"concept tree"
-                    + (
-                        f", {len(idea_decomp.implementation_steps)} step(s)"
-                        if idea_decomp.implementation_steps
-                        else ""
-                    )
-                ),
+                output_summary="concept tree" if idea_decomp.concept_tree else "core concept only",
             ),
         ]
         if not args.no_online_search:
@@ -1003,6 +1077,9 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         # to match the original behaviour.
         if auto_save:
             print(content)
+
+        if getattr(args, "save_reflection", None):
+            _append_reflection(args.save_reflection, paper.title, report)
 
         return 0
 

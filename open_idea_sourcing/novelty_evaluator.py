@@ -141,20 +141,14 @@ class IdeaDecomposition:
     ----------
     core_concept:
         One-sentence description of the central contribution.
-    sub_ideas:
-        Key component ideas or sub-contributions.
-    assumptions:
-        Underlying assumptions the work makes.
-    limitations:
-        Acknowledged or implicit limitations of the approach.
+    concept_tree:
+        Hierarchical breakdown of the contribution.  Fully adaptive —
+        the LLM determines depth, breadth, and granularity based on
+        the paper's content and scientific significance.
     """
 
     core_concept: str
-    sub_ideas: list[str] = field(default_factory=list)
-    assumptions: list[str] = field(default_factory=list)
-    limitations: list[str] = field(default_factory=list)
     concept_tree: ConceptNode | None = None
-    implementation_steps: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -181,26 +175,26 @@ class DomainReference:
 
 @dataclass
 class SimilarityAnnotation:
-    """LLM-generated comparative annotation for one similar reference paper.
+    """LLM-generated derivation analysis comparing the submitted paper against
+    the full pool of similar reference papers.
 
     Attributes
     ----------
+    derivation_map:
+        Mapping from concept-tree component label to source REF-N labels.
+        E.g. ``{"attention mechanism": ["REF-1", "REF-3"], "training recipe": ["REF-2"]}``.
+    combination_analysis:
+        Prose analysis of whether the paper combines subsets of references.
+    novel_elements:
+        Elements that appear not derivable from any listed reference.
     paper_id:
-        ID of the similar reference paper being annotated.
-    overlap:
-        Aspects shared between the submitted paper and this reference
-        (methods, concepts, results).
-    differences:
-        Ways the submitted paper differs from or goes beyond this reference.
-    derivation:
-        Specific elements of the submitted paper that appear derived from
-        or inspired by this reference.
+        Kept for backward compatibility (set to empty string for 1-to-all mode).
     """
 
-    paper_id: str
-    overlap: str = ""
-    differences: str = ""
-    derivation: str = ""
+    derivation_map: dict[str, list[str]] = field(default_factory=dict)
+    combination_analysis: str = ""
+    novel_elements: list[str] = field(default_factory=list)
+    paper_id: str = ""
 
 
 @dataclass
@@ -278,7 +272,7 @@ class NoveltyEvaluator:
     def __init__(
         self,
         llm: LLMCallable,
-        top_k_similar: int = 20,
+        top_k_similar: int = 10_000,
         similarity_threshold: float = 0.1,
         decomposition_llm: LLMCallable | None = None,
     ) -> None:
@@ -387,10 +381,10 @@ class NoveltyEvaluator:
             complete even when domain references were pre-computed.
         """
         similar_papers = similar_papers or []
-        # Apply threshold and top-k filtering
+        # Apply threshold filtering
         similar_papers = [
             p for p in similar_papers if p.score >= self._threshold
-        ][: self._top_k]
+        ]
         content = paper.key_content()
         refs_text = self.format_references(similar_papers)
         raw: dict[str, str] = {}
@@ -448,7 +442,7 @@ class NoveltyEvaluator:
                     offset_s=round(t0 - run_start, 3),
                     duration_s=round(t1 - t0, 3),
                     input_summary="paper content",
-                    output_summary=f"{len(idea_decomp.sub_ideas)} sub-idea(s)",
+                    output_summary="concept tree" if idea_decomp.concept_tree else "core concept only",
                 ))
             jobs += [
                 PipelineJob(
@@ -556,7 +550,7 @@ class NoveltyEvaluator:
         """
         similar_papers = [
             p for p in ctx.similar_papers if p.score >= self._threshold
-        ][: self._top_k]
+        ]
         content = ctx.paper.key_content()
         refs_text = self.format_references(similar_papers)
         raw = ctx.raw_llm_responses
@@ -620,7 +614,7 @@ class NoveltyEvaluator:
                     offset_s=round(t0 - run_start, 3),
                     duration_s=round(t1 - t0, 3),
                     input_summary="paper content",
-                    output_summary=f"{len(idea_decomp.sub_ideas)} sub-idea(s)",
+                    output_summary="concept tree" if idea_decomp.concept_tree else "core concept only",
                 ))
             jobs += [
                 PipelineJob(
@@ -955,26 +949,13 @@ def _parse_numbered_list(text: str) -> list[str]:
 
 
 def _parse_decomposition_response(text: str) -> "IdeaDecomposition":
-    """Extract an :class:`IdeaDecomposition` from an LLM response.
-
-    Falls back gracefully: if ``CORE_CONCEPT`` is missing the full
-    response text is used; if a list section is missing it defaults to
-    an empty list.
-    """
+    """Extract an :class:`IdeaDecomposition` from an LLM response."""
     core_concept = _extract_field(text, "CORE_CONCEPT", default=text.strip())
-    sub_ideas_raw = _extract_field(text, "SUB_IDEAS", default="")
-    assumptions_raw = _extract_field(text, "ASSUMPTIONS", default="")
-    limitations_raw = _extract_field(text, "LIMITATIONS", default="")
     concept_tree_raw = _extract_field(text, "CONCEPT_TREE", default="")
-    implementation_steps_raw = _extract_field(text, "IMPLEMENTATION_STEPS", default="")
     concept_tree = _parse_concept_tree_text(concept_tree_raw) if concept_tree_raw.strip() else None
     return IdeaDecomposition(
         core_concept=core_concept,
-        sub_ideas=_parse_numbered_list(sub_ideas_raw),
-        assumptions=_parse_numbered_list(assumptions_raw),
-        limitations=_parse_numbered_list(limitations_raw),
         concept_tree=concept_tree,
-        implementation_steps=_parse_numbered_list(implementation_steps_raw),
     )
 
 
@@ -1020,38 +1001,34 @@ def _parse_domain_references_response(text: str) -> "list[DomainReference]":
 def _parse_similar_paper_annotations_response(
     text: str,
 ) -> "list[SimilarityAnnotation]":
-    """Extract per-paper comparative annotations from an LLM response.
+    """Extract a single 1-to-all derivation annotation from an LLM response."""
+    derivation_map_raw = _extract_field(text, "DERIVATION_MAP", default="")
+    combination_analysis = _extract_field(text, "COMBINATION_ANALYSIS", default="")
+    novel_elements_raw = _extract_field(text, "NOVEL_ELEMENTS", default="")
 
-    Expected format (one block per paper)::
+    # Parse derivation map: "- component: REF-1, REF-3"
+    derivation_map: dict[str, list[str]] = {}
+    for line in derivation_map_raw.splitlines():
+        line = line.strip().lstrip("-").strip()
+        if ":" in line:
+            component, refs_str = line.split(":", 1)
+            component = component.strip()
+            if component:
+                refs = [r.strip() for r in refs_str.split(",") if r.strip()]
+                derivation_map[component] = refs
 
-        PAPER [<id>]:
-        OVERLAP: <shared aspects>
-        DIFFERENCES: <distinguishing aspects>
-        DERIVATION: <derived elements>
+    # Parse novel elements list
+    novel_elements = [
+        line.strip().lstrip("-•*").strip()
+        for line in novel_elements_raw.splitlines()
+        if line.strip().lstrip("-•*").strip()
+    ]
 
-    Blocks that cannot be parsed are silently skipped; the result list
-    may therefore be shorter than the number of similar papers.
-    """
-    results: list[SimilarityAnnotation] = []
-    # Split on "PAPER [id]:" markers (case-insensitive, allowing whitespace)
-    blocks = _re.split(r"(?mi)^PAPER\s*\[([^\]]+)\]\s*:", text)
-    # blocks[0] is preamble; blocks[1::2] are IDs; blocks[2::2] are content
-    ids = blocks[1::2]
-    contents = blocks[2::2]
-    for paper_id, content_block in zip(ids, contents):
-        paper_id = paper_id.strip()
-        if not paper_id:
-            continue
-        overlap = _extract_field(content_block, "OVERLAP", default="")
-        differences = _extract_field(content_block, "DIFFERENCES", default="")
-        derivation = _extract_field(content_block, "DERIVATION", default="")
-        results.append(SimilarityAnnotation(
-            paper_id=paper_id,
-            overlap=overlap,
-            differences=differences,
-            derivation=derivation,
-        ))
-    return results
+    return [SimilarityAnnotation(
+        derivation_map=derivation_map,
+        combination_analysis=combination_analysis,
+        novel_elements=novel_elements,
+    )]
 
 
 def _parse_concept_tree_text(text: str) -> "ConceptNode | None":
@@ -1112,12 +1089,7 @@ def _concept_tree_to_text(node: "ConceptNode", indent: int = 0) -> str:
 
 
 def _format_decomp_context(decomp: "IdeaDecomposition | None") -> str:
-    """Return a concise text representation of *decomp* for LLM prompt injection.
-
-    When *decomp* is ``None`` a short placeholder is returned so that
-    prompt templates that include ``{decomposition}`` always receive a
-    non-empty value.
-    """
+    """Return a concise text representation of *decomp* for LLM prompt injection."""
     if decomp is None:
         return "(no decomposition available)"
 
@@ -1127,13 +1099,5 @@ def _format_decomp_context(decomp: "IdeaDecomposition | None") -> str:
         tree_str = _concept_tree_to_text(decomp.concept_tree)
         if tree_str:
             parts.append("Concept tree:\n" + tree_str)
-    elif decomp.sub_ideas:
-        parts.append("Sub-ideas:\n" + "\n".join(f"- {s}" for s in decomp.sub_ideas))
-
-    if decomp.implementation_steps:
-        steps = "\n".join(
-            f"{i}. {s}" for i, s in enumerate(decomp.implementation_steps, 1)
-        )
-        parts.append("Implementation steps:\n" + steps)
 
     return "\n\n".join(parts)
