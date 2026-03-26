@@ -546,25 +546,23 @@ In LangGraph this is a native parallel fan-out. In plain Python (Horizon 1),
 
 ## Summary: The Next Phase Paradigm
 
-The system has three horizons. **Do not skip ahead — each is load-bearing.**
+The system has **two parallel build tracks**, not a single linear progression:
 
-**Horizon 1 — Clean sequential pipeline (now):**
+**Baseline / Mechanical Track** — engineering correctness and ablation infra:
 1. Extract `Pipeline` class with `run_from()` — the ablation primitive
 2. Move agents to `agents/` directory — one file, one prompt, one test
 3. Add `configs/` directory — one file per experiment baseline
 4. Fix annotation-before-evaluation ordering (biggest correctness gap)
 5. Add `ReportCheckerAgent` — closes the quality-gate loop
+6. LangGraph iterative retrieval subgraph + MCP tool servers
+7. Dense retrieval as a swappable rank backend
 
-**Horizon 2 — Iterative loops + tool ecosystem:**
-1. Replace one-shot retrieval with a LangGraph iterative subgraph
-2. Expose Semantic Scholar, arXiv, and reference store as MCP servers
-3. Add dense retrieval as a swappable rank backend
+**Autonomous Innovation Track** — minimal human intervention, max LLM agency.
+Three lateral architecture options to build and compare:
+- **Option A (Wasserstein adversarial game):** Student reconstructs paper from minimum references; Teacher evaluates and releases hints; Resource Pool manages reference cost. The game log is the derivation certificate. This operationalises the Wasserstein theory directly.
+- **Option B (Multi-agent debate):** CrewAI crew — Librarian, Domain Expert, Critic, Judge, Reporter. Human pre-defines the roles; LLMs fill them. Proven to improve reasoning quality on hard tasks.
+- **Option C (Hybrid):** Baseline pipeline everywhere except retrieval; Wasserstein game loop handles the hardest sub-problem (which references to surface). Most practical near-term.
 
-**Horizon 3 — Multi-agent debate (the ultimate form):**
-1. CrewAI crew: Librarian + Domain Expert + Critic + Judge + Reporter
-2. Forward pass (Domain Expert) + backward pass (Critic) converge on derivation certificate
-3. The Wasserstein distance formulation becomes operational
+The tracks are not a hierarchy — they are competing scientific instruments.
+The comparison between their verdicts on the same paper is itself a finding.
 
-The system then becomes self-improving: every run produces a traceable certificate,
-every report is graded by the quality checker, every retrieval gap triggers a
-refined query loop, and every hard case routes to the multi-agent debate network.

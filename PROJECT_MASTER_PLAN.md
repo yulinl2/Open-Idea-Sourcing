@@ -2,9 +2,10 @@
 
 > A living architecture + roadmap document.
 > Covers the scientific goal, what is already built, what is not,
-> and a three-horizon architecture from today's mechanical baseline
-> to the ultimate multi-agent form — with precise guidance on when
-> and why to bring in LangGraph, CrewAI, MCPs, and SDKs.
+> and a dual-track architecture — the **baseline mechanical track** (engineering
+> correctness and ablation infrastructure) running in parallel with the
+> **autonomous innovation track** (max LLM agency, minimal human intervention) —
+> with precise guidance on when and why to bring in LangGraph, CrewAI, MCPs, and SDKs.
 
 ---
 
@@ -44,17 +45,27 @@ reconstruction and the backward reduction should converge on the same "novel
 residual." Disagreement between the two is a signal of either bad decomposition
 or incomplete retrieval.
 
-### The HAN theory connection
+### Theoretical Foundations (Theory Space)
 
-The parallel theoretical thread (Issue #48 meeting notes) frames this as:
+> *Keep this corner alive as the unifying abstract framework. The concrete SDE
+> work above and any parallel theoretical threads both map onto the same
+> underlying object.*
 
-> Post as a statistical error-bounding problem against *some target logical
-> function* over some *abstract concept space* with basic distance metrics.
+The project sits inside a broader abstract structure worth naming precisely,
+even if the full formalism is long-horizon:
 
-This means:
-- Idea-space = an abstract concept space with a distance metric
-- Novelty evaluation = estimating the error of the "is this derivable?" classifier
-- Retrieval quality = completeness of the covering set for the relevant region
+- **Idea-space as a metric space** — papers are distributions over a concept space;
+  "distance" between papers is the minimal transport cost to transform one into the other.
+- **Novelty evaluation = error bounding** — how large is the residual after the
+  best possible projection onto the span of prior work?
+- **Retrieval quality = covering set completeness** — a derivation reasoner is only as
+  good as the prior-work corpus it can see. An incomplete covering set always
+  under-estimates the derivability of the submitted paper.
+
+This framing unifies:
+- The `DerivationCertificate` (the transport plan)
+- The `Effort(n)` score per concept-tree node (the pointwise transport cost)
+- The quality of the reference corpus (the support of the target measure)
 
 This is why the pipeline bottleneck is fundamentally retrieval (Stage 3): if the
 covering set is incomplete, even a perfect derivation reasoner will miss true priors.
@@ -97,6 +108,29 @@ structure more rigorous.
 | `PipelineContext` | shared state bus | ✅ Good foundation; not yet checkpointable to disk |
 | `RunMetadata` | provenance (commit, CI URL, timings) | ✅ Complete |
 
+#### Swapping stage implementations and managing misaligned tests
+
+When an entire stage implementation changes (e.g. swapping verbose multi-field
+`IdeaDecomposition` for the current slim `core_concept+concept_tree` form), the
+downstream data types change and existing tests break. The correct approach:
+
+1. **Define the stage output as a protocol/interface, not a concrete class.**
+   Both implementations satisfy the same interface; code depending on the stage
+   output only imports the interface, not the concrete type.
+
+2. **Keep both implementations registered in `REGISTRY` under different keys.**
+   Config selects which runs: `stages.decompose.backend = "slim"` vs `"verbose"`.
+   Tests for each backend live in `tests/agents/test_decompose_slim.py` etc.
+
+3. **Tests should test the interface contract, not field-level details.**
+   `assert decomp.core_concept` is a contract test. `assert decomp.sub_ideas` is
+   a field test — only put it in the test file for the `verbose` backend.
+
+4. **The golden test corpus carries the contract.**
+   One integration test runs *both* backends on the same paper and asserts that
+   the downstream verdict is still produced (not that fields match) — this is the
+   cross-backend comparability check.
+
 ### Agents (what they actually do vs. what they should do)
 
 | Agent | Actual behaviour | Gap vs. ideal |
@@ -120,219 +154,307 @@ structure more rigorous.
 | Feature | Status |
 |---------|--------|
 | `pipeline_config.yaml` + `--config` flag | ✅ |
-| Stage 3 sub-stage toggle flags | ✅ |
+| Stage 3 sub-stage toggle flags (`--no-online-search`, `--no-user-refs`, `--no-paper-cited-refs`) | ✅ |
 | Reasoning model auto-detection | ✅ |
 | HTTP retry with backoff | ✅ |
 | CI: test + review + artifact + reports-branch | ✅ |
+| `copilot-wakeup.yml` — automated Copilot resume after timeout | ✅ added (base branch) |
+| `ReferenceStore` source priority dedup (user > paper-cited > online > domain) | ✅ added (base branch) |
+| `ReferenceStore.get_all_sources()` — all source tags for a paper | ✅ added (base branch) |
+| REF-N Reference Index in every report | ✅ added (base branch) |
 | `PipelineContext` shared state bus | ✅ foundation only; no disk checkpoint |
-| 533 unit/integration tests | ✅ (1 flaky batch-naming test) |
+| 533+ unit/integration tests | ✅ (1 flaky batch-naming test) |
 | `configs/` named experiment baselines | ❌ not yet |
 | Agent registry / `Pipeline` class | ❌ not yet |
 | Disk-serialisable `PipelineContext` | ❌ not yet |
 
 ---
 
-## Part 2 — Open Problems (Ordered by Scientific Impact)
+## Part 2 — Scientific Questions and Falsifiable Hypotheses
 
-### SP1 — Annotation before evaluation (Stage ordering bug)
-`AnnotationAgent` runs *after* `SynthesisAgent`. The dimension checks therefore
-never receive the `derivation_map`. This is the biggest correctness gap.
-**Fix: run Stage 5 (Annotate) before Stage 6 (Evaluate).**
+> Cross-reference Issue #50: the three ablation axes are (1) atomic model capability,
+> (2) prompt design, (3) pipeline structure. Every open problem below lives on at
+> least one of these axes, and the "experiment design" column identifies which axis
+> it tests and what infra is needed.
 
-### SP2 — Derivation map is disconnected from verdict logic
-The `derivation_map` in `SimilarityAnnotation` is the closest thing we have to the
-derivation certificate, but it is rendered in the report and then discarded. The
-dimension prompts receive only a flat REF-N reference list. The verdict can say
-"HIGH duplication" without citing a specific concept-tree node.
-**Fix: pass `DerivationEvidence` as structured input into each dimension prompt.**
-
-### SP3 — TF-IDF cannot find semantic equivalence
-Score 0.40 over a known-identical reference vs. <0.30 over 10 searched refs
-(Issue #48 empirical data) shows TF-IDF works when the right ref is present but
-cannot surface it from a cold corpus. The system needs a semantic similarity
-channel — either dense embeddings or an LLM-based ranker that can match
-"weighted conformal prediction" to "distribution-free uncertainty quantification."
-**Fix: add dense retrieval as an optional rank backend.**
-
-### SP4 — Retrieval is one-shot, not iterative
-The current query → search → done flow cannot refine when results are sparse
-or off-topic. The ideal loop is:
-```
-generate queries → search → assess coverage → if insufficient → refine queries → search again
-```
-This is a **cycle**, not a pipeline step. Plain Python cannot express this
-naturally; this is the first place where a graph execution framework (LangGraph)
-earns its keep.
-
-### SP5 — Decomposition quality is model-dependent and not verified
-gpt-4o produces verbose, surface-level trees. The tree drives everything
-downstream. There is no step that validates whether the tree correctly identifies
-the *real technical bottleneck* vs. the surface framing.
-**Fix: add a decomposition critic pass (or use a reasoning model specifically for this).**
-
-### SP6 — No caching of expensive operations
-Every re-run re-calls all LLMs and re-fetches all online papers, even when the
-paper content has not changed. For iterative development (tune prompt → re-run →
-compare), this wastes ~80% of wall time and API cost.
-**Fix: content-hash caching for LLM calls and HTTP responses.**
-
-### SP7 — No automated quality gate
-Report quality validation is currently human-only. There is no automated check
-that the report meets the scientific goals.
-
-### SP8 — No `configs/` experiment baseline directory
-Cannot reproduce a specific experimental configuration without reconstructing
-CLI flags from memory.
+The goal is to structure these as real scientific questions — not engineering tasks —
+so that each improvement has a testable prediction that can be confirmed or refuted
+on the golden test corpus.
 
 ---
 
-## Part 3 — Three-Horizon Architecture
+### H1 — Annotation-evidence gap
 
-The system should evolve through three distinct horizons. Each horizon is a
-prerequisite for the next. **Do not skip ahead — the intermediate architecture
-is load-bearing, not just scaffolding.**
+**Hypothesis:** The dimension checks (duplication, combination, equivalence) produce
+lower-quality verdicts when they receive only a flat reference list vs. when they
+receive the structured `derivation_map` from the annotation agent.
+
+**Prediction:** Passing `derivation_map` into the dimension prompts will increase
+the fraction of verdicts that a human reviewer agrees with, on the test corpus.
+
+**Experiment:**
+- Baseline: current system (no derivation_map in dimension prompts)
+- Treatment: system with `{derivation_map}` slot in all dimension prompts
+- Metric: human reviewer agreement rate on 10 test papers
+- Required infra: `DerivationEvidence` datatype; annotation runs before evaluation
+- Config: `stages.evaluate.use_derivation_map = true/false`
+
+**Current gap:** `AnnotationAgent` runs after `SynthesisAgent`. Fix: move it before.
 
 ---
 
-### Horizon 1 — Clean sequential pipeline (now → ~1 month)
+### H2 — Retrieval coverage bottleneck
 
-**Driving question:** Is every stage correctly wired and independently testable?
+**Hypothesis:** The pipeline's novelty verdict is wrong primarily because the
+correct prior work was never retrieved, not because the LLM reasoned incorrectly
+over the retrieved set.
+
+**Prediction:** When the gold-standard reference is injected directly (bypassing
+retrieval), verdict accuracy jumps significantly even with the same weak LLM.
+
+**Experiment:**
+- Baseline: full pipeline on test corpus
+- Oracle condition: inject known-correct reference at Stage 3; run rest of pipeline
+- Metric: verdict agreement with human ground truth under each condition
+- Required infra: `--inject-reference URL` CLI flag; no pipeline changes needed
+- Config: `stages.retrieve.inject = [url1, url2]`
+
+**Implication:** If oracle condition produces much better verdicts, the bottleneck
+is retrieval quality (confirming H2). If not, the bottleneck is the reasoning quality.
+
+---
+
+### H3 — One-shot vs. iterative retrieval
+
+**Hypothesis:** Iterative query refinement (generate → search → assess → refine →
+repeat until coverage sufficient) retrieves more relevant prior work than a
+single-shot keyword search.
+
+**Prediction:** After N refinement iterations, cosine similarity between the
+best-matched retrieved paper and the submitted paper is higher than single-shot.
+
+**Experiment:**
+- Baseline: current single-shot retrieval
+- Treatment: LangGraph iterative retrieval loop (3 iterations max)
+- Metric: max similarity score of retrieved set; fraction of gold references recovered
+- Required infra: LangGraph `StateGraph`; `AssessCoverageNode` with an LLM judge
+- Config: `stages.retrieve.backend = "iterative"`, `stages.retrieve.max_iterations = 3`
+
+---
+
+### H4 — Decomposition quality drives downstream quality
+
+**Hypothesis:** The quality of the concept tree (Stage 2) is the primary driver of
+annotation and verdict quality — more so than model size at Stage 5.
+
+**Prediction:** A strong reasoning model at Stage 2 (o3/Claude Opus) with a weak
+model at Stage 5 will outperform a weak Stage 2 model with a strong Stage 5 model.
+
+**Experiment:**
+- Condition A: `decomp_model=o3`, `eval_model=gpt-4o-mini`
+- Condition B: `decomp_model=gpt-4o-mini`, `eval_model=o3`
+- Condition C: `decomp_model=o3`, `eval_model=o3` (control)
+- Metric: human verdict agreement; concept tree depth and coverage scores
+- Required infra: `--decomposition-model` flag (already exists); `--model` flag (already exists)
+- Config: all three configs checked in as `configs/exp-decomp-o3-eval-mini.yaml` etc.
+
+---
+
+### H5 — Prompt specificity and constraint intensity
+
+**Hypothesis:** More specific, constrained prompts (e.g. "identify the exact
+technical bottleneck, not the surface framing") produce better concept trees than
+generic prompts, independently of model choice.
+
+**Prediction:** For a fixed model (gpt-4o), replacing the `decomposition.txt`
+prompt with a more constrained version will increase concept tree depth and
+reduce vocabulary overlap with the abstract.
+
+**Experiment:**
+- Baseline: current `decomposition.txt`
+- Treatment: stricter prompt that explicitly forbids paraphrasing the abstract
+- Metric: concept tree depth; vocabulary overlap (abstract vs. tree text); human rating
+- Required infra: `stages.decompose.prompt = "prompts/decomposition_strict.txt"` in config
+- Config: `configs/exp-strict-decomp.yaml`
+
+---
+
+### H6 — TF-IDF vs. semantic retrieval
+
+**Hypothesis:** Dense embedding retrieval finds more methodologically equivalent
+papers than TF-IDF, especially when papers use different vocabulary for the same method.
+
+**Prediction:** Dense retrieval recovers more of the gold references on the test corpus.
+
+**Experiment:**
+- Baseline: TF-IDF rank backend
+- Treatment: Ada-002 embedding rank backend
+- Metric: recall@10 on gold reference set; max similarity score
+- Required infra: `DenseRetriever` in `agents/rank.py`; `stages.rank.backend = "dense"`
+- Config: `configs/dense-retrieval.yaml`
+
+---
+
+### H7 — Caching policy (IID re-runs vs. within-pass cache)
+
+**Preference (not a hypothesis):** Each pipeline run should be **independent and
+identically distributed** (IID) — no caching across runs by default, so that
+re-runs are valid independent samples for measuring variance.
+
+**However:** Within a single iterative retrieval pass (H3), caching is essential —
+previously fetched papers must not be re-fetched in loop iteration N+1.
+
+**Implementation target:**
+- A **consensus map** — a globally visible, editable dict mapping `(query, source)
+  → list[paper_id]` — is maintained within each run and passed across loop iterations.
+- The consensus map is serialised to `PipelineContext` and appears in every report
+  (so you can see which queries were deduplicated).
+- Cross-run caching is **opt-in** only (e.g. `--reuse-retrieval-cache`), never default.
+
+---
+
+### H8 — Automated quality gate accuracy
+
+**Hypothesis:** An LLM-based report checker can classify reports as
+`ACCEPTABLE / NEEDS_REVISION` with agreement comparable to a human reviewer.
+
+**Prediction:** The checker's classification agrees with human labels ≥ 80% of the
+time on a held-out set of 20 reports (10 acceptable, 10 needing revision).
+
+**Experiment:**
+- Baseline: human labels on 20 reports
+- Treatment: `ReportCheckerAgent` classification on same reports
+- Metric: agreement rate; false-positive and false-negative rates
+- Required infra: `agents/check.py`; `prompts/report_check.txt` with scientific goals
+
+---
+
+## Part 3 — Architecture Tracks
+
+The project has **two parallel build tracks**, not a single linear progression.
+They run independently and are compared laterally:
+
+| Track | Goal | Philosophy |
+|-------|------|-----------|
+| **Baseline / Mechanical** | Engineering correctness, modularity, ablation infra | Human-designed pipeline; every stage, prompt, and config explicitly specified by the researcher |
+| **Autonomous Innovation** | Minimal human intervention; max LLM agency | LLM agents make most decisions themselves; human specifies the scientific goal, not the procedure |
+
+The baseline track produces reproducible, ablatable results. The autonomous track
+explores the outer bound of what the system can do when given maximum freedom.
+**Both tracks are scientific instruments** — the comparison between their outputs is
+itself a finding.
+
+---
+
+### Baseline Track — Clean sequential pipeline
+
+**Driving question:** Is every stage correctly wired, independently testable, and
+fully config-driven?
 
 **What to build:**
 - `Pipeline` class: wraps the stage sequence; `run()` + `run_from(stage_name)` for checkpointing
 - `agents/` directory: one file per agent; pure functions with typed I/O
 - `types.py`: all dataclasses in one place (single source of truth)
 - `configs/` directory: named experiment baselines checked into git
-- Fix SP1 (annotation order) and SP2 (derivation map in eval prompts)
-- Add content-hash caching (SP6)
+- Fix annotation-before-evaluation (H1)
+- LangGraph iterative retrieval subgraph (H3) — replaces one-shot search
+- MCP tool servers — standardised tool layer callable by any agent
 
-**Framework:** Plain Python. No orchestration framework needed.
-The linear stage sequence with `PipelineContext` is sufficient.
-Adding LangGraph here would be premature and would slow iteration.
+**Framework:** Plain Python for the linear stages; LangGraph for the retrieval loop only.
 
-**What this horizon achieves:**
+**What this achieves:**
 - Every stage is independently unit-testable
-- Swapping one agent (e.g., TF-IDF → dense retrieval) requires changing one line in config
+- Swapping one agent (e.g., TF-IDF → dense retrieval) requires one line in config
 - Re-running from Stage 5 after a prompt change takes seconds, not minutes
 - Two runs are fully described by their `configs/` diff
+- Experiments H1–H8 are all runnable via config
 
 ---
 
-### Horizon 2 — Iterative loops + tool ecosystem (1–3 months)
+### Autonomous Innovation Track — Architecture Options
 
-**Driving question:** Can the system refine its own understanding through cycles?
+These are **lateral options to build and compare** — not sequential steps.
+Each operationalises a different philosophy about how much agency to give LLMs.
 
-**What to build:**
+#### Option A — Wasserstein Adversarial Reconstruction (operationalises the theory)
 
-**LangGraph for iterative retrieval (SP4):**
-
-```
-[DecomposeNode] → [GenerateQueriesNode] → [SearchNode]
-                         ↑                      ↓
-                  [RefineQueriesNode] ←  [AssessCoverageNode]
-                                              ↓ (sufficient)
-                                       [RankNode] → ...
-```
-
-LangGraph is the right tool here because:
-- The retrieval loop has **conditional exit** (exit when coverage is sufficient)
-- State accumulates across iterations (previously-found refs, previous queries)
-- Each node is a pure function; the graph is the orchestration — this is exactly
-  LangGraph's model
-
-**MCP tool servers:**
-Expose the core retrieval capabilities as [Model Context Protocol](https://modelcontextprotocol.io/) servers so any LLM agent (Claude, GPT-4, local) can call them:
+**Core idea:** The "Wasserstein distance" between papers is approximated through
+an adversarial game, not a single forward pass.
 
 ```
-MCP servers to build:
-  semantic-scholar-mcp    → search(query), get_paper(id), get_references(id)
-  arxiv-mcp               → fetch_paper(url), get_abstract(id)
-  reference-store-mcp     → add(paper), search(query, threshold), get_source(id)
-  concept-tree-mcp        → extract(paper_text), validate(tree), diff(tree_a, tree_b)
+[Student Agent]
+  Given: only the submitted paper (no prior work)
+  Task: reconstruct the paper's key claims from scratch using the fewest
+        possible external references
+  Constraint: must request references from the Resource Pool Agent;
+              each reference has a "cost"
+
+[Resource Pool Agent]
+  Given: the full reference corpus
+  Task: manage the pool of available references
+        Start with nothing; release references when the Student requests them
+        Try to find the minimal sufficient set (not just any set)
+
+[Teacher / Evaluator Agent]
+  Given: the original paper + Student's reconstruction
+  Task: evaluate reconstruction quality at each round
+        Decide whether to release a hint (reference), withhold, or terminate
+        The game ends when quality meets threshold or budget is exhausted
+
+Result: the "cost" of reconstruction ≈ derivability score
+        What can't be reconstructed even with the full pool ≈ the novel residual
 ```
 
-Benefits:
-- Any agent in the system can call these tools without knowing their implementation
-- Claude Desktop / GPT-4 function calling can use the same tool layer
-- The tool layer becomes reusable across other projects (e.g., HAN theory corpus search)
-- Decouples tool implementation from agent orchestration
+This is the most direct operationalisation of the Wasserstein formulation.
+The game is simple (back-and-forth), autonomous (Student decides what to reconstruct;
+Teacher decides what to release), and the output is interpretable.
 
-**Dense retrieval (SP3):**
-Add `DenseRetriever` as a swappable rank backend using OpenAI Ada-002 embeddings
-or a BGE model. Config-driven: `stages.rank.backend = "dense"`.
+**Why this is different from the debate architecture:**
+- No human-defined evaluation rubric needed — the reconstruction quality is the metric
+- The reference pool management is itself an agent's job, not a human pre-selection
+- The "derivation certificate" falls out of the game log (what was used to reconstruct what)
 
-**Decomposition critic (SP5):**
-Add a second LLM pass that critiques the concept tree: "Does this tree identify
-the *real* technical bottleneck, or is it paraphrasing the abstract?" — using a
-stronger or different model (o3, Claude Opus).
-
-**What this horizon achieves:**
-- Retrieval quality improves through iteration (biggest quality bottleneck addressed)
-- Any LLM can plug into the tool layer via MCP
-- Decomposition quality is validated, not just generated
-- LangGraph graph is the config-addressable equivalent of the current `_review_one()` function
+**Framework:** LangGraph `StateGraph` with `StudentNode`, `ResourcePoolNode`, `TeacherNode`.
 
 ---
 
-### Horizon 3 — Multi-agent debate network (3–6 months)
+#### Option B — Multi-Agent Debate (operationalises multi-perspective cross-checking)
 
-**Driving question:** Can a network of specialized agents produce verdicts that
-are more reliable than any single agent?
-
-**The architecture:**
+**Core idea:** Different agents approach the paper from different angles and must
+reach consensus through structured argument.
 
 ```
-                    ┌─────────────────────────────┐
-                    │     Orchestrator Agent       │
-                    │  (CrewAI / LangGraph router) │
-                    └───┬─────────┬─────────┬──────┘
-                        │         │         │
-              ┌─────────▼─┐  ┌────▼──────┐  ┌─▼──────────────┐
-              │ Librarian │  │  Domain   │  │    Critic      │
-              │  Agent    │  │  Expert   │  │    Agent       │
-              │           │  │  Agent    │  │                │
-              │ Retrieves │  │ Evaluates │  │ Challenges     │
-              │ & ranks   │  │ derivation│  │ verdicts;      │
-              │ references│  │ & novelty │  │ requests more  │
-              └─────────┬─┘  └────┬──────┘  └─┬──────────────┘
-                        │         │             │
-                        └────┬────┘             │
-                             ▼                  │
-                    ┌────────────────┐           │
-                    │ Judge Agent   │ ◄──────────┘
-                    │               │
-                    │ Final verdict │
-                    │ + certificate │
-                    └───────────────┘
+Librarian Agent    → retrieves and ranks references (fast, cheap model)
+Domain Expert      → builds concept tree; assesses derivation (reasoning model)
+Adversarial Critic → challenges every derivation claim; demands evidence (reasoning model)
+Judge Agent        → resolves debate into final certificate (reasoning model)
+Reporter Agent     → renders certificate into human-readable report (fast model)
 ```
 
-**Why CrewAI here:**
-- The multi-agent debate pattern maps naturally to CrewAI's **role-based task assignment**
-- Each agent has a distinct *role*, *goal*, and *backstory* that shapes its LLM behaviour
-- CrewAI's built-in memory, tool assignment, and inter-agent communication handles the
-  coordination logic so you can focus on the scientific roles, not the plumbing
-- The `Critic Agent` challenging the `Domain Expert Agent`'s verdict is exactly the
-  "multi-agent debate improves accuracy" pattern that research has shown works for
-  hard reasoning tasks
+This is a proven pattern for improving reasoning quality on hard tasks.
+The key difference from Option A: human pre-defines the roles and rubric; LLMs fill them.
+The output quality depends on role design and prompt quality.
 
-**Agent roles:**
+**Framework:** CrewAI for role assignment + inter-agent communication; LangGraph for state.
 
-| Agent | Role | Primary tool(s) | LLM recommendation |
-|-------|------|-----------------|-------------------|
-| **Librarian** | Retrieve and rank references exhaustively | `semantic-scholar-mcp`, `reference-store-mcp` | Fast/cheap (GPT-4o-mini) |
-| **Domain Expert** | Build the concept tree; assess derivation | `concept-tree-mcp`, full paper text | Reasoning (o3, Claude Opus) |
-| **Critic** | Challenge derivation claims; request more evidence | All MCP tools | Reasoning (o3) |
-| **Judge** | Synthesise debate → final certificate | None (reasoning only) | Reasoning (o3) |
-| **Reporter** | Render the certificate into a human-readable report | None (generation only) | Fast (GPT-4o) |
+---
 
-**What this horizon achieves:**
-- The forward/backward pass design from Issue #48 is implementable:
-  - Domain Expert does the forward pass (build from prior work)
-  - Critic does the backward pass (reduce from ground truth)
-  - Judge reconciles the two
-- Multi-agent debate on hard cases improves verdict quality beyond single-agent
-- The Wasserstein distance intuition becomes operational: each agent's transport
-  plan is a component of the overall derivation certificate
+#### Option C — Hybrid (baseline wiring + autonomous components)
+
+Run the baseline mechanical pipeline for all stages except retrieval and evaluation;
+use the Wasserstein game loop only for retrieval (deciding which references to surface).
+
+This is the most practical near-term step: the autonomous component handles the
+hardest sub-problem (which references matter), while the rest remains reproducible.
+
+---
+
+**Build order:**
+1. Baseline Track fully working (plain Python Pipeline class) — prerequisite
+2. Option C: Wasserstein retrieval game as LangGraph subgraph
+3. Option A: Full Wasserstein adversarial reconstruction
+4. Option B: Full multi-agent debate
+5. Ablation: compare Options A, B, C, and Baseline on same test corpus
 
 ---
 
@@ -371,11 +493,11 @@ CrewAI is NOT appropriate when:
 ### Use MCPs when:
 - You want a **tool layer callable by any LLM** regardless of framework
 - The same tool (e.g., Semantic Scholar search) is used by **multiple agents**
-- You want tools to be **reusable across projects** (HAN theory corpus, OpenNovelty fork)
+- You want tools to be **reusable across projects** (other corpora, forks)
 - You want to hook into **Claude Desktop, Cursor, or other MCP-compatible clients**
 
-MCPs are tool standardisation, not orchestration. Use them from Horizon 2 onwards
-as the "instrument panel" that all agents plug into.
+MCPs are tool standardisation, not orchestration. Add them when the baseline
+Pipeline class is stable and you want the tool layer to outlive any one framework.
 
 ### Use the OpenAI Agents SDK / Anthropic SDK when:
 - You are building a **single-agent with tools** (simpler than CrewAI for one agent)
@@ -389,75 +511,77 @@ with distinct roles and inter-agent communication.
 ### Evolution path for this project
 
 ```
-Horizon 1:  plain Python Pipeline class        ← build this first; no framework
-Horizon 2:  LangGraph retrieval subgraph       ← add when iterative loops needed
-            + MCP tool servers                 ← add alongside LangGraph
-Horizon 3:  CrewAI multi-agent debate          ← add when multi-role interaction needed
-            on top of LangGraph infrastructure ← LangGraph handles state; CrewAI handles roles
+Baseline Track:
+  plain Python Pipeline class        ← build first; no framework
+  + LangGraph retrieval subgraph     ← add when iterative loops needed
+  + MCP tool servers                 ← add when multi-agent tool sharing needed
+
+Autonomous Innovation Track (lateral options to compare):
+  Option A: LangGraph Wasserstein adversarial game   ← operationalises the theory
+  Option B: CrewAI multi-agent debate                ← operationalises multi-perspective checking
+  Option C: Hybrid (baseline + autonomous retrieval) ← most practical near-term
 ```
 
-Do NOT skip Horizon 1. The `Pipeline` class from Horizon 1 becomes the
-"inner loop" that each CrewAI agent calls in Horizon 3. Building Horizon 3
-without Horizon 1 means each agent is calling the same 500-line monolith.
+The Baseline Track is load-bearing — each autonomous option calls into it for the
+stages it does not replace. Build the baseline first.
 
 ---
 
 ## Part 5 — Immediate Build Sequence
 
 Each item is one Copilot session (< 45 min). Each has a clear done-state.
+Phases A–C are baseline track. Phase D begins the autonomous track.
 
 ### Phase A — Fix the scientific correctness gaps (highest impact, no refactoring needed)
 
-| # | Change | Done-state | Fixes |
-|---|--------|-----------|-------|
-| A1 | Move `AnnotationAgent` to run before dimension checks | Pipeline log shows annotation before duplication | SP1 |
-| A2 | Add `{derivation_map}` slot to `duplication.txt`, `combination.txt`, `equivalence.txt` | Each dimension prompt receives structured evidence | SP2 |
-| A3 | Pass `novel_elements` from `SimilarityAnnotation` into synthesis prompt | Synthesis explicitly addresses what is claimed novel | SP2 |
-| A4 | Add `DerivationCertificate` dataclass; populate from synthesis output | JSON report contains `certificate` field | SP2 complete |
+| # | Change | Done-state | Tests hypothesis |
+|---|--------|-----------|-----------------|
+| A1 | Move `AnnotationAgent` to run before dimension checks | Pipeline log shows annotation before duplication | H1 infra |
+| A2 | Add `{derivation_map}` slot to `duplication.txt`, `combination.txt`, `equivalence.txt` | Each dimension prompt receives structured evidence | H1 |
+| A3 | Pass `novel_elements` from `SimilarityAnnotation` into synthesis prompt | Synthesis explicitly addresses what is claimed novel | H1 |
+| A4 | Add `DerivationCertificate` dataclass; populate from synthesis output | JSON report contains `certificate` field | H1 complete |
 
 ### Phase B — Stabilise and modularise (enables everything else)
 
-| # | Change | Done-state | Fixes |
-|---|--------|-----------|-------|
-| B1 | Move all dataclasses to `types.py` | Every module imports from `open_idea_sourcing.types` | Prerequisite for C* |
-| B2 | Extract `Pipeline` class with `run()` + `run_from(stage_name)` | `review_paper.py` is ≤ 100 lines | SP6 unlock, H2 prerequisite |
-| B3 | Move each agent to `agents/` directory | `from open_idea_sourcing.agents.rank import TFIDFRanker` works | Enables SP3 |
-| B4 | Add `configs/` directory with `baseline.yaml`, `offline.yaml`, `no-chain.yaml` | `--config configs/offline.yaml` works; configs are checked in | SP8 |
-| B5 | Content-hash LLM/HTTP cache using `functools.lru_cache` or `diskcache` | Re-running same paper skips all API calls | SP6 |
+| # | Change | Done-state | Tests hypothesis |
+|---|--------|-----------|-----------------|
+| B1 | Move all dataclasses to `types.py` | Every module imports from `open_idea_sourcing.types` | Prerequisite for all |
+| B2 | Extract `Pipeline` class with `run()` + `run_from(stage_name)` | `review_paper.py` is ≤ 100 lines | H4/H5 ablation |
+| B3 | Move each agent to `agents/` directory | `from open_idea_sourcing.agents.rank import TFIDFRanker` works | H6 prerequisite |
+| B4 | Add `configs/` directory with `baseline.yaml`, `offline.yaml`, `no-chain.yaml` | `--config configs/offline.yaml` works; configs are checked in | All experiments |
 
-### Phase C — Quality gate and dense retrieval (science unlocks)
+### Phase C — Quality gate and dense retrieval
 
-| # | Change | Done-state | Fixes |
-|---|--------|-----------|-------|
-| C1 | Add `prompts/report_check.txt` + `agents/check.py` | `check_quality(report, llm)` returns `ACCEPTABLE/NEEDS_REVISION` | SP7 |
-| C2 | Add CI `check-quality` job | CI fails on `NEEDS_REVISION`; check result in artifact | SP7 complete |
-| C3 | Add `DenseRetriever` stub to `agents/rank.py` | `--config configs/dense-retrieval.yaml` runs (via stub) | SP3 prerequisite |
-| C4 | Implement Ada-002 dense retrieval | Config `stages.rank.backend = "dense"` produces real results | SP3 |
+| # | Change | Done-state | Tests hypothesis |
+|---|--------|-----------|-----------------|
+| C1 | Add `prompts/report_check.txt` + `agents/check.py` | `check_quality(report, llm)` returns `ACCEPTABLE/NEEDS_REVISION` | H8 |
+| C2 | Add CI `check-quality` job | CI fails on `NEEDS_REVISION`; check result in artifact | H8 infra |
+| C3 | Add `--inject-reference` CLI flag | Known gold ref injected; pipeline runs | H2 experiment |
+| C4 | Add `DenseRetriever` to `agents/rank.py` + `configs/dense-retrieval.yaml` | Config swap runs end-to-end | H6 |
 
-### Phase D — LangGraph iterative retrieval (Horizon 2)
+### Phase D — LangGraph iterative retrieval (Baseline Track completion)
 
-| # | Change | Done-state | Fixes |
-|---|--------|-----------|-------|
-| D1 | Design retrieval graph nodes as standalone functions | Each node passes unit tests | SP4 prerequisite |
-| D2 | Wire nodes into a LangGraph `StateGraph` | Graph runs end-to-end with loop exit | SP4 |
-| D3 | Replace `retrieve()` stage in `Pipeline` with LangGraph subgraph | Full pipeline runs; retrieval is now iterative | SP4 complete |
+| # | Change | Done-state | Tests hypothesis |
+|---|--------|-----------|-----------------|
+| D1 | Design retrieval graph nodes as standalone functions | Each node passes unit tests | H3 infra |
+| D2 | Wire into a LangGraph `StateGraph` with consensus map | Graph runs end-to-end with loop exit | H3 |
+| D3 | Add `configs/iterative-retrieval.yaml`; run ablation vs. single-shot | Quantified recall improvement | H3 confirmed/rejected |
 
-### Phase E — MCP tool layer (Horizon 2)
+### Phase E — MCP tool layer
 
-| # | Change | Done-state | Fixes |
-|---|--------|-----------|-------|
+| # | Change | Done-state | Tests hypothesis |
+|---|--------|-----------|-----------------|
 | E1 | Implement `semantic-scholar-mcp` server | Claude Desktop can call `search(query)` | Tool layer |
 | E2 | Implement `reference-store-mcp` server | Any LLM can add/query the reference store | Tool layer |
 | E3 | Implement `concept-tree-mcp` server | Any LLM can extract or diff concept trees | Tool layer |
 
-### Phase F — Multi-agent debate (Horizon 3)
+### Phase F — Autonomous innovation track
 
-| # | Change | Done-state | Fixes |
-|---|--------|-----------|-------|
-| F1 | Define CrewAI crew with Librarian + Domain Expert + Critic + Judge + Reporter roles | `crew.kickoff(paper)` returns a `NoveltyReport` | H3 |
-| F2 | Connect each agent to the appropriate MCP tools | Librarian calls `semantic-scholar-mcp`; Expert calls `concept-tree-mcp` | H3 |
-| F3 | Implement forward/backward pass in Domain Expert + Critic | Agent produces explicit transport plan | Wasserstein formulation |
-| F4 | Ablation: single-agent (Horizon 1 pipeline) vs. multi-agent debate on same test corpus | Quantified quality comparison | Proof of value |
+| # | Change | Done-state | Tests hypothesis |
+|---|--------|-----------|-----------------|
+| F1 | Implement Option C: Wasserstein retrieval game as LangGraph subgraph | Game log appears in report; reconstruction quality tracked | H3 + theory |
+| F2 | Implement Option B: CrewAI multi-agent debate | `crew.kickoff(paper)` returns a `NoveltyReport` | Multi-agent |
+| F3 | Ablation: Baseline vs. Option A vs. Option B vs. Option C on test corpus | Quantified quality comparison across all tracks | Cross-track comparison |
 
 ---
 
@@ -477,8 +601,8 @@ These do not change regardless of which framework or horizon you are in:
 
 ## Part 7 — Portability Target
 
-When this pipeline is ready to apply to a new domain (HAN theory paper review,
-architecture proposal evaluation, survey completeness check):
+When this pipeline is ready to apply to a new domain (architecture proposal evaluation,
+survey completeness checking, grant proposal novelty assessment):
 
 | What to replace | What to keep |
 |-----------------|-------------|
@@ -489,6 +613,6 @@ architecture proposal evaluation, survey completeness check):
 | `data/test_papers.ndjson` | `review_paper.py` CLI |
 
 Five file changes, zero code changes. That is the portability target.
-The framework investment in Horizons 2–3 pays off most here: the same
-LangGraph graph, same CrewAI crew, same MCP tool servers — just different
-prompts and a different corpus.
+The framework investment in the Autonomous Innovation Track pays off most here:
+the same LangGraph graph, same CrewAI crew, same MCP tool servers — just different
+prompts, a different corpus, and a different goals file for the quality checker.
