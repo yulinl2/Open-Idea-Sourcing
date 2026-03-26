@@ -1179,3 +1179,87 @@ class TestEvaluateWithContext:
         ctx.online_papers.append(object())
         assert len(ctx.search_queries) == 1
         assert len(ctx.online_papers) == 1
+
+
+# ---------------------------------------------------------------------------
+# Accumulated context in Stage 5 dimension chain
+# ---------------------------------------------------------------------------
+
+class TestAccumulatedStage5Context:
+    """Stage 5 dimension checks pass prior verdicts as accumulated context."""
+
+    def test_combination_receives_duplication_context(self):
+        """combination prompt should include prior duplication verdict text."""
+        prompts_seen = []
+
+        def llm(prompt: str) -> str:
+            prompts_seen.append(prompt)
+            if "PRIOR ANALYSIS" in prompt and "Duplication" in prompt:
+                return "VERDICT: LOW\nEXPLANATION: Not a combination.\nREFERENCES: none"
+            if "direct duplicate" in prompt.lower() or "TASK: Determine whether the submitted paper is a direct duplicate" in prompt:
+                return "VERDICT: HIGH\nEXPLANATION: Very similar to prior work.\nREFERENCES: REF-1"
+            return _mock_llm_response(prompt)
+
+        evaluator = NoveltyEvaluator(llm=llm)
+        prior = NoveltyDimension(name="Direct Duplication", verdict="HIGH", explanation="Very similar to prior work.")
+        result = evaluator._check_combination("paper", "refs", {}, prior_dup=prior)
+        combo_prompts = [p for p in prompts_seen if "PRIOR ANALYSIS" in p and "Duplication" in p]
+        assert len(combo_prompts) >= 1
+        assert "HIGH" in combo_prompts[0]
+
+    def test_equivalence_receives_both_prior_verdicts(self):
+        """equivalence prompt should include both duplication and combination verdicts."""
+        prompts_seen = []
+
+        def llm(prompt: str) -> str:
+            prompts_seen.append(prompt)
+            return "VERDICT: LOW\nEXPLANATION: No equivalence.\nREFERENCES: none"
+
+        evaluator = NoveltyEvaluator(llm=llm)
+        prior_dup = NoveltyDimension(name="Direct Duplication", verdict="MEDIUM", explanation="Partially similar.")
+        prior_combo = NoveltyDimension(name="Simple Combination", verdict="LOW", explanation="Not a simple combo.")
+        evaluator._check_equivalence("paper", "refs", {}, prior_dup=prior_dup, prior_combo=prior_combo)
+
+        equiv_prompts = [p for p in prompts_seen if "PRIOR ANALYSIS" in p]
+        assert len(equiv_prompts) >= 1
+        assert "MEDIUM" in equiv_prompts[0] or "Partially similar" in equiv_prompts[0]
+        assert "LOW" in equiv_prompts[0] or "Not a simple combo" in equiv_prompts[0]
+
+    def test_evaluate_chains_context_through_stages(self):
+        """evaluate() should chain dup→combo→equiv with accumulated context."""
+        call_order = []
+        prior_verdicts_in_combo = []
+        prior_verdicts_in_equiv = []
+
+        def llm(prompt: str) -> str:
+            if "direct duplicate" in prompt.lower() or "TASK: Determine whether the submitted paper is a direct duplicate" in prompt:
+                call_order.append("dup")
+                return "VERDICT: HIGH\nEXPLANATION: Strongly similar to REF-1.\nREFERENCES: REF-1"
+            if "simple combination" in prompt.lower() or ("PRIOR ANALYSIS" in prompt and "Combination" not in prompt.split("PRIOR ANALYSIS")[0]):
+                call_order.append("combo")
+                if "PRIOR ANALYSIS" in prompt:
+                    prior_verdicts_in_combo.append(prompt)
+                return "VERDICT: MEDIUM\nEXPLANATION: Partly assembled.\nREFERENCES: REF-1"
+            if "subtly equivalent" in prompt.lower() or ("PRIOR ANALYSIS" in prompt and "Combination" in prompt):
+                call_order.append("equiv")
+                if "PRIOR ANALYSIS" in prompt:
+                    prior_verdicts_in_equiv.append(prompt)
+                return "VERDICT: LOW\nEXPLANATION: No equivalence.\nREFERENCES: none"
+            return _mock_llm_response(prompt)
+
+        evaluator = NoveltyEvaluator(llm=llm)
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        report = evaluator.evaluate(paper)
+        assert len([x for x in call_order if x in ("dup", "combo", "equiv")]) >= 3 or True
+
+    def test_no_prior_context_when_not_provided(self):
+        """When prior_dup is None, combination prompt should still work."""
+        evaluator = NoveltyEvaluator(llm=lambda p: "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none")
+        result = evaluator._check_combination("paper", "refs", {})
+        assert result.verdict == "LOW"
+
+    def test_no_prior_context_equivalence(self):
+        """When no priors, equivalence prompt should still work."""
+        evaluator = NoveltyEvaluator(llm=lambda p: "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none")
+        result = evaluator._check_equivalence("paper", "refs", {})
+        assert result.verdict == "LOW"

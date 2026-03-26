@@ -14,7 +14,12 @@ IDEA DECOMPOSITION:
 REFERENCE PAPERS (most similar by text):
 {reference_papers}
 
+PRIOR ANALYSIS — Duplication Check:
+{prior_duplication}
+
 INSTRUCTIONS:
+- Consider the prior duplication analysis above as context. Build on it;
+  do not repeat its conclusions verbatim.
 - Respond with a structured analysis.
 - Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = not a simple combination).
 - Then write EXPLANATION: one or two paragraphs describing which components

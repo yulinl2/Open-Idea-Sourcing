@@ -14,7 +14,15 @@ IDEA DECOMPOSITION:
 REFERENCE PAPERS (most similar by text):
 {reference_papers}
 
+PRIOR ANALYSIS — Duplication Check:
+{prior_duplication}
+
+PRIOR ANALYSIS — Combination Check:
+{prior_combination}
+
 INSTRUCTIONS:
+- Consider the prior analyses above as accumulated context. Build on the
+  evidence already established; do not repeat their conclusions verbatim.
 - Respond with a structured analysis.
 - Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = no equivalence found).
 - Then write EXPLANATION: describe any equivalences found, citing the

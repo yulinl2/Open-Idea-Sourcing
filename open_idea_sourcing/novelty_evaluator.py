@@ -409,9 +409,9 @@ class NoveltyEvaluator:
             t1 = time.monotonic()
         dup = self._check_duplication(content, refs_text, raw, decomp=idea_decomp)
         t2 = time.monotonic()
-        combo = self._check_combination(content, refs_text, raw, decomp=idea_decomp)
+        combo = self._check_combination(content, refs_text, raw, decomp=idea_decomp, prior_dup=dup)
         t3 = time.monotonic()
-        equiv = self._check_equivalence(content, refs_text, raw, decomp=idea_decomp)
+        equiv = self._check_equivalence(content, refs_text, raw, decomp=idea_decomp, prior_dup=dup, prior_combo=combo)
         t4 = time.monotonic()
         overall, confidence, summary = self._synthesise(
             paper.title, dup, combo, equiv, raw
@@ -581,9 +581,9 @@ class NoveltyEvaluator:
 
         dup = self._check_duplication(content, refs_text, raw, decomp=idea_decomp)
         t2 = time.monotonic()
-        combo = self._check_combination(content, refs_text, raw, decomp=idea_decomp)
+        combo = self._check_combination(content, refs_text, raw, decomp=idea_decomp, prior_dup=dup)
         t3 = time.monotonic()
-        equiv = self._check_equivalence(content, refs_text, raw, decomp=idea_decomp)
+        equiv = self._check_equivalence(content, refs_text, raw, decomp=idea_decomp, prior_dup=dup, prior_combo=combo)
         t4 = time.monotonic()
         overall, confidence, summary = self._synthesise(
             ctx.paper.title, dup, combo, equiv, raw
@@ -717,12 +717,27 @@ class NoveltyEvaluator:
     def _check_combination(
         self, content: str, refs_text: str, raw: dict[str, str],
         decomp: IdeaDecomposition | None = None,
+        prior_dup: "NoveltyDimension | None" = None,
     ) -> NoveltyDimension:
-        """Detect whether the paper is merely a combination of prior works."""
+        """Detect whether the paper is merely a combination of prior works.
+
+        Parameters
+        ----------
+        prior_dup:
+            Result of the duplication check (Stage 5a).  When provided, the
+            combination prompt receives it as ``PRIOR ANALYSIS`` context so
+            this pass builds on — rather than duplicates — the prior verdict.
+        """
+        prior_text = (
+            f"Verdict: {prior_dup.verdict}\n{prior_dup.explanation}"
+            if prior_dup is not None
+            else "Not yet performed."
+        )
         prompt = _COMBINATION_PROMPT.format(
             paper_content=content,
             reference_papers=refs_text,
             decomposition=_format_decomp_context(decomp),
+            prior_duplication=prior_text,
         )
         response = self._llm(prompt)
         raw["combination"] = response
@@ -737,12 +752,36 @@ class NoveltyEvaluator:
     def _check_equivalence(
         self, content: str, refs_text: str, raw: dict[str, str],
         decomp: IdeaDecomposition | None = None,
+        prior_dup: "NoveltyDimension | None" = None,
+        prior_combo: "NoveltyDimension | None" = None,
     ) -> NoveltyDimension:
-        """Detect methodological equivalence to known methods."""
+        """Detect methodological equivalence to known methods.
+
+        Parameters
+        ----------
+        prior_dup:
+            Result of the duplication check (Stage 5a).
+        prior_combo:
+            Result of the combination check (Stage 5b).
+        When provided, both are passed as ``PRIOR ANALYSIS`` context so this
+        pass builds on the accumulated evidence from earlier checks.
+        """
+        dup_text = (
+            f"Verdict: {prior_dup.verdict}\n{prior_dup.explanation}"
+            if prior_dup is not None
+            else "Not yet performed."
+        )
+        combo_text = (
+            f"Verdict: {prior_combo.verdict}\n{prior_combo.explanation}"
+            if prior_combo is not None
+            else "Not yet performed."
+        )
         prompt = _EQUIVALENCE_PROMPT.format(
             paper_content=content,
             reference_papers=refs_text,
             decomposition=_format_decomp_context(decomp),
+            prior_duplication=dup_text,
+            prior_combination=combo_text,
         )
         response = self._llm(prompt)
         raw["equivalence"] = response
