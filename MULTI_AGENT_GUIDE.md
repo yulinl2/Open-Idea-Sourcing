@@ -283,7 +283,20 @@ Any future pipeline that produces a structured text report can plug in the same 
 
 ## Part 4 — Multi-Agent Architecture for Research Pipelines (Q2)
 
-### Recognising the Architecture You Already Have
+### The Three-Horizon Vision
+
+The project is not just a sequential evaluation pipeline. The ultimate form — derived
+from the Wasserstein distance / forward-backward pass framing in Issue #48 — is a
+**multi-agent debate network** where specialised agents with different roles collaborate
+to produce a derivation certificate. The path there is through three horizons, each a
+prerequisite for the next.
+
+**See `PROJECT_MASTER_PLAN.md` for the full three-horizon breakdown.**
+This section focuses on the mechanics: which framework to reach for and when.
+
+---
+
+### Horizon 1 — Plain Python `Pipeline` class (now)
 
 The current pipeline is already a multi-agent system in the functional sense:
 
@@ -291,89 +304,202 @@ The current pipeline is already a multi-agent system in the functional sense:
 |-------|-------|-------|--------|
 | 1 | PaperParser / LLMPaperParser | Raw PDF/text | `ParsedPaper` |
 | 2 | DecompositionAgent (LLM) | `ParsedPaper` | `IdeaDecomposition` |
-| 3a | QueryGenerator (LLM) | `IdeaDecomposition` | `list[str]` queries |
-| 3b | SemanticScholar API | queries + arXiv ID | `list[Paper]` |
-| 3c | DomainRefFinder (LLM) | paper + similar papers | `list[DomainReference]` |
+| 3a–3e | Retrieval sub-agents (parallel) | paper + decomp | `ReferenceStore` |
 | 4 | SimilaritySearch (TF-IDF) | query vs corpus | `list[SimilarityResult]` |
-| 5a | DuplicationChecker (LLM) | paper + refs | verdict + explanation |
-| 5b | CombinationChecker (LLM) | paper + refs + dup | verdict + explanation |
-| 5c | EquivalenceChecker (LLM) | paper + refs + dup + combo | verdict + explanation |
-| 5d | SynthesisAgent (LLM) | 3 verdicts | final verdict |
-| 6 | AnnotationAgent (LLM) | paper + top refs | `list[SimilarityAnnotation]` |
+| **5** | **AnnotationAgent (LLM)** | **paper + refs** | **`DerivationEvidence`** ← runs BEFORE 6 |
+| 6a | DuplicationChecker (LLM) | paper + refs + derivation | verdict |
+| 6b | CombinationChecker (LLM) | paper + refs + derivation + dup | verdict |
+| 6c | EquivalenceChecker (LLM) | paper + refs + derivation + dup + combo | verdict |
+| 7 | SynthesisAgent (LLM) | 3 verdicts + novel_elements | `DerivationCertificate` |
+| 8 | ReportGeneratorAgent | certificate + metadata | report |
+| 9 | ReportCheckerAgent | report | `ACCEPTABLE/NEEDS_REVISION` |
 
-`PipelineContext` is already the shared state bus. The architecture is sound. The gap is in making it fully modular so each agent is independently swappable and independently testable.
+`PipelineContext` is the shared state bus. The gap is in making it fully modular.
 
 ### The Four Properties of a Swappable Agent
 
-An agent in this system should be:
-
 1. **Stateless** — takes inputs as arguments, returns outputs, no side effects
 2. **Single-callable interface** — `(context: PipelineContext) -> PipelineContext` or equivalent
-3. **Config-described** — which agent runs at each stage is declared in `pipeline_config.yaml`, not hardcoded in `_review_one()`
-4. **Individually testable** — can be called with a mock LLM and stubbed input with no other agents running
-
-Right now agents 5a–5d are hardcoded method calls in `NoveltyEvaluator`. The next step is to extract each as a standalone callable:
-
-```python
-# Today (entangled):
-dup = self._check_duplication(paper, refs, ...)
-combo = self._check_combination(paper, refs, prior_dup=dup, ...)
-
-# Target (swappable):
-dup_agent   = registry.get("duplication",  config)   # loads prompt, model from config
-combo_agent = registry.get("combination",  config)
-dup_result   = dup_agent(ctx)
-combo_result = combo_agent(ctx)   # ctx now contains dup_result
-```
+3. **Config-described** — which agent runs at each stage is declared in `pipeline_config.yaml`
+4. **Individually testable** — callable with a mock LLM and stubbed input, no other stages running
 
 ### The Agent Registry Pattern
 
 ```python
-# open_idea_sourcing/agent_registry.py
+# open_idea_sourcing/pipeline.py
 
-AGENTS = {
-    "parse":        PaperParserAgent,
-    "decompose":    DecompositionAgent,
-    "retrieve":     RetrievalAgent,
-    "similarity":   SimilarityAgent,
-    "duplication":  DuplicationAgent,
-    "combination":  CombinationAgent,
-    "equivalence":  EquivalenceAgent,
-    "synthesis":    SynthesisAgent,
-    "annotate":     AnnotationAgent,
-    "check_report": ReportCheckerAgent,   # ← the Q1.2 module plugs in here
+REGISTRY = {
+    "parse":       PaperParserAgent,       # or LLMPaperParserAgent via config
+    "decompose":   DecompositionAgent,
+    "retrieve":    RetrievalAgent,         # wraps all 3a–3e sub-agents
+    "rank":        TFIDFRanker,            # or DenseRetriever via config
+    "annotate":    AnnotationAgent,        # MUST run before evaluate
+    "duplication": DuplicationAgent,
+    "combination": CombinationAgent,
+    "equivalence": EquivalenceAgent,
+    "synthesize":  SynthesisAgent,
+    "render":      ReportGeneratorAgent,
+    "check":       ReportCheckerAgent,
 }
 
-def build_pipeline(config: PipelineConfig) -> list[Agent]:
-    return [AGENTS[name](config) for name in config.stages.enabled]
+class Pipeline:
+    def __init__(self, config: PipelineConfig, llm: LLMCallable):
+        self.stages = [REGISTRY[name](config, llm) for name in config.stages.enabled]
+
+    def run(self, source: str) -> NoveltyReport:
+        ctx = PipelineContext.empty()
+        for stage in self.stages:
+            ctx = stage.run(ctx)
+        return ctx.report
+
+    def run_from(self, ctx: PipelineContext, stage_name: str) -> NoveltyReport:
+        """Resume from a checkpoint — invaluable for prompt tuning."""
+        start = next(i for i, s in enumerate(self.stages) if s.name == stage_name)
+        for stage in self.stages[start:]:
+            ctx = stage.run(ctx)
+        return ctx.report
 ```
 
-This makes the pipeline itself a config artifact. Ablation = change which agents are in `config.stages.enabled`.
+`run_from()` is the ablation primitive: change a prompt file → `run_from("duplication")` →
+result in seconds, not minutes.
 
-### What NOT to Use
+---
 
-| Tool | Avoid Because |
-|------|--------------|
-| LangChain | Hides agent boundaries; hard to unit-test individual steps; heavy dependency |
-| AutoGen conversational loop | Good for open-ended dialogue agents, overkill for a deterministic evaluation pipeline |
-| CrewAI | Role-based framework designed for collaborative tasks, not sequential analysis |
-| LangGraph | Useful if you need dynamic branching between agents; premature here |
+### Horizon 2 — LangGraph for iterative retrieval loops
 
-**DO:** Keep agents as plain Python callables with typed inputs/outputs. Add an orchestration framework only when the routing logic becomes too complex to express as a linear stage list.
+**When you hit this:** The one-shot query-search-done pattern is producing
+insufficient coverage. You need: generate queries → search → assess → refine → repeat.
+
+LangGraph is the right tool because:
+- The loop has a **conditional exit** (exit when coverage score is sufficient)
+- State accumulates across iterations (previously-seen refs, previous query attempts)
+- Each node is a pure function; the graph handles the looping and state
+
+```python
+from langgraph.graph import StateGraph, END
+
+retrieval_graph = StateGraph(RetrievalState)
+retrieval_graph.add_node("generate_queries", generate_queries_node)
+retrieval_graph.add_node("search",           search_node)
+retrieval_graph.add_node("assess_coverage",  assess_coverage_node)
+retrieval_graph.add_node("refine_queries",   refine_queries_node)
+
+retrieval_graph.add_edge("generate_queries", "search")
+retrieval_graph.add_edge("search",           "assess_coverage")
+retrieval_graph.add_conditional_edges(
+    "assess_coverage",
+    lambda s: END if s.coverage_sufficient else "refine_queries"
+)
+retrieval_graph.add_edge("refine_queries",   "search")
+```
+
+This subgraph replaces the `RetrievalAgent` stage in the `Pipeline`. Everything else
+in the pipeline is unchanged — the subgraph still receives a `PipelineContext` and
+returns one.
+
+**MCP tool servers alongside LangGraph:**
+Expose Semantic Scholar, arXiv fetch, and the reference store as MCP servers.
+Every node in the LangGraph graph, and every CrewAI agent in Horizon 3, calls the
+same tool layer. The tools are implemented once.
+
+---
+
+### Horizon 3 — CrewAI multi-agent debate
+
+**When you hit this:** Single-agent evaluation quality has plateaued. The
+forward/backward pass convergence design requires genuinely independent agents
+arguing from different starting points.
+
+**Why CrewAI here (not LangGraph):**
+- CrewAI's **role + backstory** model shapes each LLM's reasoning orientation
+  without prompt engineering gymnastics
+- The `Critic Agent` challenging the `Domain Expert`'s verdict is a natural
+  CrewAI task delegation pattern
+- CrewAI's built-in memory and tool assignment handles coordination so you focus
+  on the science
+
+```python
+from crewai import Agent, Task, Crew
+
+librarian = Agent(
+    role="Research Librarian",
+    goal="Find every plausible prior work for this paper, exhaustively",
+    backstory="You are a specialist at navigating academic databases...",
+    tools=[semantic_scholar_tool, arxiv_tool, reference_store_tool],
+    llm="gpt-4o-mini",   # fast + cheap for retrieval
+)
+
+domain_expert = Agent(
+    role="Domain Expert",
+    goal="Build the concept tree and trace derivation from prior work",
+    backstory="You are a senior researcher who can recognise when a paper...",
+    tools=[concept_tree_tool],
+    llm="o3",            # reasoning model for deep decomposition
+)
+
+critic = Agent(
+    role="Adversarial Critic",
+    goal="Find every flaw in the expert's derivation claims; demand evidence",
+    backstory="You are a hard-nosed reviewer who rejects hand-waving...",
+    tools=[semantic_scholar_tool],
+    llm="o3",
+)
+
+judge = Agent(
+    role="Final Judge",
+    goal="Produce the definitive derivation certificate from the expert-critic debate",
+    backstory="You are a senior programme chair...",
+    tools=[],            # no tools; pure reasoning
+    llm="o3",
+)
+```
+
+The forward/backward pass from Issue #48 maps directly:
+- **Domain Expert** runs the forward pass: builds the paper from prior work
+- **Critic** runs the backward pass: reduces from ground truth, challenges the forward claims
+- **Judge** reconciles the two into the derivation certificate
+
+---
+
+### When to Use Which Framework (Decision Table)
+
+| Situation | Framework | Why |
+|-----------|-----------|-----|
+| Linear sequential pipeline | **Plain Python** | No routing complexity; fastest to iterate |
+| Retrieval loop with conditional exit | **LangGraph** | Conditional edges + state across iterations |
+| State checkpointing / resume from node | **LangGraph** | Built-in state persistence |
+| Parallel fan-out / fan-in | **LangGraph** | Native parallel node execution |
+| Multiple distinct agent *roles* interacting | **CrewAI** | Role + backstory shapes reasoning; inter-agent memory |
+| Multi-agent debate / critique | **CrewAI** | Task delegation and adversarial dynamics |
+| Tool callable by any LLM / any framework | **MCP server** | Standardised protocol; write once, call everywhere |
+| Single agent with many tools | **OpenAI Agents SDK** | Simpler than CrewAI for single-agent |
+| Cross-provider agent (GPT + Claude together) | **CrewAI** | LLM-agnostic role assignment |
+
+**LangGraph ≠ CrewAI.** They are complementary:
+- LangGraph = graph execution engine (handles *when* and *how* stages run)
+- CrewAI = agent role manager (handles *who* is doing *what* and *why*)
+- In Horizon 3: LangGraph handles the retrieval subgraph; CrewAI handles the debate network
+
+**What NOT to use:**
+- **LangChain** as an orchestrator: hides agent boundaries; hard to unit-test; heavy dependency. Use it only for specific utilities (e.g., document loaders) not as the pipeline backbone.
+- **AutoGen** conversational loop: designed for open-ended multi-turn dialogue; overkill for structured evaluation with defined stage outputs.
 
 ### When to Introduce Parallelism
 
-The dimension checks (duplication, combination, equivalence) are currently sequential because each feeds context into the next (v2.3 accumulated context chain). This is correct — don't parallelize them.
+The dimension checks (duplication, combination, equivalence) are sequential because
+each feeds context into the next — do not parallelize them.
 
-Parallelize across these boundaries instead:
+Parallelize here:
 
 ```
-retrieve (bundled) ──┐
-retrieve (online)  ──┤── merge → similarity → [evaluate chain]
-retrieve (domain)  ──┘
+retrieve (bundled)     ──┐
+retrieve (paper-cited) ──┤── merge → rank → annotate → [evaluate chain]
+retrieve (online)      ──┤
+retrieve (domain)      ──┘
 ```
 
-The three retrieval sub-agents are already independently runnable and don't share state. Running them concurrently with `asyncio.gather` or `ThreadPoolExecutor` is a legitimate performance win that doesn't compromise ablation clarity.
+In LangGraph this is a native parallel fan-out. In plain Python (Horizon 1),
+`asyncio.gather` or `ThreadPoolExecutor` suffices.
 
 ---
 
@@ -420,12 +546,25 @@ The three retrieval sub-agents are already independently runnable and don't shar
 
 ## Summary: The Next Phase Paradigm
 
-The current system is architecturally ready. The next phase is **operationalisation**:
+The system has three horizons. **Do not skip ahead — each is load-bearing.**
 
-1. **Flatten `_review_one()` into a config-driven stage runner** — the list of stages lives in the config, not in 600 lines of Python.
-2. **Add `configs/` directory** — one file per known-good experiment baseline. These replace PR descriptions as the record of "what was the exact setup."
-3. **Add `ReportCheckerAgent`** — closes the human-in-the-loop for quality validation. The scientific goals are a prompt file, not tribal knowledge.
-4. **Add `ci-retry.yml`** — auto-retries flaky CI review runs so transient API errors don't require human intervention.
-5. **Atomic issues** — each Copilot session targets one module, one stage, one prompt. The checklist in the PR description is the session plan; `report_progress` commits are its checkpoints.
+**Horizon 1 — Clean sequential pipeline (now):**
+1. Extract `Pipeline` class with `run_from()` — the ablation primitive
+2. Move agents to `agents/` directory — one file, one prompt, one test
+3. Add `configs/` directory — one file per experiment baseline
+4. Fix annotation-before-evaluation ordering (biggest correctness gap)
+5. Add `ReportCheckerAgent` — closes the quality-gate loop
 
-The system then becomes self-auditing: every run is traceable to a config file, every report is graded by the quality checker, every failure is retried automatically, and every module is individually ablatable without touching adjacent code.
+**Horizon 2 — Iterative loops + tool ecosystem:**
+1. Replace one-shot retrieval with a LangGraph iterative subgraph
+2. Expose Semantic Scholar, arXiv, and reference store as MCP servers
+3. Add dense retrieval as a swappable rank backend
+
+**Horizon 3 — Multi-agent debate (the ultimate form):**
+1. CrewAI crew: Librarian + Domain Expert + Critic + Judge + Reporter
+2. Forward pass (Domain Expert) + backward pass (Critic) converge on derivation certificate
+3. The Wasserstein distance formulation becomes operational
+
+The system then becomes self-improving: every run produces a traceable certificate,
+every report is graded by the quality checker, every retrieval gap triggers a
+refined query loop, and every hard case routes to the multi-agent debate network.
