@@ -399,6 +399,26 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--no-bundled-refs",
+        action="store_true",
+        default=bool(int(os.environ.get("NO_BUNDLED_REFS", "0"))),
+        help=(
+            "Skip loading the bundled baseline corpus (data/references.json). "
+            "Useful for ablation studies that isolate online retrieval only. "
+            "Controlled by NO_BUNDLED_REFS=1 env var."
+        ),
+    )
+    parser.add_argument(
+        "--no-paper-cited-refs",
+        action="store_true",
+        default=bool(int(os.environ.get("NO_PAPER_CITED_REFS", "0"))),
+        help=(
+            "Skip retrieving the paper's own citation list from Semantic Scholar. "
+            "Useful for ablation studies that test keyword-search-only retrieval. "
+            "Controlled by NO_PAPER_CITED_REFS=1 env var."
+        ),
+    )
+    parser.add_argument(
         "--since-year",
         type=int,
         metavar="YEAR",
@@ -539,7 +559,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         # loaded and merged on top so that the full combined corpus is
         # available to the similarity search.
         store = ReferenceStore()
-        if args.references != "":
+        if args.references != "" and not args.no_bundled_refs:
             if _BUNDLED_REFERENCES.exists():
                 store.load(_BUNDLED_REFERENCES, source="bundled")
                 print(
@@ -547,6 +567,8 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                     f" {_BUNDLED_REFERENCES.name}",
                     file=sys.stderr,
                 )
+        elif args.no_bundled_refs:
+            print("Skipping bundled corpus (--no-bundled-refs).", file=sys.stderr)
         if args.references != "" and args.references != str(_BUNDLED_REFERENCES):
             ref_path = Path(args.references)
             if ref_path.exists():
@@ -643,7 +665,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             online_papers = online_searcher.search(
                 paper.title,
                 paper.abstract,
-                arxiv_id=arxiv_id,
+                arxiv_id=arxiv_id if not args.no_paper_cited_refs else "",
                 queries=search_queries or None,
             )
             for ref_paper in online_papers:

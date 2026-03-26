@@ -1102,3 +1102,29 @@ class TestSimilarityThresholdArg:
         from review_paper import _parse_args
         args = _parse_args(["paper.txt", "--format", "text"])
         assert args.top_k == 20
+
+
+# ---------------------------------------------------------------------------
+# Stage 3 sub-stage toggle flags
+# ---------------------------------------------------------------------------
+
+class TestStageToggles:
+    def test_no_bundled_refs_flag_parsed(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--no-bundled-refs"])
+        assert args.no_bundled_refs is True
+
+    def test_no_bundled_refs_default_is_false(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt"])
+        assert args.no_bundled_refs is False
+
+    def test_no_paper_cited_refs_flag_parsed(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--no-paper-cited-refs"])
+        assert args.no_paper_cited_refs is True
+
+    def test_no_paper_cited_refs_default_is_false(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt"])
+        assert args.no_paper_cited_refs is False
