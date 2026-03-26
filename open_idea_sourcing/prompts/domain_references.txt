@@ -1,0 +1,19 @@
+You are an expert research librarian.
+
+TASK: Identify the most important foundational and closely related works
+in the domain of the following paper. Focus on seminal papers that a
+reader would need to understand the context of this contribution.
+
+SUBMITTED PAPER:
+{paper_content}
+
+ALREADY IDENTIFIED SIMILAR PAPERS (from text similarity search):
+{reference_papers}
+
+INSTRUCTIONS:
+List 3 to 6 key domain references in the format below.
+Each entry must appear on its own line starting with a number.
+
+REFERENCES:
+1. TITLE: <paper title> | AUTHORS: <author(s)> | YEAR: <year> | RELEVANCE: <why this reference matters>
+2. TITLE: <paper title> | AUTHORS: <author(s)> | YEAR: <year> | RELEVANCE: <why this reference matters>

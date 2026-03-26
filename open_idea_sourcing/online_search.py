@@ -42,6 +42,8 @@ from __future__ import annotations
 import json
 import re
 import sys
+import time as _time
+import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any, Callable
@@ -97,6 +99,9 @@ _FIELDS = "title,abstract,year,authors,externalIds,url"
 _REFERENCE_FIELDS = ",".join(f"citedPaper.{f}" for f in _FIELDS.split(","))
 _DEFAULT_LIMIT = 10
 _DEFAULT_TIMEOUT = 15  # seconds
+_MAX_RETRIES = 3
+_RETRY_BASE_DELAY = 2.0  # seconds; doubles on each attempt
+_RETRYABLE_HTTP_CODES = frozenset({429, 500, 503})
 
 _USER_AGENT = (
     f"open-idea-sourcing/{__version__} (academic novelty evaluator; "
@@ -109,6 +114,7 @@ def generate_search_queries(
     llm: LLMCallable,
     *,
     max_queries: int = 6,
+    decomposition: object = None,
 ) -> list[str]:
     """Ask an LLM to generate conceptual search queries for a paper.
 
@@ -134,7 +140,13 @@ def generate_search_queries(
         (LLM failure, malformed response, etc.) so that callers can fall
         back to title-based search gracefully.
     """
-    prompt = _QUERY_GENERATION_PROMPT.format(content=paper_content)
+    decomp_hint = ""
+    if decomposition is not None:
+        from .novelty_evaluator import _format_decomp_context
+        decomp_hint = "\n\nIDEA DECOMPOSITION:\n" + _format_decomp_context(decomposition)
+    prompt = _QUERY_GENERATION_PROMPT.format(
+        content=paper_content + decomp_hint
+    )
     try:
         response = llm(prompt)
     except Exception as exc:  # noqa: BLE001
@@ -189,9 +201,11 @@ class OnlineReferenceSearch:
         self,
         max_results: int = _DEFAULT_LIMIT,
         timeout: int = _DEFAULT_TIMEOUT,
+        min_year: int | None = None,
     ) -> None:
         self._max_results = max_results
         self._timeout = timeout
+        self._min_year = min_year
         self._last_errors: list[str] = []
 
     @property
@@ -259,9 +273,17 @@ class OnlineReferenceSearch:
         self._last_errors = []
 
         # Phase 1: paper-specific references (depth — papers the authors cited).
+        # For arXiv papers use the dedicated arXiv endpoint; for non-arXiv papers
+        # fall back to Semantic Scholar title lookup to find the S2 paper ID so
+        # the references endpoint can still be called.
         if arxiv_id:
             for paper in self._fetch_references(f"arXiv:{arxiv_id}"):
                 results[paper.id] = paper
+        elif title:
+            s2_id = self._lookup_paper_id_by_title(title)
+            if s2_id:
+                for paper in self._fetch_references(s2_id):
+                    results[paper.id] = paper
 
         # Phase 2: conceptual keyword search (breadth).
         # Use LLM-generated queries when available; fall back to the raw title.
@@ -279,9 +301,125 @@ class OnlineReferenceSearch:
 
         return list(results.values())[: self._max_results]
 
+    def lookup_domain_refs(
+        self, domain_refs: list,  # list[DomainReference]
+    ) -> list:  # list[ReferencePaper]
+        """Look up domain reference papers by title via Semantic Scholar.
+
+        For each domain reference identified by the LLM, issues a title-based
+        search to Semantic Scholar to resolve it to a concrete paper with
+        abstract and year.  Papers that cannot be found are silently skipped.
+
+        Parameters
+        ----------
+        domain_refs:
+            DomainReference objects from the LLM domain-reference finder.
+
+        Returns
+        -------
+        list[ReferencePaper]
+            Resolved reference papers.  May be shorter than *domain_refs*
+            if some titles could not be matched.
+        """
+        results: list = []
+        seen_ids: set[str] = set()
+        for ref in domain_refs:
+            if not ref.title:
+                continue
+            try:
+                params = urllib.parse.urlencode({
+                    "query": ref.title,
+                    "fields": _FIELDS,
+                    "limit": 1,
+                })
+                url = f"{_SEMANTIC_SCHOLAR_SEARCH_URL}?{params}"
+                raw = self._http_get(url, label=f"domain-ref-lookup:{ref.title[:40]}")
+                if raw is None:
+                    continue
+                data = json.loads(raw)
+                items = data.get("data", [])
+                if not items:
+                    continue
+                paper = _parse_semantic_scholar_item(items[0])
+                if paper is not None and paper.id not in seen_ids:
+                    seen_ids.add(paper.id)
+                    results.append(paper)
+            except Exception:
+                continue
+        return results
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _http_get(self, url: str, label: str) -> bytes | None:
+        """GET *url* with exponential-backoff retry on transient HTTP errors.
+
+        Parameters
+        ----------
+        url:
+            Fully-formed URL to fetch.
+        label:
+            Short description used in error messages (e.g. ``"references"``).
+
+        Returns
+        -------
+        bytes | None
+            Raw response body, or *None* if all attempts failed.
+        """
+        req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+        for attempt in range(1, _MAX_RETRIES + 1):
+            try:
+                with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # noqa: S310
+                    return resp.read()
+            except urllib.error.HTTPError as exc:
+                if exc.code in _RETRYABLE_HTTP_CODES and attempt < _MAX_RETRIES:
+                    delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                    print(
+                        f"  [online_search] {label}: HTTP {exc.code}, "
+                        f"retrying in {delay:.0f}s (attempt {attempt}/{_MAX_RETRIES})…",
+                        file=sys.stderr,
+                    )
+                    _time.sleep(delay)
+                else:
+                    err_msg = f"{label}: HTTP {exc.code} {exc.reason}"
+                    self._last_errors.append(err_msg)
+                    print(
+                        f"  [online_search] {label}: HTTP {exc.code} {exc.reason}",
+                        file=sys.stderr,
+                    )
+                    return None
+            except Exception as exc:
+                err_msg = f"{label}: {exc}"
+                self._last_errors.append(err_msg)
+                print(f"  [online_search] {label}: {exc}", file=sys.stderr)
+                return None
+        return None  # all retries exhausted
+
+    def _lookup_paper_id_by_title(self, title: str) -> str | None:
+        """Look up a Semantic Scholar paper ID by title search.
+
+        Returns the first result's ``paperId`` or *None* on failure.  Used
+        to find non-arXiv papers so that the ``/references`` depth-signal
+        endpoint can still be called.
+        """
+        params = urllib.parse.urlencode({
+            "query": title,
+            "fields": "paperId,title",
+            "limit": 3,
+        })
+        url = f"{_SEMANTIC_SCHOLAR_SEARCH_URL}?{params}"
+        raw = self._http_get(url, label="title-lookup")
+        if raw is None:
+            return None
+        try:
+            data: dict[str, Any] = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        items = data.get("data", [])
+        if not items:
+            return None
+        return items[0].get("paperId") or None
 
     def _fetch_references(self, semantic_paper_id: str) -> list[ReferencePaper]:
         """Return references of a paper using Semantic Scholar's references endpoint.
@@ -303,19 +441,8 @@ class OnlineReferenceSearch:
             }
         )
         url = f"{_SEMANTIC_SCHOLAR_PAPER_URL}/{paper_id_encoded}/references?{params}"
-        req = urllib.request.Request(
-            url, headers={"User-Agent": _USER_AGENT}
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # noqa: S310
-                raw = resp.read()
-        except Exception as exc:
-            err_msg = f"references: {exc}"
-            self._last_errors.append(err_msg)
-            print(
-                f"  [online_search] references request failed: {exc}",
-                file=sys.stderr,
-            )
+        raw = self._http_get(url, label=f"references({semantic_paper_id})")
+        if raw is None:
             return []
         try:
             data: dict[str, Any] = json.loads(raw)
@@ -328,26 +455,26 @@ class OnlineReferenceSearch:
             paper = _parse_semantic_scholar_item(cited)
             if paper is not None:
                 papers.append(paper)
+        if self._min_year is not None:
+            papers = [
+                p for p in papers
+                if p.year is None or p.year >= self._min_year
+            ]
         return papers
 
     def _query(self, query: str) -> list[ReferencePaper]:
         """Send one keyword query to Semantic Scholar; return parsed papers."""
-        params = urllib.parse.urlencode(
-            {
-                "query": query,
-                "fields": _FIELDS,
-                "limit": self._max_results,
-            }
-        )
+        query_params: dict[str, str | int] = {
+            "query": query,
+            "fields": _FIELDS,
+            "limit": self._max_results,
+        }
+        if self._min_year is not None:
+            query_params["year"] = f"{self._min_year}-"
+        params = urllib.parse.urlencode(query_params)
         url = f"{_SEMANTIC_SCHOLAR_SEARCH_URL}?{params}"
-        req = urllib.request.Request(
-            url, headers={"User-Agent": _USER_AGENT}
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # noqa: S310
-                raw = resp.read()
-        except Exception as exc:
-            self._last_errors.append(f"query '{query[:40]}': {exc}")
+        raw = self._http_get(url, label=f"query('{query[:40]}')")
+        if raw is None:
             return []
         try:
             data: dict[str, Any] = json.loads(raw)

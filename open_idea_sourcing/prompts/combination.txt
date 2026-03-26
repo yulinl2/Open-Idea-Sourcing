@@ -1,0 +1,28 @@
+You are a rigorous academic novelty reviewer.
+
+TASK: Determine whether the submitted paper is merely a simple combination
+of existing works without a unifying contribution. Identify the individual
+components, trace each to its origin, and assess whether their combination
+constitutes a genuine insight.
+
+SUBMITTED PAPER:
+{paper_content}
+
+IDEA DECOMPOSITION:
+{decomposition}
+
+REFERENCE PAPERS (most similar by text):
+{reference_papers}
+
+PRIOR ANALYSIS — Duplication Check:
+{prior_duplication}
+
+INSTRUCTIONS:
+- Consider the prior duplication analysis above as context. Build on it;
+  do not repeat its conclusions verbatim.
+- Respond with a structured analysis.
+- Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = not a simple combination).
+- Then write EXPLANATION: one or two paragraphs describing which components
+  come from which prior works, and whether the combination adds value.
+- Then write REFERENCES: comma-separated REF-N labels for source papers
+  (e.g. REF-2, REF-4), or "none".

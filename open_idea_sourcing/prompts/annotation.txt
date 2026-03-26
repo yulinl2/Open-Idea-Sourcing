@@ -1,0 +1,31 @@
+You are an expert research analyst examining potential intellectual lineage.
+
+TASK: Analyze how the submitted paper relates to the entire pool of similar reference papers.
+Rather than annotating each reference individually, identify how the submitted paper's
+contribution was assembled — what combinations of prior work it builds on, and what
+(if anything) is genuinely new.
+
+SUBMITTED PAPER:
+{paper_content}
+
+IDEA DECOMPOSITION:
+{decomposition}
+
+REFERENCE PAPERS (ranked by similarity):
+{reference_papers}
+
+INSTRUCTIONS:
+Respond with three sections:
+
+DERIVATION_MAP:
+For each component in the concept tree, identify which reference paper(s) it most
+closely derives from, using REF-N labels. Format as:
+  - <component>: REF-N [, REF-N...]  or  "appears novel"
+
+COMBINATION_ANALYSIS:
+In 2-3 sentences: Does the submitted paper appear to be a combination of specific subsets
+of the references? Which subsets? What would remain after removing the derived parts?
+
+NOVEL_ELEMENTS:
+List any elements in the submitted paper that do not appear to be derivable from any
+of the listed references.

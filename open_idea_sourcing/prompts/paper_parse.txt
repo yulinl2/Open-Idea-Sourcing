@@ -1,0 +1,23 @@
+You are extracting structured metadata from an academic paper.
+
+Given the following raw text extracted from a PDF or plain-text academic paper,
+identify and extract the following fields. The text may have formatting artifacts
+from PDF extraction (e.g. line breaks mid-sentence, garbled equations).
+
+RAW PAPER TEXT:
+{raw_text}
+
+INSTRUCTIONS:
+Respond ONLY with the following structured fields. Do not include extra text.
+
+TITLE: <full paper title, joining any split lines>
+AUTHORS: <comma-separated list of author names, or "unknown" if not found>
+ABSTRACT: <full abstract text, as a single paragraph. If not found, write "not found">
+SECTIONS:
+<list of section titles found in the paper, one per line, e.g.:
+1. Introduction
+2. Related Work
+3. Method
+4. Experiments
+5. Conclusion
+or "none" if no sections detected>
