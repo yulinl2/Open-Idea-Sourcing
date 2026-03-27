@@ -320,7 +320,7 @@ class NoveltyEvaluator:
             LLM-identified key references contextualising the paper in its
             field.
         """
-        return self._find_domain_references(content, refs_text, raw)
+        return self._find_domain_references(content, refs_text, raw, decomp=decomp)
 
     def decompose_idea(self, paper: ParsedPaper, raw: dict[str, str]) -> IdeaDecomposition:
         """Decompose *paper*'s core idea into structured components (Stage 2).
@@ -802,11 +802,14 @@ class NoveltyEvaluator:
         return _parse_decomposition_response(response)
 
     def _find_domain_references(
-        self, content: str, refs_text: str, raw: dict[str, str]
+        self, content: str, refs_text: str, raw: dict[str, str],
+        decomp: IdeaDecomposition | None = None,
     ) -> list[DomainReference]:
         """Ask the LLM to identify key domain references for this paper."""
         prompt = _DOMAIN_REFERENCES_PROMPT.format(
-            paper_content=content, reference_papers=refs_text
+            paper_content=content,
+            reference_papers=refs_text,
+            decomposition=_format_decomp_context(decomp),
         )
         response = self._llm(prompt)
         raw["domain_references"] = response
