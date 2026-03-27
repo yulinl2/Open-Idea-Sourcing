@@ -956,16 +956,13 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         _decomp_mode_label = getattr(args, "decomposition_mode", "llm") or "llm"
         if _decomp_mode_label == "hardcoded":
             _decomp_model_label = "hardcoded"
-        # Build decomposition detail — core concept + tree depth/size.
-        _tree = idea_decomp.concept_tree
-        _tree_depth = _count_tree_depth(_tree) if _tree else 0
-        _tree_nodes = _count_tree_nodes(_tree) if _tree else 0
+        # Build decomposition detail — reuse tree stats computed during logging.
         _decomp_detail_parts = [
             f"**Core concept:** {idea_decomp.core_concept}",
         ]
         if _tree:
             _decomp_detail_parts.append(
-                f"**Concept tree:** {_tree_nodes} node(s), depth {_tree_depth}"
+                f"**Concept tree:** {_nodes} node(s), depth {_depth}"
             )
         early_jobs: list[PipelineJob] = [
             PipelineJob(
@@ -1008,7 +1005,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                     offset_s=round(parse_duration + decomp_duration, 3),
                     duration_s=0.0,
                     input_summary=_cited_source,
-                    output_summary=f"{len(cited_papers)} ref(s) loaded" if not args.no_online_search else "skipped",
+                    output_summary=f"{len(cited_papers)} ref(s) loaded",
                 )
             )
         if not args.no_online_search:
