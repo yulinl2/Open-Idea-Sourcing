@@ -8,6 +8,15 @@
 # Omit to reuse the main model above.
 # decomposition_model: o3
 
+# Stage 2 decomposition mode.
+# "llm"        — use the LLM to generate the concept tree (default).
+# "hardcoded"  — skip LLM decomposition and inject a fixed concept tree from
+#                a file.  Set hardcoded_decomposition_file to a JSON path.
+# Useful for ablation: hold the decomposition constant across runs to isolate
+# the effect of retrieval or evaluation changes.
+# decomposition_mode: llm
+# hardcoded_decomposition_file: decomposition_override.json
+
 # Minimum cosine-similarity threshold for reference papers
 # similarity_threshold: 0.1
 

@@ -103,6 +103,7 @@ class RunMetadata:
     """
 
     model: str = ""
+    decomposition_model: str = ""  # separate model used for Stage 2 (when set)
     input_source: str = ""
     timestamp: str = ""
     total_runtime_seconds: float = 0.0
@@ -212,6 +213,8 @@ class NoveltyReport:
     idea_decomposition: IdeaDecomposition | None = None
     domain_references: list[DomainReference] = field(default_factory=list)
     similar_paper_annotations: list[SimilarityAnnotation] = field(default_factory=list)
+    # Maps paper_id → primary source label ("user", "paper-cited", "online", "domain")
+    ref_sources: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -682,6 +685,7 @@ class NoveltyEvaluator:
             idea_decomposition=idea_decomp,
             domain_references=domain_refs,
             similar_paper_annotations=annotations,
+            ref_sources=dict(ctx.ref_sources),
         )
 
     # ------------------------------------------------------------------

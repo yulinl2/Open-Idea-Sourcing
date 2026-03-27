@@ -1112,7 +1112,7 @@ class TestOnlineSearchIntegration:
 ))
         call_count = {"n": 0}
 
-        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None):
+        def tracking_search(self_obj, title, abstract="", queries=None):
             call_count["n"] += 1
             return []  # empty so the rest of the pipeline is unaffected
 
@@ -1141,7 +1141,7 @@ class TestOnlineSearchIntegration:
 ))
         call_count = {"n": 0}
 
-        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None):
+        def tracking_search(self_obj, title, abstract="", queries=None):
             call_count["n"] += 1
             return []
 

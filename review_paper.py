@@ -71,7 +71,7 @@ MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MiB safety limit for downloads
 _BUNDLED_REFERENCES = Path(__file__).resolve().parent / "data" / "references.json"
 
 from open_idea_sourcing import __version__
-from open_idea_sourcing.novelty_evaluator import NoveltyEvaluator, PipelineContext, PipelineJob, RunMetadata
+from open_idea_sourcing.novelty_evaluator import IdeaDecomposition, NoveltyEvaluator, PipelineContext, PipelineJob, RunMetadata
 from open_idea_sourcing.online_search import OnlineReferenceSearch, generate_search_queries
 from open_idea_sourcing.paper_parser import PaperParser
 from open_idea_sourcing.reference_store import ReferenceStore
@@ -128,6 +128,24 @@ def _normalise_arxiv_url(url: str) -> str:
     if m:
         return f"{m.group(1)}/pdf/{m.group(2)}"
     return url
+
+
+def _count_tree_depth(node: dict | None) -> int:
+    """Return the maximum depth of a concept tree node dict."""
+    if not node:
+        return 0
+    children = node.get("children") or []
+    if not children:
+        return 1
+    return 1 + max(_count_tree_depth(c) for c in children)
+
+
+def _count_tree_nodes(node: dict | None) -> int:
+    """Return the total node count of a concept tree."""
+    if not node:
+        return 0
+    children = node.get("children") or []
+    return 1 + sum(_count_tree_nodes(c) for c in children)
 
 
 def _extract_arxiv_id(source: str) -> str:
@@ -483,6 +501,30 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--decomposition-mode",
+        metavar="MODE",
+        default=os.environ.get("DECOMPOSITION_MODE", "llm"),
+        choices=["llm", "hardcoded"],
+        help=(
+            "Stage 2 decomposition strategy. 'llm' (default) uses the LLM to "
+            "generate the concept tree. 'hardcoded' loads a fixed concept tree "
+            "from --hardcoded-decomposition-file, bypassing the LLM entirely. "
+            "Useful for ablation studies. "
+            "(DECOMPOSITION_MODE env var)"
+        ),
+    )
+    parser.add_argument(
+        "--hardcoded-decomposition-file",
+        metavar="FILE",
+        default=os.environ.get("HARDCODED_DECOMPOSITION_FILE", ""),
+        help=(
+            "Path to a JSON file containing a pre-built IdeaDecomposition "
+            "object (fields: core_concept, concept_tree). Required when "
+            "--decomposition-mode=hardcoded. "
+            "(HARDCODED_DECOMPOSITION_FILE env var)"
+        ),
+    )
+    parser.add_argument(
         "--llm-parser",
         action="store_true",
         default=bool(int(os.environ.get("LLM_PARSER", "0"))),
@@ -629,11 +671,13 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         # loaded and merged on top so that the full combined corpus is
         # available to the similarity search.
         store = ReferenceStore()
+        _user_refs_count = 0
         if args.references != "" and not args.no_user_refs:
             if _BUNDLED_REFERENCES.exists():
                 store.load(_BUNDLED_REFERENCES, source="user")
+                _user_refs_count = len(store)
                 print(
-                    f"Loaded {len(store)} user reference(s) from"
+                    f"Loaded {_user_refs_count} user reference(s) from"
                     f" {_BUNDLED_REFERENCES.name}",
                     file=sys.stderr,
                 )
@@ -643,7 +687,9 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             ref_path = Path(args.references)
             if ref_path.exists():
                 print(f"Loading reference store: {ref_path} ...", file=sys.stderr)
+                _before = len(store)
                 store.load(ref_path, source="user")
+                _user_refs_count += len(store) - _before
             else:
                 print(
                     f"Warning: reference file not found: {ref_path}", file=sys.stderr
@@ -676,18 +722,58 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         print("Decomposing paper idea ...", file=sys.stderr)
         t0 = time.monotonic()
         _decomp_raw: dict[str, str] = {}
-        try:
-            idea_decomp = evaluator.decompose_idea(paper, _decomp_raw)
-        except RuntimeError as exc:
-            return _fail(f"idea decomposition failed: {exc}", args.format)
+
+        # Support hardcoded decomposition mode for ablation studies.
+        _decomp_mode = getattr(args, "decomposition_mode", "llm") or "llm"
+        if _decomp_mode == "hardcoded":
+            _hdc_file = getattr(args, "hardcoded_decomposition_file", "") or ""
+            if not _hdc_file:
+                return _fail(
+                    "--decomposition-mode=hardcoded requires --hardcoded-decomposition-file",
+                    args.format,
+                )
+            import json as _json
+            _hdc_path = Path(_hdc_file)
+            if not _hdc_path.exists():
+                return _fail(
+                    f"Hardcoded decomposition file not found: {_hdc_file}", args.format
+                )
+            try:
+                _hdc_data = _json.loads(_hdc_path.read_text(encoding="utf-8"))
+                idea_decomp = IdeaDecomposition(
+                    core_concept=_hdc_data.get("core_concept", ""),
+                    concept_tree=_hdc_data.get("concept_tree"),
+                )
+                print(
+                    f"  Loaded hardcoded decomposition from {_hdc_path.name}.",
+                    file=sys.stderr,
+                )
+            except Exception as exc:
+                return _fail(
+                    f"Failed to load hardcoded decomposition: {exc}", args.format
+                )
+        else:
+            try:
+                idea_decomp = evaluator.decompose_idea(paper, _decomp_raw)
+            except RuntimeError as exc:
+                return _fail(f"idea decomposition failed: {exc}", args.format)
         decomp_duration = round(time.monotonic() - t0, 2)
         stage_runtimes["decomposition"] = decomp_duration
         ctx.idea_decomposition = idea_decomp
         ctx.raw_llm_responses.update(_decomp_raw)
+        # Print decomposition summary with core concept and tree depth.
+        _tree = idea_decomp.concept_tree
+        _depth = _count_tree_depth(_tree) if _tree else 0
+        _nodes = _count_tree_nodes(_tree) if _tree else 0
         print(
-            f"  Decomposed: {'concept tree' if idea_decomp.concept_tree else 'core concept only'}.",
+            f"  Decomposed: core concept = {idea_decomp.core_concept!r}",
             file=sys.stderr,
         )
+        if _tree:
+            print(
+                f"  Concept tree: {_nodes} node(s), depth {_depth}.",
+                file=sys.stderr,
+            )
 
         # --- Stage 3 — Online reference search (Retrieve) ---
         # This stage runs after parsing (Stage 1) and decomposition (Stage 2),
@@ -697,7 +783,9 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         online_papers_count = 0
         online_duration = 0.0
         online_papers: list = []
+        cited_papers: list = []
         search_queries: list[str] = []
+        online_searcher: OnlineReferenceSearch | None = None
         arxiv_id = _extract_arxiv_id(paper_source)
         if not args.no_online_search:
             print(
@@ -730,10 +818,29 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 max_results=args.top_k * 2,
                 min_year=args.since_year,
             )
+
+            # Phase 1 — paper's own citation list (depth signal).
+            # Runs separately from keyword search so each group gets its own
+            # provenance tag ("paper-cited" vs "online").
+            cited_papers: list = []
+            if not args.no_paper_cited_refs:
+                cited_papers = online_searcher.fetch_citations(
+                    title=paper.title,
+                    arxiv_id=arxiv_id,
+                )
+                for ref_paper in cited_papers:
+                    store.add(ref_paper, source="paper-cited")
+                print(
+                    f"  Loaded {len(cited_papers)} paper-cited reference(s).",
+                    file=sys.stderr,
+                )
+            else:
+                print("  Skipping paper-cited refs (--no-paper-cited-refs).", file=sys.stderr)
+
+            # Phase 2 + 3 — keyword / conceptual search (breadth).
             online_papers = online_searcher.search(
                 paper.title,
                 paper.abstract,
-                arxiv_id=arxiv_id if not args.no_paper_cited_refs else "",
                 queries=search_queries or None,
             )
             for ref_paper in online_papers:
@@ -744,7 +851,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             ctx.online_papers = online_papers
             ctx.search_queries = search_queries
             print(
-                f"  Found {online_papers_count} related paper(s) online.",
+                f"  Found {online_papers_count} keyword-matched paper(s) online.",
                 file=sys.stderr,
             )
 
@@ -756,6 +863,11 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         sim_duration = round(time.monotonic() - t0, 2)
         stage_runtimes["similarity"] = sim_duration
         ctx.similar_papers = similar
+        # Populate ref_sources from the store so downstream stages and the
+        # report can display provenance tags for each similar paper.
+        ctx.ref_sources = {
+            p.id: store.get_source(p.id) for p in store.all_papers()
+        }
 
         # Build descriptive output summary: list top matched titles with scores.
         if similar:
@@ -841,6 +953,20 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             if (hasattr(args, "decomposition_model") and args.decomposition_model)
             else args.model
         )
+        _decomp_mode_label = getattr(args, "decomposition_mode", "llm") or "llm"
+        if _decomp_mode_label == "hardcoded":
+            _decomp_model_label = "hardcoded"
+        # Build decomposition detail — core concept + tree depth/size.
+        _tree = idea_decomp.concept_tree
+        _tree_depth = _count_tree_depth(_tree) if _tree else 0
+        _tree_nodes = _count_tree_nodes(_tree) if _tree else 0
+        _decomp_detail_parts = [
+            f"**Core concept:** {idea_decomp.core_concept}",
+        ]
+        if _tree:
+            _decomp_detail_parts.append(
+                f"**Concept tree:** {_tree_nodes} node(s), depth {_tree_depth}"
+            )
         early_jobs: list[PipelineJob] = [
             PipelineJob(
                 name="Parse paper",
@@ -858,17 +984,38 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 duration_s=decomp_duration,
                 input_summary="paper content",
                 output_summary="concept tree" if idea_decomp.concept_tree else "core concept only",
+                detail="\n".join(_decomp_detail_parts),
+            ),
+            PipelineJob(
+                name="Load user references",
+                agent="ReferenceStore",
+                offset_s=round(parse_duration, 3),
+                duration_s=0.0,
+                input_summary="data/references.json" if not args.no_user_refs else "skipped",
+                output_summary=(
+                    f"{_user_refs_count} ref(s) loaded"
+                    if not args.no_user_refs
+                    else "skipped (--no-user-refs)"
+                ),
             ),
         ]
+        if not args.no_online_search and not args.no_paper_cited_refs:
+            _cited_source = f"arXiv:{arxiv_id}" if arxiv_id else f'title="{paper.title[:40]}"'
+            early_jobs.append(
+                PipelineJob(
+                    name="Load paper-cited references",
+                    agent="SemanticScholar API",
+                    offset_s=round(parse_duration + decomp_duration, 3),
+                    duration_s=0.0,
+                    input_summary=_cited_source,
+                    output_summary=f"{len(cited_papers)} ref(s) loaded" if not args.no_online_search else "skipped",
+                )
+            )
         if not args.no_online_search:
             # Short table cell summary (queries in detail section below).
             _qword = "query" if len(search_queries) == 1 else "queries"
-            if arxiv_id and search_queries:
-                _search_input = f"arXiv:{arxiv_id} + {len(search_queries)} LLM {_qword}"
-            elif search_queries:
+            if search_queries:
                 _search_input = f"{len(search_queries)} LLM {_qword}"
-            elif arxiv_id:
-                _search_input = f"arXiv:{arxiv_id}"
             else:
                 _search_input = f'title="{paper.title}"'
 
@@ -884,12 +1031,12 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 "**Queries used:**",
                 _q_lines,
                 "",
-                f"**Fetched papers ({online_papers_count}):**",
+                f"**Keyword-matched papers ({online_papers_count}):**",
                 _fetched_lines,
             ]
             # Surface any HTTP / network errors so the user can tell why 0 papers
             # were returned (e.g. rate limiting, network unavailable).
-            _search_errors = online_searcher.last_errors if not args.no_online_search else []
+            _search_errors = online_searcher.last_errors if online_searcher is not None else []
             if _search_errors:
                 _error_lines = "\n".join(f"- ⚠️ {e}" for e in _search_errors)
                 _online_detail_parts += ["", "**Errors encountered:**", _error_lines]
@@ -902,7 +1049,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                     offset_s=round(stage_runtimes["parsing"] + decomp_duration, 3),
                     duration_s=online_duration,
                     input_summary=_search_input,
-                    output_summary=f"{online_papers_count} paper(s) fetched",
+                    output_summary=f"{online_papers_count} keyword paper(s) fetched",
                     detail=_online_detail,
                 )
             )
@@ -1015,6 +1162,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         # inside evaluate() as each LLM call completes.
         run_metadata = RunMetadata(
             model=args.model,
+            decomposition_model=getattr(args, "decomposition_model", "") or "",
             input_source=paper_source,
             timestamp=timestamp,
             stage_runtimes=stage_runtimes,

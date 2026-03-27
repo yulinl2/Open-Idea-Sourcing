@@ -497,7 +497,7 @@ class TestOnlineReferenceSearchWithArxivId:
         return json.dumps({"data": data}).encode()
 
     def test_arxiv_id_triggers_references_endpoint(self):
-        """When arxiv_id is given, the references endpoint must be called."""
+        """fetch_citations with arxiv_id must call the /references endpoint."""
         refs_body = self._make_ref_response(["r1", "r2", "r3", "r4", "r5"])
         search_body = self._make_search_response(["k1"])
         captured_urls = []
@@ -510,14 +510,14 @@ class TestOnlineReferenceSearchWithArxivId:
 
         searcher = OnlineReferenceSearch(max_results=5)
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
-            papers = searcher.search("Some Title", arxiv_id="2006.06138")
+            papers = searcher.fetch_citations(arxiv_id="2006.06138")
 
         assert any("/references" in u for u in captured_urls)
-        # references (5) + keyword (1 new) capped at max_results=5
-        assert len(papers) <= 5
+        # fetch_citations returns all found references (not capped at max_results)
+        assert len(papers) == 5
 
     def test_references_and_keyword_both_run(self):
-        """Both references endpoint and keyword search always run when arxiv_id is given."""
+        """fetch_citations + search together return both depth and breadth results."""
         refs_body = self._make_ref_response(["r1", "r2", "r3", "r4", "r5"])
         keyword_body = self._make_search_response(["k1", "k2"])
         call_n = {"n": 0}
@@ -530,16 +530,17 @@ class TestOnlineReferenceSearchWithArxivId:
 
         searcher = OnlineReferenceSearch(max_results=10)
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
-            papers = searcher.search("Title", arxiv_id="2006.06138")
+            cited = searcher.fetch_citations(arxiv_id="2006.06138")
+            keyword = searcher.search("Title")
 
-        # Both references endpoint AND keyword search should have fired
         assert call_n["n"] >= 2
-        ids = {p.id for p in papers}
-        assert "r1" in ids  # from references
-        assert "k1" in ids  # from keyword search
+        cited_ids = {p.id for p in cited}
+        keyword_ids = {p.id for p in keyword}
+        assert "r1" in cited_ids  # from references
+        assert "k1" in keyword_ids  # from keyword search
 
     def test_keyword_search_supplements_references(self):
-        """keyword search always runs alongside references and results are merged."""
+        """keyword search always runs alongside citations and results are merged."""
         sparse_refs = self._make_ref_response(["r1"])
         keyword_results = self._make_search_response(["k1", "k2", "k3"])
         call_n = {"n": 0}
@@ -552,12 +553,12 @@ class TestOnlineReferenceSearchWithArxivId:
 
         searcher = OnlineReferenceSearch(max_results=5)
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
-            papers = searcher.search("Title", arxiv_id="2006.06138")
+            cited = searcher.fetch_citations(arxiv_id="2006.06138")
+            keyword = searcher.search("Title")
 
-        assert call_n["n"] >= 2  # references + keyword query
-        ids = {p.id for p in papers}
-        assert "r1" in ids
-        assert "k1" in ids
+        all_ids = {p.id for p in cited} | {p.id for p in keyword}
+        assert "r1" in all_ids
+        assert "k1" in all_ids
 
     def test_no_arxiv_id_skips_references_endpoint(self):
         """Without an arXiv ID, no arXiv-format references endpoint is called.
@@ -581,7 +582,7 @@ class TestOnlineReferenceSearchWithArxivId:
         assert len(papers) == 2
 
     def test_references_endpoint_error_falls_back_to_keyword(self):
-        """If the references endpoint fails, keyword search still runs."""
+        """If fetch_citations fails, search() (keyword) still works independently."""
         keyword_body = self._make_search_response(["k1", "k2"])
         call_n = {"n": 0}
 
@@ -593,8 +594,12 @@ class TestOnlineReferenceSearchWithArxivId:
 
         searcher = OnlineReferenceSearch(max_results=5)
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
-            papers = searcher.search("Title", arxiv_id="2006.06138")
+            # fetch_citations fails gracefully
+            cited = searcher.fetch_citations(arxiv_id="2006.06138")
+            # search (keyword) still works
+            papers = searcher.search("Title")
 
+        assert len(cited) == 0  # references call failed
         assert len(papers) == 2
         assert papers[0].id == "k1"
 
@@ -853,10 +858,10 @@ class TestLookupPaperIdByTitle:
 
 
 class TestSearchAggregatesAllSources:
-    """Verify that search() calls depth-signal for both arXiv and non-arXiv papers."""
+    """Verify that fetch_citations() handles both arXiv and non-arXiv papers."""
 
     def test_non_arxiv_paper_triggers_title_lookup(self):
-        """When no arxiv_id, _lookup_paper_id_by_title should be called."""
+        """When no arxiv_id, fetch_citations uses _lookup_paper_id_by_title."""
         searcher = OnlineReferenceSearch()
         lookup_calls = []
         def fake_lookup(title):
@@ -864,8 +869,7 @@ class TestSearchAggregatesAllSources:
             return None  # no S2 ID found — depth signal skipped
 
         searcher._lookup_paper_id_by_title = fake_lookup
-        searcher._query = lambda q: []
-        searcher.search(title="My non-arXiv paper", abstract="")
+        searcher.fetch_citations(title="My non-arXiv paper")
         assert len(lookup_calls) == 1
         assert "My non-arXiv paper" in lookup_calls[0]
 
@@ -879,8 +883,7 @@ class TestSearchAggregatesAllSources:
 
         searcher._lookup_paper_id_by_title = fake_lookup
         searcher._fetch_references = lambda paper_id: []
-        searcher._query = lambda q: []
-        searcher.search(title="My arXiv paper", abstract="", arxiv_id="2006.12345")
+        searcher.fetch_citations(title="My arXiv paper", arxiv_id="2006.12345")
         assert len(lookup_calls) == 0
 
 

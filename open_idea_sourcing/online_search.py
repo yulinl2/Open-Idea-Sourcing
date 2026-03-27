@@ -223,59 +223,35 @@ class OnlineReferenceSearch:
     # Public API
     # ------------------------------------------------------------------
 
-    def search(
+    def fetch_citations(
         self,
-        title: str,
-        abstract: str = "",
+        title: str = "",
         arxiv_id: str = "",
-        queries: list[str] | None = None,
     ) -> list[ReferencePaper]:
-        """Return papers related to the submitted paper.
+        """Fetch papers cited by the submitted paper (Phase 1 — depth signal).
 
-        Strategy
-        --------
-        1. **arXiv references** (when *arxiv_id* is given): fetch the paper's
-           reference list from Semantic Scholar's ``/paper/arXiv:{id}/references``
-           endpoint.  These are the papers the authors cited — depth signal for
-           detecting duplicates and near-equivalent prior work.
-        2. **Conceptual keyword search** (breadth): when LLM-generated *queries*
-           are provided, each query is issued independently against
-           ``/paper/search``; results are merged.  This surfaces work that is
-           conceptually equivalent to the submitted paper even when the wording
-           differs.  When *queries* is *None* or empty, the raw *title* is used
-           as a single fallback query.
-        3. **Abstract fallback** (when both above are sparse): an additional
-           keyword query derived from the opening of *abstract*.
-
-        All network and parsing errors are swallowed; on failure the method
-        returns whatever partial results have been collected so far.
+        For arXiv papers, uses the dedicated ``/paper/arXiv:{id}/references``
+        endpoint.  For non-arXiv papers, falls back to a Semantic Scholar
+        title lookup to find the S2 paper ID so the references endpoint can
+        still be called.  Returns an empty list when neither identifier can be
+        resolved.
 
         Parameters
         ----------
         title:
-            Title of the paper being evaluated.
-        abstract:
-            Abstract text used as a last-resort fallback query.  May be empty.
+            Title of the paper (used for non-arXiv title-lookup fallback).
         arxiv_id:
-            arXiv identifier (e.g. ``"2006.06138"``).  When supplied,
-            the references endpoint runs in addition to keyword queries.
-        queries:
-            LLM-generated conceptual queries (from :func:`generate_search_queries`).
-            When provided these replace the title-based keyword search.
+            arXiv identifier (e.g. ``"2006.06138"``).  When supplied, the arXiv
+            endpoint is used directly without a title lookup.
 
         Returns
         -------
         list[ReferencePaper]
-            Deduplicated list of reference papers (references first,
-            then keyword matches), capped at *max_results*.
+            All papers found in the reference list of the submitted paper.
+            Not capped at *max_results* — callers receive the full citation list.
         """
-        results: dict[str, ReferencePaper] = {}
         self._last_errors = []
-
-        # Phase 1: paper-specific references (depth — papers the authors cited).
-        # For arXiv papers use the dedicated arXiv endpoint; for non-arXiv papers
-        # fall back to Semantic Scholar title lookup to find the S2 paper ID so
-        # the references endpoint can still be called.
+        results: dict[str, ReferencePaper] = {}
         if arxiv_id:
             for paper in self._fetch_references(f"arXiv:{arxiv_id}"):
                 results[paper.id] = paper
@@ -284,6 +260,52 @@ class OnlineReferenceSearch:
             if s2_id:
                 for paper in self._fetch_references(s2_id):
                     results[paper.id] = paper
+        return list(results.values())
+
+    def search(
+        self,
+        title: str,
+        abstract: str = "",
+        queries: list[str] | None = None,
+    ) -> list[ReferencePaper]:
+        """Return papers related to the submitted paper via keyword search.
+
+        Performs conceptual/keyword search only (Phase 2 + Phase 3).  To also
+        load papers cited by the submitted paper, call :meth:`fetch_citations`
+        separately so each group can be stored with its own provenance tag.
+
+        Strategy
+        --------
+        1. **Conceptual keyword search** (breadth): when LLM-generated *queries*
+           are provided, each query is issued independently against
+           ``/paper/search``; results are merged.  This surfaces work that is
+           conceptually equivalent to the submitted paper even when the wording
+           differs.  When *queries* is *None* or empty, the raw *title* is used
+           as a single fallback query.
+        2. **Abstract fallback** (when above is sparse): an additional keyword
+           query derived from the opening of *abstract*.
+
+        All network and parsing errors are swallowed; on failure the method
+        returns whatever partial results have been collected so far.
+
+        Parameters
+        ----------
+        title:
+            Title of the paper being evaluated (used as fallback query when
+            *queries* is empty).
+        abstract:
+            Abstract text used as a last-resort fallback query.  May be empty.
+        queries:
+            LLM-generated conceptual queries (from :func:`generate_search_queries`).
+            When provided these replace the title-based keyword search.
+
+        Returns
+        -------
+        list[ReferencePaper]
+            Deduplicated list of keyword-matched papers, capped at *max_results*.
+        """
+        results: dict[str, ReferencePaper] = {}
+        self._last_errors = []
 
         # Phase 2: conceptual keyword search (breadth).
         # Use LLM-generated queries when available; fall back to the raw title.
@@ -292,7 +314,7 @@ class OnlineReferenceSearch:
             for paper in self._query(q):
                 results.setdefault(paper.id, paper)
 
-        # Phase 3: abstract fallback when both above are sparse.
+        # Phase 3: abstract fallback when keyword search is sparse.
         if len(results) < max(1, self._max_results // 2) and abstract:
             fallback_query = _extract_query_from_abstract(abstract)
             if fallback_query:
