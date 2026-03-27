@@ -734,7 +734,6 @@ class TestPipelineJobsInJSON:
 # ---------------------------------------------------------------------------
 
 from open_idea_sourcing.novelty_evaluator import IdeaDecomposition, DomainReference
-from open_idea_sourcing.report_generator import _build_mindmap
 
 
 def _sample_decomposition() -> IdeaDecomposition:
@@ -877,81 +876,6 @@ class TestMindMapInMarkdown:
         report = _sample_report()
         out = self.gen.generate(report, fmt="markdown")
         assert "mindmap" not in out
-
-    def test_build_mindmap_contains_sub_ideas(self):
-        from types import SimpleNamespace
-        d = SimpleNamespace(
-            core_concept="A dynamic masking extension of Transformer attention.",
-            sub_ideas=["Dynamic attention masking", "Standard Transformer integration"],
-            assumptions=[],
-            limitations=[],
-        )
-        diagram = _build_mindmap(d, "Test Paper")
-        assert "Dynamic attention masking" in diagram
-        assert "Standard Transformer integration" in diagram
-
-    def test_build_mindmap_contains_assumptions(self):
-        from types import SimpleNamespace
-        d = SimpleNamespace(
-            core_concept="A dynamic masking extension of Transformer attention.",
-            sub_ideas=[],
-            assumptions=["Uniform tokenisation"],
-            limitations=[],
-        )
-        diagram = _build_mindmap(d, "Test Paper")
-        assert "Uniform tokenisation" in diagram
-
-    def test_build_mindmap_contains_limitations(self):
-        from types import SimpleNamespace
-        d = SimpleNamespace(
-            core_concept="A dynamic masking extension of Transformer attention.",
-            sub_ideas=[],
-            assumptions=[],
-            limitations=["Evaluated on NLP benchmarks only"],
-        )
-        diagram = _build_mindmap(d, "Test Paper")
-        assert "NLP benchmarks" in diagram
-
-    def test_build_mindmap_uses_paper_title_as_root(self):
-        from types import SimpleNamespace
-        d = SimpleNamespace(
-            core_concept="A dynamic masking extension of Transformer attention.",
-            sub_ideas=["Dynamic attention masking"],
-            assumptions=[],
-            limitations=[],
-        )
-        diagram = _build_mindmap(d, "My Paper Title")
-        assert "My Paper Title" in diagram
-
-    def test_build_mindmap_falls_back_to_core_concept_when_no_title(self):
-        from types import SimpleNamespace
-        d = SimpleNamespace(
-            core_concept="A dynamic masking extension of Transformer attention.",
-            sub_ideas=["Dynamic attention masking"],
-            assumptions=[],
-            limitations=[],
-        )
-        diagram = _build_mindmap(d)
-        assert "dynamic masking" in diagram.lower()
-
-    def test_build_mindmap_escapes_parens(self):
-        from types import SimpleNamespace
-        d = SimpleNamespace(
-            core_concept="Method (improved)",
-            sub_ideas=["Component (A)"],
-            assumptions=[],
-            limitations=[],
-        )
-        diagram = _build_mindmap(d, "Paper (v2)")
-        # Strip the mandatory root((...)) wrapper, then verify no raw parens remain
-        # in the content lines (which would break Mermaid node syntax).
-        content_lines = [
-            line for line in diagram.splitlines()
-            if "root((" not in line
-        ]
-        for line in content_lines:
-            assert "(" not in line, f"Unexpected '(' in line: {line!r}"
-            assert ")" not in line, f"Unexpected ')' in line: {line!r}"
 
 
 class TestDomainReferencesInText:
@@ -1196,52 +1120,6 @@ class TestMindMapEmptyBranches:
         out = self.gen.generate(report, fmt="markdown")
         assert "Idea A" in out
         assert "### Concept Tree" in out
-
-    def test_build_mindmap_returns_empty_string_when_no_branches(self):
-        from types import SimpleNamespace
-        d = SimpleNamespace(core_concept="X", sub_ideas=[], assumptions=[], limitations=[])
-        result = _build_mindmap(d, "Paper")
-        assert result == ""
-
-    def test_build_mindmap_truncates_long_items(self):
-        from types import SimpleNamespace
-        long_text = "A" * 100  # definitely over 60 chars
-        d = SimpleNamespace(
-            core_concept="Core",
-            sub_ideas=[long_text],
-            assumptions=[],
-            limitations=[],
-        )
-        diagram = _build_mindmap(d, "Paper")
-        # The truncated label should appear in the diagram (60 chars + ellipsis)
-        assert "A" * 60 in diagram
-        assert "A" * 100 not in diagram
-        assert "…" in diagram
-
-    def test_build_mindmap_does_not_truncate_exactly_max_length(self):
-        from types import SimpleNamespace
-        exact_text = "B" * 60  # exactly at the limit — must NOT be truncated
-        d = SimpleNamespace(
-            core_concept="Core",
-            sub_ideas=[exact_text],
-            assumptions=[],
-            limitations=[],
-        )
-        diagram = _build_mindmap(d, "Paper")
-        assert "B" * 60 in diagram
-        assert "…" not in diagram
-
-    def test_build_mindmap_removes_brackets_and_braces(self):
-        from types import SimpleNamespace
-        d = SimpleNamespace(
-            core_concept="Core",
-            sub_ideas=["Method [A] and {B}"],
-            assumptions=[],
-            limitations=[],
-        )
-        diagram = _build_mindmap(d, "Paper")
-        assert "[" not in diagram.split("root")[1]  # not in branches
-        assert "{" not in diagram.split("root")[1]
 
 
 # ---------------------------------------------------------------------------

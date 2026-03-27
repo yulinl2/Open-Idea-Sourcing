@@ -298,6 +298,7 @@ class TestParseSynthesisResponse:
 # Unit tests for NoveltyEvaluator
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 class TestNoveltyEvaluator:
     def _make_similar(self):
         return [
@@ -617,6 +618,7 @@ class TestParseDomainReferencesResponse:
 # NoveltyEvaluator — enriched fields
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 class TestNoveltyEvaluatorEnrichedReport:
     def test_evaluate_returns_idea_decomposition(self):
         evaluator = NoveltyEvaluator(llm=_make_full_llm())
@@ -654,6 +656,7 @@ class TestNoveltyEvaluatorEnrichedReport:
 # NoveltyEvaluator._decompose_idea / _find_domain_references (isolated)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 class TestDecomposeIdeaMethod:
     def test_calls_llm_once(self):
         calls = []
@@ -687,6 +690,7 @@ class TestDecomposeIdeaMethod:
         assert result.core_concept != ""
 
 
+@pytest.mark.slow
 class TestFindDomainReferencesMethod:
     def test_calls_llm_once(self):
         calls = []
@@ -786,6 +790,7 @@ class TestParseSimilarPaperAnnotationsResponse:
         assert "REF-3" in result[0].derivation_map["training recipe"]
 
 
+@pytest.mark.slow
 class TestAnnotateSimilarPapersMethod:
     def test_calls_llm_and_stores_in_raw(self):
         evaluator = NoveltyEvaluator(llm=lambda _: _ANNOTATION_RESPONSE)

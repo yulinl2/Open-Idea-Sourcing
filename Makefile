@@ -4,15 +4,16 @@ VENV_PYTHON := $(VENV)/bin/python
 ENV_FILE := .env
 ENV_TEMPLATE := .env.example
 
-.PHONY: help install test test-quiet clean
+.PHONY: help install test test-fast test-quiet clean
 
 help:
 	@echo "Available targets:"
-	@echo "  make install   Create .venv, bootstrap .env (if missing), install dependencies"
+	@echo "  make install    Create .venv, bootstrap .env (if missing), install dependencies"
 	@echo "  source .venv/bin/activate  Activate .venv in the current terminal (macOS/Linux)"
-	@echo "  make test      Run test suite (verbose)"
-	@echo "  make test-quiet Run test suite (quiet)"
-	@echo "  make clean     Remove caches and local venv"
+	@echo "  make test       Run full test suite (verbose)"
+	@echo "  make test-fast  Run only fast unit tests, skip @pytest.mark.slow classes"
+	@echo "  make test-quiet Run full test suite (quiet)"
+	@echo "  make clean      Remove caches and local venv"
 
 $(VENV_PYTHON):
 	$(PYTHON) -m venv --prompt .venv $(VENV)
@@ -29,6 +30,9 @@ install: $(VENV_PYTHON)
 	fi
 test: $(VENV_PYTHON)
 	$(VENV_PYTHON) -m pytest tests/ -v
+
+test-fast: $(VENV_PYTHON)
+	$(VENV_PYTHON) -m pytest tests/ -v -m "not slow"
 
 test-quiet: $(VENV_PYTHON)
 	$(VENV_PYTHON) -m pytest tests/ -q

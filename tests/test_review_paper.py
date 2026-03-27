@@ -13,7 +13,6 @@ import review_paper
 # Import the helpers we want to test
 from review_paper import _normalise_arxiv_url, _extract_arxiv_id, _download_paper, _build_llm, main
 from open_idea_sourcing.reference_store import ReferenceStore
-
 # ---------------------------------------------------------------------------
 # _normalise_arxiv_url
 # ---------------------------------------------------------------------------
@@ -153,6 +152,7 @@ class TestDownloadPaper:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestMainWithUrl:
     """Verify that main() accepts a URL, downloads the paper, and evaluates it."""
 
@@ -336,6 +336,7 @@ class TestBuildLlm:
                 _build_llm("gpt-4o")
 
 
+@pytest.mark.slow
 class TestMainLlmError:
     """Verify that main() handles LLM/API failures gracefully."""
 
@@ -400,6 +401,7 @@ class TestMainLlmError:
 
 
 
+@pytest.mark.slow
 class TestMainOutputFlag:
     """Verify that main() writes to a file when --output is given."""
 
@@ -468,6 +470,7 @@ class TestMainOutputFlag:
         assert "paper_title" in data
 
 
+@pytest.mark.slow
 class TestMainMetadata:
     """Verify that run metadata is attached to the generated report."""
 
@@ -581,6 +584,7 @@ class TestMainMetadata:
         assert data["metadata"]["code_version"] != ""
 
 
+@pytest.mark.slow
 class TestMainReportsDir:
     """Verify the reports directory auto-save behaviour."""
 
@@ -786,6 +790,7 @@ class TestPaperArgOptional:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestMainBatchMode:
     """Verify batch review behaviour via --papers-file."""
 
@@ -920,6 +925,7 @@ class TestMainBatchMode:
 _BUNDLED_REFS_PATH = Path(__file__).resolve().parent.parent / "data" / "references.json"
 
 
+@pytest.mark.slow
 class TestBundledReferences:
     """Verify the bundled data/references.json file and default-loading behaviour."""
 
@@ -968,6 +974,7 @@ _SAMPLE_TEXT = (
 )
 
 
+@pytest.mark.slow
 class TestBundledReferencesLoadedByDefault:
     """Verify that _review_one() always loads user references."""
 
@@ -1087,6 +1094,7 @@ _ONLINE_SEARCH_SAMPLE_TEXT = (
 )
 
 
+@pytest.mark.slow
 class TestOnlineSearchIntegration:
     """Verify that online reference search is invoked by default and can be
     disabled via --no-online-search."""
@@ -1251,6 +1259,7 @@ class TestSimilarityThresholdArg:
 # Stage 3 sub-stage toggle flags
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 class TestStageToggles:
     def test_no_user_refs_flag_parsed(self):
         from review_paper import _parse_args
