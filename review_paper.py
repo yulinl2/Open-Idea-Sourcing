@@ -130,21 +130,21 @@ def _normalise_arxiv_url(url: str) -> str:
     return url
 
 
-def _count_tree_depth(node: dict | None) -> int:
-    """Return the maximum depth of a concept tree node dict."""
+def _count_tree_depth(node: "ConceptNode | None") -> int:
+    """Return the maximum depth of a ConceptNode tree."""
     if not node:
         return 0
-    children = node.get("children") or []
+    children = node.children or []
     if not children:
         return 1
     return 1 + max(_count_tree_depth(c) for c in children)
 
 
-def _count_tree_nodes(node: dict | None) -> int:
-    """Return the total node count of a concept tree."""
+def _count_tree_nodes(node: "ConceptNode | None") -> int:
+    """Return the total node count of a ConceptNode tree."""
     if not node:
         return 0
-    children = node.get("children") or []
+    children = node.children or []
     return 1 + sum(_count_tree_nodes(c) for c in children)
 
 
