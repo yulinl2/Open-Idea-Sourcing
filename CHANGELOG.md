@@ -37,20 +37,23 @@ The `release.yml` workflow will:
 
 ---
 
-## [3.0.0] — 2026-03-27
+## [2.6.0] — 2026-03-27
 
 ### Added
 
-**Stage 4a: Quick-scan attention routing**
-- `SimilarityScan` dataclass — per-paper relevance score (0–10) and a one-sentence `headline`; produced before the 1-to-all annotation pass.
-- `_quick_scan_papers()` — scores every candidate reference against the concept tree in a single LLM call; papers scoring below a configurable floor (default 3) are filtered before the expensive annotation step.
-- `PipelineContext.attention_scan` — stores the per-paper scan results on the shared state bus for downstream inspection and ablation.
-- `NoveltyReport.attention_scan` — exposes scan results in the final report.
-- Prompt template: `open_idea_sourcing/prompts/quick_scan.txt`.
+**Stage 2: Hardcoded decomposition swap-in**
+- `--decomposition-mode hardcoded` + `--hardcoded-decomposition-file <path>` — bypasses the LLM for Stage 2 entirely; loads a JSON file with `core_concept` and `concept_tree` fields directly into the pipeline. Useful for ablation studies and reproducibility.
+- `decomposition_mode` and `hardcoded_decomposition_file` settable in `pipeline_config.yaml`.
+- `decomposition_model` field added to `RunMetadata` and displayed in the **Configuration** table of both Markdown and text reports when a separate Stage 2 model is configured.
 
 **Stage 3: `include_paper_citations` guard**
 - `OnlineReferenceSearch.search(include_paper_citations=True/False)` — when `False`, Phase 1 (both the arXiv-ID path and the title-lookup path) is entirely skipped; keyword search (Phase 2) still runs.
 - `--no-paper-cited-refs` CLI flag now reliably skips *all* references-endpoint calls via this parameter.
+- `fetch_citations(title, arxiv_id)` split out as a dedicated method on `OnlineReferenceSearch`, separate from `search()`. Cited papers are added to the reference store with `source="paper-cited"` (previously they were incorrectly tagged as `"online"`).
+
+**Report: merged Reference Papers table**
+- The separate "Most Similar Reference Papers" table and "Reference Index" section are merged into a single **Reference Papers** table with columns `Ref | Score | Source | Title | Year | Authors`.
+- Source tags (`user`, `paper-cited`, `online`, `domain`) shown inline per row.
 
 **Pipeline config: decomposition model field**
 - `pipeline_config.yaml` gains a `decomposition_model` field (default commented out to `o3`) so Stage 2 can be routed to a high-reasoning model without changing the general `model` setting.
@@ -64,6 +67,18 @@ The `release.yml` workflow will:
 **Wake-up workflow: label opt-in + cooldown**
 - `copilot-wakeup.yml` now requires the `copilot-wakeup` label on the PR — only PRs you explicitly opt in to will receive auto-wake-up comments.
 - 30-minute cooldown guard: skips posting if the bot already commented within the last 30 minutes, preventing comment spam on repeated timeouts.
+
+**Pipeline log improvements**
+- Stage 1: parser failure is logged with the specific error so operators know what went wrong.
+- Stage 2: core concept and concept tree depth/node count logged after decomposition.
+- Stage 3: per-source load counts (`user`, `paper-cited`, `online`, `domain`) logged separately; online search errors now report how each error was handled and how many fetches each query produced.
+
+### Fixed
+- `paper-cited` source tagging: cited papers were previously tagged `"online"` in the reference store. They are now correctly tagged `"paper-cited"`.
+- `get_source()` docstring corrected to distinguish "not tracked" (`""`) from "tracked with default label" (`"unknown"`).
+- `_render_concept_tree_ascii()` docstring corrected: "no children" → "no label AND no children".
+- `find_domain_references()` now correctly threads the `decomp` argument to `_find_domain_references()`; `{decomposition}` slot added to `domain_references.txt` prompt template.
+- `_count_tree_depth()` and `_count_tree_nodes()` were using dict API (`.get("children")`) on `ConceptNode` dataclass; fixed to use `.children` attribute — resolves `AttributeError` crash during pipeline log output.
 
 ### Removed
 - Dead `_build_mindmap()` function from `report_generator.py` (always returned `""` after `IdeaDecomposition` was slimmed in v2.4). Removed 10 associated tests.
@@ -338,8 +353,8 @@ The `release.yml` workflow will:
 ---
 
 <!-- Links are auto-maintained — update when a new version is tagged -->
-[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v3.0.0...HEAD
-[3.0.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.5.0...v3.0.0
+[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.2.0...v2.3.0
