@@ -1,0 +1,97 @@
+name: Debate CI
+
+# Dispatch + CI for the ip_debate (IP debate / reconstruction) pipeline.
+# This is a separate workflow from ci.yml — it drives the 0.x version series
+# and will eventually trigger debate pipeline runs instead of the baseline
+# novelty-evaluation pipeline.
+
+on:
+  push:
+    branches:
+      - "copilot/ip-debate-reconstruction-demo"
+      - "debate/**"
+  pull_request:
+    branches:
+      - "copilot/ip-debate-reconstruction-demo"
+      - "debate/**"
+  workflow_dispatch:
+    inputs:
+      paper_url:
+        description: "URL of the paper to run through the debate pipeline (e.g. https://arxiv.org/abs/2006.06138)"
+        required: false
+        default: ""
+      papers_file:
+        description: "NDJSON batch file name inside data/ listing papers (default: test_papers.ndjson) — used only when paper_url is empty"
+        required: false
+        default: "test_papers.ndjson"
+      debate_mode:
+        description: "Debate strategy: crewai | wasserstein | hybrid (default: crewai — not yet implemented)"
+        required: false
+        default: "crewai"
+      output_format:
+        description: "Report format: text | markdown | json (default: markdown)"
+        required: false
+        default: "markdown"
+
+jobs:
+  test:
+    name: Run tests (ip_debate scaffold)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run ip_debate smoke tests
+        run: python -m pytest tests/test_ip_debate.py -v
+
+      - name: Verify ip_debate version
+        run: python -c "import ip_debate; print('ip_debate', ip_debate.__version__)"
+
+  debate:
+    name: Run debate pipeline (manual trigger)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    needs: test
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run debate pipeline (stub)
+        env:
+          PAPER_URL: ${{ inputs.paper_url }}
+          PAPERS_FILE: ${{ inputs.papers_file }}
+          DEBATE_MODE: ${{ inputs.debate_mode }}
+          OUTPUT_FORMAT: ${{ inputs.output_format }}
+        run: |
+          echo "ip_debate v$(python -c 'import ip_debate; print(ip_debate.__version__)')"
+          echo "debate_mode  : ${DEBATE_MODE:-crewai}"
+          echo "output_format: ${OUTPUT_FORMAT:-markdown}"
+          if [ -n "$PAPER_URL" ]; then
+            echo "paper_url    : $PAPER_URL"
+          else
+            echo "papers_file  : data/${PAPERS_FILE:-test_papers.ndjson}"
+          fi
+          echo ""
+          echo "Pipeline not yet implemented (v0.0.0 stub) — dispatch infra verified."
