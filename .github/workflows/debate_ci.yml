@@ -78,20 +78,32 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Run debate pipeline (stub)
+      - name: Run debate pipeline
         env:
-          PAPER_URL: ${{ inputs.paper_url }}
-          PAPERS_FILE: ${{ inputs.papers_file }}
-          DEBATE_MODE: ${{ inputs.debate_mode }}
-          OUTPUT_FORMAT: ${{ inputs.output_format }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          echo "ip_debate v$(python -c 'import ip_debate; print(ip_debate.__version__)')"
-          echo "debate_mode  : ${DEBATE_MODE:-crewai}"
-          echo "output_format: ${OUTPUT_FORMAT:-markdown}"
-          if [ -n "$PAPER_URL" ]; then
-            echo "paper_url    : $PAPER_URL"
+          # Build the CLI args for ip_debate.run — the debate-track entrypoint.
+          # This is intentionally separate from review_paper.py (baseline CLI).
+          ARGS=""
+          if [ -n "${{ inputs.paper_url }}" ]; then
+            ARGS="--paper-url ${{ inputs.paper_url }}"
           else
-            echo "papers_file  : data/${PAPERS_FILE:-test_papers.ndjson}"
+            ARGS="--papers-file data/${{ inputs.papers_file || 'test_papers.ndjson' }}"
           fi
-          echo ""
-          echo "Pipeline not yet implemented (v0.0.0 stub) — dispatch infra verified."
+          ARGS="$ARGS --debate-mode ${{ inputs.debate_mode || 'crewai' }}"
+          ARGS="$ARGS --output-format ${{ inputs.output_format || 'markdown' }}"
+
+          echo "ip_debate v$(python -c 'import ip_debate; print(ip_debate.__version__)')"
+          echo "Calling: python -m ip_debate.run $ARGS"
+          # In v0.0.0 the pipeline raises NotImplementedError (exit 1).
+          # Treat that specific exit code as "stub — not yet built" and exit 0
+          # so the dispatch job doesn't block CI before the pipeline exists.
+          # Remove the `|| true` guard once the pipeline is implemented.
+          python -m ip_debate.run $ARGS 2>&1 | tee /tmp/debate_run.log; EXIT=${PIPESTATUS[0]}
+          if [ "$EXIT" -eq 0 ]; then
+            echo "Pipeline completed."
+          elif grep -q "NotImplementedError" /tmp/debate_run.log; then
+            echo "Pipeline stub — not yet implemented (v0.0.0). Skipping."
+          else
+            echo "Pipeline failed (exit $EXIT)." && exit "$EXIT"
+          fi
