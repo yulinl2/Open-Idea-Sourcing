@@ -103,3 +103,114 @@ class TestReferenceStore:
         self.store.load(str(path))
         assert self.store.get("existing") is not None
         assert self.store.get("from_file") is not None
+
+
+# ---------------------------------------------------------------------------
+# Source tracking
+# ---------------------------------------------------------------------------
+
+class TestReferenceStoreSourceTracking:
+    def test_add_with_source_label(self):
+        store = ReferenceStore()
+        paper = ReferencePaper(id="p1", title="Paper 1", abstract="")
+        store.add(paper, source="online")
+        assert store.get_source("p1") == "online"
+
+    def test_default_source_is_unknown(self):
+        store = ReferenceStore()
+        paper = ReferencePaper(id="p1", title="Paper 1", abstract="")
+        store.add(paper)
+        assert isinstance(store.get_source("p1"), str)
+        assert store.get_source("p1") == "unknown"
+
+    def test_get_source_missing_returns_empty(self):
+        store = ReferenceStore()
+        assert store.get_source("nonexistent") == ""
+
+    def test_load_tags_papers_with_source(self, tmp_path):
+        papers = [{"id": "p1", "title": "Paper 1", "abstract": "A.", "authors": [], "year": 2020}]
+        path = tmp_path / "refs.json"
+        import json
+        path.write_text(json.dumps(papers), encoding="utf-8")
+        store = ReferenceStore()
+        store.load(str(path), source="user")
+        assert store.get_source("p1") == "user"
+
+    def test_load_user_source_label(self, tmp_path):
+        papers = [{"id": "u1", "title": "User Paper", "abstract": "B.", "authors": [], "year": 2021}]
+        path = tmp_path / "user_refs.json"
+        import json
+        path.write_text(json.dumps(papers), encoding="utf-8")
+        store = ReferenceStore()
+        store.load(str(path), source="user")
+        assert store.get_source("u1") == "user"
+
+    def test_load_default_source_is_bundled(self, tmp_path):
+        papers = [{"id": "b1", "title": "Bundled Paper", "abstract": "C.", "authors": [], "year": 2019}]
+        path = tmp_path / "bundled_refs.json"
+        import json
+        path.write_text(json.dumps(papers), encoding="utf-8")
+        store = ReferenceStore()
+        store.load(str(path))
+        assert store.get_source("b1") == "user"
+
+    def test_remove_also_clears_source(self):
+        store = ReferenceStore()
+        paper = ReferencePaper(id="p1", title="Paper 1", abstract="")
+        store.add(paper, source="online")
+        store.remove("p1")
+        assert store.get_source("p1") == ""
+
+    def test_overwrite_updates_source(self):
+        # "user" has higher priority than "online", so adding with "online"
+        # after "user" should NOT demote the primary source.
+        store = ReferenceStore()
+        paper = ReferencePaper(id="p1", title="Paper 1", abstract="")
+        store.add(paper, source="user")
+        store.add(paper, source="online")
+        assert store.get_source("p1") == "user"
+
+    def test_priority_lower_source_does_not_overwrite_higher(self):
+        store = ReferenceStore()
+        paper = ReferencePaper(id="p1", title="Paper 1", abstract="")
+        store.add(paper, source="domain")
+        store.add(paper, source="online")
+        store.add(paper, source="paper-cited")
+        store.add(paper, source="user")
+        assert store.get_source("p1") == "user"
+
+    def test_priority_higher_source_wins_regardless_of_order(self):
+        store = ReferenceStore()
+        paper = ReferencePaper(id="p1", title="Paper 1", abstract="")
+        store.add(paper, source="online")
+        store.add(paper, source="paper-cited")
+        assert store.get_source("p1") == "paper-cited"
+
+    def test_get_all_sources_tracks_every_tag(self):
+        store = ReferenceStore()
+        paper = ReferencePaper(id="p1", title="Paper 1", abstract="")
+        store.add(paper, source="user")
+        store.add(paper, source="online")
+        store.add(paper, source="domain")
+        assert store.get_all_sources("p1") == {"user", "online", "domain"}
+
+    def test_get_all_sources_missing_returns_empty_set(self):
+        store = ReferenceStore()
+        assert store.get_all_sources("ghost") == set()
+
+    def test_remove_also_clears_all_sources(self):
+        store = ReferenceStore()
+        paper = ReferencePaper(id="p1", title="Paper 1", abstract="")
+        store.add(paper, source="user")
+        store.add(paper, source="online")
+        store.remove("p1")
+        assert store.get_all_sources("p1") == set()
+
+    def test_multiple_sources_tracked_independently(self):
+        store = ReferenceStore()
+        store.add(ReferencePaper(id="b1", title="B", abstract=""), source="user")
+        store.add(ReferencePaper(id="u1", title="U", abstract=""), source="user")
+        store.add(ReferencePaper(id="o1", title="O", abstract=""), source="online")
+        assert store.get_source("b1") == "user"
+        assert store.get_source("u1") == "user"
+        assert store.get_source("o1") == "online"

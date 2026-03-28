@@ -285,6 +285,7 @@ class TestOnlineReferenceSearchSearch:
             return _make_mock_response(body)
 
         searcher = OnlineReferenceSearch(max_results=5)
+        searcher._lookup_paper_id_by_title = lambda title: None  # isolate keyword phase
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
             papers = searcher.search(
                 "Sparse Title",
@@ -304,6 +305,7 @@ class TestOnlineReferenceSearchSearch:
             return _make_mock_response(body)
 
         searcher = OnlineReferenceSearch(max_results=5)
+        searcher._lookup_paper_id_by_title = lambda title: None  # isolate keyword phase
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
             papers = searcher.search("Rich Title", abstract="Some abstract.")
 
@@ -318,6 +320,7 @@ class TestOnlineReferenceSearchSearch:
             return _make_mock_response(resp1)
 
         searcher = OnlineReferenceSearch(max_results=5)
+        searcher._lookup_paper_id_by_title = lambda title: None  # isolate keyword phase
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
             papers = searcher.search("Any Title", abstract="")
 
@@ -494,7 +497,7 @@ class TestOnlineReferenceSearchWithArxivId:
         return json.dumps({"data": data}).encode()
 
     def test_arxiv_id_triggers_references_endpoint(self):
-        """When arxiv_id is given, the references endpoint must be called."""
+        """fetch_citations with arxiv_id must call the /references endpoint."""
         refs_body = self._make_ref_response(["r1", "r2", "r3", "r4", "r5"])
         search_body = self._make_search_response(["k1"])
         captured_urls = []
@@ -507,14 +510,14 @@ class TestOnlineReferenceSearchWithArxivId:
 
         searcher = OnlineReferenceSearch(max_results=5)
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
-            papers = searcher.search("Some Title", arxiv_id="2006.06138")
+            papers = searcher.fetch_citations(arxiv_id="2006.06138")
 
         assert any("/references" in u for u in captured_urls)
-        # references (5) + keyword (1 new) capped at max_results=5
-        assert len(papers) <= 5
+        # fetch_citations returns all found references (not capped at max_results)
+        assert len(papers) == 5
 
     def test_references_and_keyword_both_run(self):
-        """Both references endpoint and keyword search always run when arxiv_id is given."""
+        """fetch_citations + search together return both depth and breadth results."""
         refs_body = self._make_ref_response(["r1", "r2", "r3", "r4", "r5"])
         keyword_body = self._make_search_response(["k1", "k2"])
         call_n = {"n": 0}
@@ -527,16 +530,17 @@ class TestOnlineReferenceSearchWithArxivId:
 
         searcher = OnlineReferenceSearch(max_results=10)
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
-            papers = searcher.search("Title", arxiv_id="2006.06138")
+            cited = searcher.fetch_citations(arxiv_id="2006.06138")
+            keyword = searcher.search("Title")
 
-        # Both references endpoint AND keyword search should have fired
         assert call_n["n"] >= 2
-        ids = {p.id for p in papers}
-        assert "r1" in ids  # from references
-        assert "k1" in ids  # from keyword search
+        cited_ids = {p.id for p in cited}
+        keyword_ids = {p.id for p in keyword}
+        assert "r1" in cited_ids  # from references
+        assert "k1" in keyword_ids  # from keyword search
 
     def test_keyword_search_supplements_references(self):
-        """keyword search always runs alongside references and results are merged."""
+        """keyword search always runs alongside citations and results are merged."""
         sparse_refs = self._make_ref_response(["r1"])
         keyword_results = self._make_search_response(["k1", "k2", "k3"])
         call_n = {"n": 0}
@@ -549,15 +553,19 @@ class TestOnlineReferenceSearchWithArxivId:
 
         searcher = OnlineReferenceSearch(max_results=5)
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
-            papers = searcher.search("Title", arxiv_id="2006.06138")
+            cited = searcher.fetch_citations(arxiv_id="2006.06138")
+            keyword = searcher.search("Title")
 
-        assert call_n["n"] >= 2  # references + keyword query
-        ids = {p.id for p in papers}
-        assert "r1" in ids
-        assert "k1" in ids
+        all_ids = {p.id for p in cited} | {p.id for p in keyword}
+        assert "r1" in all_ids
+        assert "k1" in all_ids
 
     def test_no_arxiv_id_skips_references_endpoint(self):
-        """Without an arXiv ID only the keyword search endpoint is called."""
+        """Without an arXiv ID, no arXiv-format references endpoint is called.
+
+        Title lookup may trigger a generic S2-ID references call, but the
+        arXiv-prefixed ``/paper/arXiv:…/references`` path must not appear.
+        """
         keyword_body = self._make_search_response(["k1", "k2"])
         captured_urls = []
 
@@ -566,14 +574,15 @@ class TestOnlineReferenceSearchWithArxivId:
             return _make_mock_response(keyword_body)
 
         searcher = OnlineReferenceSearch(max_results=5)
+        searcher._lookup_paper_id_by_title = lambda title: None  # no S2 id found
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
             papers = searcher.search("Title With No ID")
 
-        assert not any("/references" in u for u in captured_urls)
+        assert not any("arXiv:" in u for u in captured_urls)
         assert len(papers) == 2
 
     def test_references_endpoint_error_falls_back_to_keyword(self):
-        """If the references endpoint fails, keyword search still runs."""
+        """If fetch_citations fails, search() (keyword) still works independently."""
         keyword_body = self._make_search_response(["k1", "k2"])
         call_n = {"n": 0}
 
@@ -585,8 +594,12 @@ class TestOnlineReferenceSearchWithArxivId:
 
         searcher = OnlineReferenceSearch(max_results=5)
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
-            papers = searcher.search("Title", arxiv_id="2006.06138")
+            # fetch_citations fails gracefully
+            cited = searcher.fetch_citations(arxiv_id="2006.06138")
+            # search (keyword) still works
+            papers = searcher.search("Title")
 
+        assert len(cited) == 0  # references call failed
         assert len(papers) == 2
         assert papers[0].id == "k1"
 
@@ -717,6 +730,7 @@ class TestOnlineReferenceSearchWithQueries:
             return _make_mock_response(self._make_search_response([]))
 
         searcher = OnlineReferenceSearch(max_results=10)
+        searcher._lookup_paper_id_by_title = lambda title: None  # isolate keyword phase
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
             searcher.search(
                 raw_title,
@@ -737,6 +751,7 @@ class TestOnlineReferenceSearchWithQueries:
             return _make_mock_response(self._make_search_response([pid]))
 
         searcher = OnlineReferenceSearch(max_results=10)
+        searcher._lookup_paper_id_by_title = lambda title: None  # isolate keyword phase
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
             papers = searcher.search(
                 "title",
@@ -806,3 +821,202 @@ class TestOnlineReferenceSearchWithQueries:
         assert len(searcher.last_errors) >= 1
         # The error entry should identify which query failed.
         assert any("causal inference" in e for e in searcher.last_errors)
+
+
+class TestLookupPaperIdByTitle:
+    def test_returns_paper_id_on_success(self):
+        mock_data = {"data": [{"paperId": "abc123", "title": "Some Paper"}]}
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(mock_data).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            searcher = OnlineReferenceSearch()
+            result = searcher._lookup_paper_id_by_title("Some Paper")
+        assert result == "abc123"
+
+    def test_returns_none_on_empty_results(self):
+        mock_data = {"data": []}
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(mock_data).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            searcher = OnlineReferenceSearch()
+            result = searcher._lookup_paper_id_by_title("Obscure Paper")
+        assert result is None
+
+    def test_returns_none_on_network_error(self):
+        import urllib.error
+        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("network down")):
+            searcher = OnlineReferenceSearch()
+            result = searcher._lookup_paper_id_by_title("Some Paper")
+        assert result is None
+        assert len(searcher.last_errors) == 1
+
+
+class TestSearchAggregatesAllSources:
+    """Verify that fetch_citations() handles both arXiv and non-arXiv papers."""
+
+    def test_non_arxiv_paper_triggers_title_lookup(self):
+        """When no arxiv_id, fetch_citations uses _lookup_paper_id_by_title."""
+        searcher = OnlineReferenceSearch()
+        lookup_calls = []
+        def fake_lookup(title):
+            lookup_calls.append(title)
+            return None  # no S2 ID found — depth signal skipped
+
+        searcher._lookup_paper_id_by_title = fake_lookup
+        searcher.fetch_citations(title="My non-arXiv paper")
+        assert len(lookup_calls) == 1
+        assert "My non-arXiv paper" in lookup_calls[0]
+
+    def test_arxiv_paper_does_not_trigger_title_lookup(self):
+        """When arxiv_id is present, title lookup must NOT be called."""
+        searcher = OnlineReferenceSearch()
+        lookup_calls = []
+        def fake_lookup(title):
+            lookup_calls.append(title)
+            return None
+
+        searcher._lookup_paper_id_by_title = fake_lookup
+        searcher._fetch_references = lambda paper_id: []
+        searcher.fetch_citations(title="My arXiv paper", arxiv_id="2006.12345")
+        assert len(lookup_calls) == 0
+
+
+class TestTemporalFilter:
+    def test_min_year_set_on_init(self):
+        searcher = OnlineReferenceSearch(min_year=2020)
+        assert searcher._min_year == 2020
+
+    def test_no_min_year_by_default(self):
+        searcher = OnlineReferenceSearch()
+        assert searcher._min_year is None
+
+    def test_query_includes_year_param(self):
+        """When min_year is set, the year= param should appear in the URL."""
+        urls_called = []
+        def fake_urlopen(req, timeout=None):
+            urls_called.append(req.full_url)
+            raise Exception("stop here")
+
+        searcher = OnlineReferenceSearch(min_year=2020)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            searcher._query("attention mechanism")
+        assert any("year=2020-" in u for u in urls_called)
+
+    def test_fetch_references_filters_by_year(self):
+        """Papers returned from _fetch_references older than min_year are dropped."""
+        mock_data = {
+            "data": [
+                {
+                    "citedPaper": {
+                        "paperId": "old1",
+                        "title": "Old Paper",
+                        "abstract": "",
+                        "year": 2015,
+                        "authors": [],
+                        "externalIds": {},
+                        "url": "",
+                    }
+                },
+                {
+                    "citedPaper": {
+                        "paperId": "new1",
+                        "title": "New Paper",
+                        "abstract": "",
+                        "year": 2022,
+                        "authors": [],
+                        "externalIds": {},
+                        "url": "",
+                    }
+                },
+            ]
+        }
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(mock_data).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            searcher = OnlineReferenceSearch(min_year=2020)
+            papers = searcher._fetch_references("arXiv:2001.12345")
+
+        assert len(papers) == 1
+        assert papers[0].id == "new1"
+
+    def test_since_year_arg_is_parseable(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text", "--since-year", "2020"])
+        assert args.since_year == 2020
+
+    def test_no_since_year_by_default(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text"])
+        assert args.since_year is None
+
+
+class TestHttpGetRetry:
+    def test_retries_on_429_then_succeeds(self):
+        """Should retry on HTTP 429 and return the result on the second attempt."""
+        import urllib.error
+        attempts = {"n": 0}
+        good_response = MagicMock()
+        good_response.read.return_value = b'{"data": []}'
+        good_response.__enter__ = lambda s: s
+        good_response.__exit__ = MagicMock(return_value=False)
+
+        def side_effect(req, timeout=None):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise urllib.error.HTTPError(
+                    url="http://x", code=429, msg="Too Many Requests",
+                    hdrs=None, fp=None
+                )
+            return good_response
+
+        with patch("urllib.request.urlopen", side_effect=side_effect), \
+             patch("open_idea_sourcing.online_search._time.sleep"):
+            searcher = OnlineReferenceSearch()
+            result = searcher._http_get("http://example.com/test", "test")
+        assert result == b'{"data": []}'
+        assert attempts["n"] == 2
+
+    def test_gives_up_after_max_retries(self):
+        """After _MAX_RETRIES failures, should return None and log an error."""
+        import urllib.error
+        from open_idea_sourcing.online_search import _MAX_RETRIES
+
+        def always_429(req, timeout=None):
+            raise urllib.error.HTTPError(
+                url="http://x", code=429, msg="Too Many Requests",
+                hdrs=None, fp=None
+            )
+
+        with patch("urllib.request.urlopen", side_effect=always_429), \
+             patch("open_idea_sourcing.online_search._time.sleep"):
+            searcher = OnlineReferenceSearch()
+            result = searcher._http_get("http://example.com/test", "test")
+        assert result is None
+        assert len(searcher.last_errors) == 1
+
+    def test_no_retry_on_404(self):
+        """Non-retryable errors (404) should fail immediately without retry."""
+        import urllib.error
+        calls = {"n": 0}
+
+        def raise_404(req, timeout=None):
+            calls["n"] += 1
+            raise urllib.error.HTTPError(
+                url="http://x", code=404, msg="Not Found",
+                hdrs=None, fp=None
+            )
+
+        with patch("urllib.request.urlopen", side_effect=raise_404):
+            searcher = OnlineReferenceSearch()
+            result = searcher._http_get("http://example.com/test", "test")
+        assert result is None
+        assert calls["n"] == 1  # no retry

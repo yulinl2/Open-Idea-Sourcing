@@ -25,6 +25,7 @@ from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .novelty_evaluator import (
+    ConceptNode,
     IdeaDecomposition,
     DomainReference,
     SimilarityAnnotation,
@@ -72,6 +73,14 @@ def _escape_table_cell(text: str) -> str:
     delimiters.
     """
     return text.replace('\n', ' ').replace('|', r'\|')
+
+
+def _concept_node_to_dict(node: ConceptNode) -> dict:
+    """Recursively serialise a :class:`ConceptNode` to a JSON-safe dict."""
+    return {
+        "label": node.label,
+        "children": [_concept_node_to_dict(c) for c in node.children],
+    }
 
 
 @lru_cache(maxsize=None)
@@ -227,6 +236,8 @@ class ReportGenerator:
             lines.append("  [Configuration]")
             if m.model:
                 lines.append(f"    Model       : {m.model}")
+            if getattr(m, "decomposition_model", ""):
+                lines.append(f"    Decomp model: {m.decomposition_model}")
             if m.input_source:
                 lines.append(f"    Input       : {m.input_source}")
             if m.code_version:
@@ -259,18 +270,12 @@ class ReportGenerator:
             d = r.idea_decomposition
             lines += ["IDEA DECOMPOSITION", "-" * 70]
             lines.append(f"  Core concept: {d.core_concept}")
-            if d.sub_ideas:
-                lines.append("  Sub-ideas:")
-                for i, item in enumerate(d.sub_ideas, 1):
-                    lines.append(f"    {i}. {item}")
-            if d.assumptions:
-                lines.append("  Assumptions:")
-                for i, item in enumerate(d.assumptions, 1):
-                    lines.append(f"    {i}. {item}")
-            if d.limitations:
-                lines.append("  Limitations:")
-                for i, item in enumerate(d.limitations, 1):
-                    lines.append(f"    {i}. {item}")
+            if d.concept_tree is not None:
+                tree_str = _render_concept_tree_ascii(d.concept_tree)
+                if tree_str:
+                    lines.append("  Concept tree:")
+                    for ln in tree_str.splitlines():
+                        lines.append(f"    {ln}")
             lines.append("")
 
         lines += [
@@ -293,27 +298,41 @@ class ReportGenerator:
             lines.append("")
 
         if r.similar_papers:
-            lines += ["MOST SIMILAR REFERENCE PAPERS", "-" * 70]
+            lines += ["REFERENCE PAPERS", "-" * 70]
             lines.append(
-                "  (Scores are TF-IDF cosine similarity, 0–1; "
-                "higher = more textual overlap)"
+                "  (Score: TF-IDF cosine similarity 0–1. Source: user/paper-cited/online/domain)"
             )
-            annotations_by_id = {a.paper_id: a for a in r.similar_paper_annotations}
-            for res in r.similar_papers:
+            for i, res in enumerate(r.similar_papers, 1):
                 p = res.paper
                 year = f" ({p.year})" if p.year else ""
-                lines.append(f"  [{res.score:.2f}] {p.title}{year}")
+                source_tag = r.ref_sources.get(p.id, "")
+                src_str = f" [{source_tag}]" if source_tag else ""
+                authors_str = (
+                    f" — {', '.join(p.authors[:2])}"
+                    + (" et al." if len(p.authors) > 2 else "")
+                    if p.authors
+                    else ""
+                )
+                lines.append(f"  REF-{i} [{res.score:.2f}]{src_str} {p.title}{year}{authors_str}")
                 if p.url:
                     lines.append(f"    URL: {p.url}")
-                ann = annotations_by_id.get(p.id)
-                if ann:
-                    if ann.overlap:
-                        lines.append(f"    Overlap    : {ann.overlap}")
-                    if ann.differences:
-                        lines.append(f"    Differences: {ann.differences}")
-                    if ann.derivation:
-                        lines.append(f"    Derivation : {ann.derivation}")
             lines.append("")
+
+            if r.similar_paper_annotations:
+                ann = r.similar_paper_annotations[0]
+                lines += ["DERIVATION ANALYSIS", "-" * 70]
+                if ann.derivation_map:
+                    lines.append("  Derivation map:")
+                    for component, refs in ann.derivation_map.items():
+                        refs_str = ", ".join(refs) if refs else "appears novel"
+                        lines.append(f"    - {component}: {refs_str}")
+                if ann.combination_analysis:
+                    lines.append(f"  Combination analysis: {ann.combination_analysis}")
+                if ann.novel_elements:
+                    lines.append("  Novel elements:")
+                    for item in ann.novel_elements:
+                        lines.append(f"    - {item}")
+                lines.append("")
 
         if r.domain_references:
             lines += ["MAIN DOMAIN REFERENCES", "-" * 70]
@@ -393,6 +412,8 @@ class ReportGenerator:
             config_rows = []
             if m.model:
                 config_rows.append(("Model", m.model))
+            if getattr(m, "decomposition_model", ""):
+                config_rows.append(("Decomposition model", m.decomposition_model))
             if m.input_source:
                 config_rows.append(("Input", m.input_source))
             if m.code_version:
@@ -490,32 +511,18 @@ class ReportGenerator:
                 f"**Core concept:** {d.core_concept}",
                 "",
             ]
-            if d.sub_ideas:
-                lines.append("**Sub-ideas:**")
-                lines.append("")
-                for item in d.sub_ideas:
-                    lines.append(f"- {item}")
-                lines.append("")
-            if d.assumptions:
-                lines.append("**Assumptions:**")
-                lines.append("")
-                for item in d.assumptions:
-                    lines.append(f"- {item}")
-                lines.append("")
-            if d.limitations:
-                lines.append("**Limitations:**")
-                lines.append("")
-                for item in d.limitations:
-                    lines.append(f"- {item}")
-                lines.append("")
-            mindmap_diagram = _build_mindmap(d, r.paper_title)
-            if mindmap_diagram:
-                lines += [
-                    "### Idea Mind Map",
-                    "",
-                    mindmap_diagram,
-                    "",
-                ]
+            # Concept tree (replaces Mermaid mindmap when available)
+            if d.concept_tree is not None:
+                tree_str = _render_concept_tree_ascii(d.concept_tree)
+                if tree_str:
+                    lines += [
+                        "### Concept Tree",
+                        "",
+                        "```",
+                        tree_str,
+                        "```",
+                        "",
+                    ]
 
         lines += [
             f"**Overall verdict:** {ov} **{r.overall_verdict}** "
@@ -549,62 +556,54 @@ class ReportGenerator:
 
         if r.similar_papers:
             lines += [
-                "## Most Similar Reference Papers",
+                "## Reference Papers",
                 "",
-                "> **Scoring method:** TF-IDF cosine similarity (0–1). "
-                "Higher scores indicate greater textual overlap between "
-                "the paper's key content and the reference.",
+                "> **Score:** TF-IDF cosine similarity (0–1). "
+                "Higher = more textual overlap with the submitted paper.",
                 "",
-                "| Score | Title | Year |",
-                "|-------|-------|------|",
+                "| Ref | Score | Source | Title | Year | Authors |",
+                "|-----|-------|--------|-------|------|---------|",
             ]
-            for res in r.similar_papers:
+            for i, res in enumerate(r.similar_papers, 1):
                 p = res.paper
                 year = str(p.year) if p.year else "—"
                 title_text = p.title.replace("|", "\\|")
                 title_cell = f"[{title_text}]({p.url})" if p.url else title_text
-                lines.append(f"| {res.score:.2f} | {title_cell} | {year} |")
+                source_tag = r.ref_sources.get(p.id, "")
+                source_cell = f"`{source_tag}`" if source_tag else "—"
+                if p.authors:
+                    authors_short = ", ".join(p.authors[:2])
+                    if len(p.authors) > 2:
+                        authors_short += " et al."
+                else:
+                    authors_short = "—"
+                lines.append(
+                    f"| REF-{i} | {res.score:.2f} | {source_cell} | {title_cell} | {year} | {authors_short} |"
+                )
             lines.append("")
 
-            # Per-paper comparative annotations
+            # 1-to-all derivation analysis
             if r.similar_paper_annotations:
-                annotations_by_id = {
-                    a.paper_id: a for a in r.similar_paper_annotations
-                }
-                lines += ["### Reference Annotations", ""]
-                for res in r.similar_papers:
-                    p = res.paper
-                    year_str = f" ({p.year})" if p.year else ""
-                    title_link = (
-                        f"[{p.title}]({p.url})" if p.url else p.title
-                    )
+                ann = r.similar_paper_annotations[0]
+                lines += ["### Derivation Analysis", ""]
+                if ann.derivation_map:
+                    lines += ["**Derivation map:**", ""]
+                    for component, refs in ann.derivation_map.items():
+                        refs_str = ", ".join(refs) if refs else "appears novel"
+                        lines.append(f"- **{component}**: {refs_str}")
+                    lines.append("")
+                if ann.combination_analysis:
                     lines += [
-                        f"**[{res.score:.2f}] {title_link}{year_str}**",
+                        "**Combination analysis:**",
+                        "",
+                        ann.combination_analysis,
                         "",
                     ]
-                    ann = annotations_by_id.get(p.id)
-                    if ann and (ann.overlap or ann.differences or ann.derivation):
-                        # Render as a compact two-column comparison table so each
-                        # dimension is scannable side-by-side (apple-to-apple).
-                        lines += [
-                            "| Dimension | Notes |",
-                            "|-----------|-------|",
-                        ]
-                        if ann.overlap:
-                            lines.append(
-                                f"| **Overlap** | {_escape_table_cell(ann.overlap)} |"
-                            )
-                        if ann.differences:
-                            lines.append(
-                                f"| **Differences** | {_escape_table_cell(ann.differences)} |"
-                            )
-                        if ann.derivation:
-                            lines.append(
-                                f"| **Derivation** | {_escape_table_cell(ann.derivation)} |"
-                            )
-                        lines.append("")
-                    else:
-                        lines += ["*No annotation available.*", ""]
+                if ann.novel_elements:
+                    lines += ["**Novel elements:**", ""]
+                    for item in ann.novel_elements:
+                        lines.append(f"- {item}")
+                    lines.append("")
 
         if r.domain_references:
             lines += [
@@ -659,9 +658,6 @@ class ReportGenerator:
                 for d in r.dimensions
             ],
         }
-        annotations_by_id = {
-            a.paper_id: a for a in r.similar_paper_annotations
-        }
         data["similar_papers"] = [
             {
                 "score": res.score,
@@ -669,18 +665,16 @@ class ReportGenerator:
                 "title": res.paper.title,
                 "year": res.paper.year,
                 "url": res.paper.url,
-                **(
-                    {
-                        "overlap": ann.overlap,
-                        "differences": ann.differences,
-                        "derivation": ann.derivation,
-                    }
-                    if (ann := annotations_by_id.get(res.paper.id)) is not None
-                    else {}
-                ),
             }
             for res in r.similar_papers
         ]
+        if r.similar_paper_annotations:
+            ann = r.similar_paper_annotations[0]
+            data["derivation_analysis"] = {
+                "derivation_map": ann.derivation_map,
+                "combination_analysis": ann.combination_analysis,
+                "novel_elements": ann.novel_elements,
+            }
         if r.metadata:
             m = r.metadata
             data["metadata"] = {
@@ -711,9 +705,11 @@ class ReportGenerator:
             d = r.idea_decomposition
             data["idea_decomposition"] = {
                 "core_concept": d.core_concept,
-                "sub_ideas": d.sub_ideas,
-                "assumptions": d.assumptions,
-                "limitations": d.limitations,
+                "concept_tree": (
+                    _concept_node_to_dict(d.concept_tree)
+                    if d.concept_tree is not None
+                    else None
+                ),
             }
         if r.domain_references:
             data["domain_references"] = [
@@ -766,61 +762,48 @@ def _build_gantt(metadata: RunMetadata, paper_title: str = "") -> str:
 # Idea mind map (Mermaid)
 # ---------------------------------------------------------------------------
 
-def _build_mindmap(decomp: IdeaDecomposition, paper_title: str = "") -> str:
-    """Return a Mermaid ``mindmap`` diagram for *decomp*.
+def _render_concept_tree_ascii(root: ConceptNode) -> str:
+    """Render a :class:`ConceptNode` tree as a ``tree``-command-style ASCII string.
 
-    The mind map places the core concept at the root and branches out to
-    sub-ideas, assumptions, and limitations.
+    Uses box-drawing characters ``├──``, ``└──``, and ``│`` so that the
+    hierarchy is scannable without relying on indentation alone.
 
-    Returns an empty string when there are no branches so callers can
-    omit the section entirely rather than rendering a bare root circle.
+    Examples
+    --------
+    ::
+
+        Root
+        ├── Child A
+        │   ├── Grandchild 1
+        │   └── Grandchild 2
+        └── Child B
+
+    Returns an empty string only when *root* has neither a label nor any
+    children (i.e. a completely empty node).  A leaf node with a non-empty
+    label returns a single-line string; a virtual root with no label but
+    with children renders the children as top-level items.
     """
-    has_branches = bool(
-        decomp.sub_ideas or decomp.assumptions or decomp.limitations
-    )
-    if not has_branches:
+    if not root.label and not root.children:
         return ""
 
-    root_label = paper_title or decomp.core_concept
+    lines: list[str] = []
 
-    _MAX_NODE_LEN = 60  # chars; longer text breaks GitHub's Mermaid renderer
+    def _recurse(node: ConceptNode, prefix: str, is_last: bool) -> None:
+        connector = "└── " if is_last else "├── "
+        lines.append(prefix + connector + node.label)
+        child_prefix = prefix + ("    " if is_last else "│   ")
+        for i, child in enumerate(node.children):
+            _recurse(child, child_prefix, i == len(node.children) - 1)
 
-    def _safe(text: str) -> str:
-        """Sanitise text for a Mermaid mindmap node label.
+    # Render the root label first (no connector), then recurse into children.
+    if root.label:
+        lines.append(root.label)
+        for i, child in enumerate(root.children):
+            _recurse(child, "", i == len(root.children) - 1)
+    else:
+        # Virtual root (empty label): render children as top-level items.
+        for i, child in enumerate(root.children):
+            _recurse(child, "", i == len(root.children) - 1)
 
-        * Removes shape-control characters ``()[]{}"#`` that Mermaid
-          interprets as node-shape markers.
-        * Replaces backticks with single quotes.
-        * Truncates long items with an ellipsis so nodes stay readable;
-          LLM-generated items are often full sentences that would cause
-          the renderer to silently drop all branches.
-        """
-        _remove_table = str.maketrans("", "", '()[]{}\"#')
-        text = text.translate(_remove_table).replace("`", "'")
-        if len(text) > _MAX_NODE_LEN:
-            text = text[:_MAX_NODE_LEN].rstrip() + "…"
-        return text
-
-    lines = [
-        "```mermaid",
-        "mindmap",
-        f"  root(({_safe(root_label)}))",
-    ]
-
-    if decomp.sub_ideas:
-        lines.append("    Sub-ideas")
-        for item in decomp.sub_ideas:
-            lines.append(f"      {_safe(item)}")
-
-    if decomp.assumptions:
-        lines.append("    Assumptions")
-        for item in decomp.assumptions:
-            lines.append(f"      {_safe(item)}")
-
-    if decomp.limitations:
-        lines.append("    Limitations")
-        for item in decomp.limitations:
-            lines.append(f"      {_safe(item)}")
-
-    lines.append("```")
     return "\n".join(lines)
+

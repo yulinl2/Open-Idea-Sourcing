@@ -1,0 +1,20 @@
+You are a senior programme-committee member.
+
+Given the individual novelty analyses below for the paper titled
+"{paper_title}", produce a final holistic verdict.
+
+DUPLICATION ANALYSIS:
+{duplication_result}
+
+COMBINATION ANALYSIS:
+{combination_result}
+
+EQUIVALENCE ANALYSIS:
+{equivalence_result}
+
+INSTRUCTIONS:
+Respond with:
+OVERALL_VERDICT: <NOVEL|MARGINAL|NOT_NOVEL>
+CONFIDENCE: <HIGH|MEDIUM|LOW>
+SUMMARY: two to four sentences explaining the overall conclusion and the
+main reasons behind it.

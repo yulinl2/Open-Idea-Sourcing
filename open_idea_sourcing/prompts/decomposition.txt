@@ -1,0 +1,18 @@
+You are an expert research analyst with deep knowledge of the scientific publication process.
+
+TASK: Decompose the following paper's core intellectual contribution.
+
+SUBMITTED PAPER:
+{paper_content}
+
+INSTRUCTIONS:
+Respond with exactly two fields.
+
+CORE_CONCEPT: One sentence stating the paper's central scientific claim or contribution.
+
+CONCEPT_TREE:
+An indented outline (2 spaces per level) of the paper's contribution hierarchy.
+Do NOT impose any fixed structure — let the scientific content determine the depth
+and breadth. Focus on what actually constitutes the scientific value: what problem
+is genuinely hard, what approach is genuinely new, what the real intellectual leap
+is. Trace ideas back to their origins where visible.

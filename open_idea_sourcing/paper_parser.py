@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 
 @dataclass
@@ -246,3 +246,105 @@ class PaperParser:
             if len(content) > 50:
                 sections.append(PaperSection(title=title, content=content))
         return sections
+
+
+class LLMPaperParser(PaperParser):
+    """LLM-enhanced paper parser (Stage 1).
+
+    Uses an LLM to extract structured fields (title, abstract, authors,
+    sections) from raw paper text.  Never falls back to the regex-based
+    parser — raises :class:`RuntimeError` after all retries are exhausted.
+
+    Parameters
+    ----------
+    llm:
+        Callable that receives a prompt string and returns the LLM response.
+    """
+
+    _PARSE_PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "paper_parse.txt"
+    _MAX_RETRIES = 3
+
+    def __init__(self, llm: Callable[[str], str]) -> None:
+        self._llm = llm
+        self._prompt_template = self._PARSE_PROMPT_PATH.read_text(encoding="utf-8")
+
+    def parse_text(self, text: str) -> ParsedPaper:
+        """Use LLM to extract structured paper content.
+
+        Retries up to 3 times on failure or empty output.  Never falls back
+        to regex — the LLM is the only extraction path.
+
+        Parameters
+        ----------
+        text:
+            Raw paper text.
+
+        Returns
+        -------
+        ParsedPaper
+            Structured paper content.
+
+        Raises
+        ------
+        RuntimeError
+            When all retries are exhausted without extracting a usable title
+            or abstract.
+        """
+        text = self._normalise(text)
+        snippet = text[:8000]
+        prompt = self._prompt_template.format(raw_text=snippet)
+        last_exc: Exception | None = None
+        for attempt in range(1, self._MAX_RETRIES + 1):
+            try:
+                response = self._llm(prompt)
+                parsed = self._parse_llm_response(response, text)
+                if parsed.title or parsed.abstract:
+                    return parsed
+            except Exception as exc:
+                last_exc = exc
+        raise RuntimeError(
+            f"LLMPaperParser: failed to extract paper structure after "
+            f"{self._MAX_RETRIES} attempts"
+            + (f": {last_exc}" if last_exc else "")
+        )
+
+    def _parse_llm_response(self, response: str, full_text: str) -> ParsedPaper:
+        """Parse the LLM-structured response into a :class:`ParsedPaper`."""
+
+        def _extract_field(text: str, field: str, default: str = "") -> str:
+            pattern = rf"(?mi)^{re.escape(field)}:\s*(.+?)(?=\n[A-Z]+:|$)"
+            m = re.search(pattern, text, re.DOTALL)
+            return m.group(1).strip() if m else default
+
+        title = _extract_field(response, "TITLE")
+        authors_raw = _extract_field(response, "AUTHORS")
+        abstract = _extract_field(response, "ABSTRACT")
+
+        authors: list[str] = []
+        if authors_raw and authors_raw.lower() not in ("unknown", "none", "not found"):
+            authors = [a.strip() for a in authors_raw.split(",") if a.strip()]
+
+        sections: list[PaperSection] = []
+        sections_match = re.search(
+            r"(?mi)^SECTIONS:\s*\n(.*?)(?=\n[A-Z]+:|\Z)", response, re.DOTALL
+        )
+        if sections_match:
+            section_text = sections_match.group(1).strip()
+            for line in section_text.splitlines():
+                line = line.strip()
+                if not line or line.lower() == "none":
+                    continue
+                section_title = re.sub(r"^\d+[\.\)]\s*", "", line).strip()
+                if section_title:
+                    sections.append(PaperSection(title=section_title, content=""))
+
+        if abstract.lower() in ("not found", "none", ""):
+            abstract = ""
+
+        return ParsedPaper(
+            title=title,
+            abstract=abstract,
+            full_text=full_text,
+            sections=sections,
+            authors=authors,
+        )

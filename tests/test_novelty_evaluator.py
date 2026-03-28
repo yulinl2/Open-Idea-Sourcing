@@ -8,6 +8,8 @@ from open_idea_sourcing.novelty_evaluator import (
     NoveltyDimension,
     NoveltyEvaluator,
     NoveltyReport,
+    PipelineContext,
+    RunMetadata,
     SimilarityAnnotation,
     _extract_field,
     _parse_decomposition_response,
@@ -232,9 +234,6 @@ class TestExtractField:
         )
         d = _parse_decomposition_response(text)
         assert "conformal" in d.core_concept.lower()
-        assert len(d.sub_ideas) == 2
-        assert len(d.assumptions) == 1
-        assert len(d.limitations) == 1
 
 
 class TestParseDimensionResponse:
@@ -299,6 +298,7 @@ class TestParseSynthesisResponse:
 # Unit tests for NoveltyEvaluator
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 class TestNoveltyEvaluator:
     def _make_similar(self):
         return [
@@ -383,6 +383,34 @@ class TestNoveltyEvaluator:
         text = NoveltyEvaluator.format_references(similar)
         assert "Attention Is All You Need" in text
         assert "0.90" in text
+        assert "REF-1" in text
+
+
+class TestFormatReferencesRefNFormat:
+    def test_first_reference_uses_ref_1(self):
+        similar = [SimilarityResult(paper=SAMPLE_REFERENCE, score=0.9)]
+        text = NoveltyEvaluator.format_references(similar)
+        assert "REF-1" in text
+
+    def test_second_reference_uses_ref_2(self):
+        ref2 = ReferencePaper(id="bert2019", title="BERT", abstract="BERT paper.", year=2019)
+        similar = [
+            SimilarityResult(paper=SAMPLE_REFERENCE, score=0.9),
+            SimilarityResult(paper=ref2, score=0.7),
+        ]
+        text = NoveltyEvaluator.format_references(similar)
+        assert "REF-1" in text
+        assert "REF-2" in text
+
+    def test_ref_n_label_precedes_bracket_id(self):
+        similar = [SimilarityResult(paper=SAMPLE_REFERENCE, score=0.9)]
+        text = NoveltyEvaluator.format_references(similar)
+        ref1_pos = text.index("REF-1")
+        bracket_pos = text.index("[att2017]")
+        assert ref1_pos < bracket_pos
+
+    def test_format_references_empty_unchanged(self):
+        assert "No reference papers provided" in NoveltyEvaluator.format_references([])
 
 
 # ---------------------------------------------------------------------------
@@ -456,21 +484,17 @@ class TestNoveltyEvaluatorJobLog:
 class TestIdeaDecomposition:
     def test_default_lists_empty(self):
         d = IdeaDecomposition(core_concept="A new method.")
-        assert d.sub_ideas == []
-        assert d.assumptions == []
-        assert d.limitations == []
+        assert d.concept_tree is None
 
     def test_fields_stored(self):
+        from open_idea_sourcing.novelty_evaluator import ConceptNode
+        tree = ConceptNode(label="Root")
         d = IdeaDecomposition(
             core_concept="Core.",
-            sub_ideas=["A", "B"],
-            assumptions=["X"],
-            limitations=["Y"],
+            concept_tree=tree,
         )
         assert d.core_concept == "Core."
-        assert d.sub_ideas == ["A", "B"]
-        assert d.assumptions == ["X"]
-        assert d.limitations == ["Y"]
+        assert d.concept_tree is tree
 
 
 # ---------------------------------------------------------------------------
@@ -532,9 +556,7 @@ class TestParseDecompositionResponse:
     def test_parses_full_response(self):
         d = _parse_decomposition_response(_DECOMP_RESPONSE)
         assert "dynamic masking" in d.core_concept.lower()
-        assert "Dynamic attention masking" in d.sub_ideas
-        assert "Input sequences are tokenised uniformly" in d.assumptions
-        assert "Only evaluated on NLP benchmarks" in d.limitations
+        assert isinstance(d, IdeaDecomposition)
 
     def test_missing_core_concept_falls_back_to_full_text(self):
         d = _parse_decomposition_response("Some random text without fields.")
@@ -542,9 +564,7 @@ class TestParseDecompositionResponse:
 
     def test_missing_lists_default_to_empty(self):
         d = _parse_decomposition_response("CORE_CONCEPT: Simple idea.\n")
-        assert d.sub_ideas == []
-        assert d.assumptions == []
-        assert d.limitations == []
+        assert d.concept_tree is None
 
     def test_returns_idea_decomposition_instance(self):
         d = _parse_decomposition_response(_DECOMP_RESPONSE)
@@ -598,6 +618,7 @@ class TestParseDomainReferencesResponse:
 # NoveltyEvaluator — enriched fields
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 class TestNoveltyEvaluatorEnrichedReport:
     def test_evaluate_returns_idea_decomposition(self):
         evaluator = NoveltyEvaluator(llm=_make_full_llm())
@@ -635,6 +656,7 @@ class TestNoveltyEvaluatorEnrichedReport:
 # NoveltyEvaluator._decompose_idea / _find_domain_references (isolated)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 class TestDecomposeIdeaMethod:
     def test_calls_llm_once(self):
         calls = []
@@ -668,6 +690,7 @@ class TestDecomposeIdeaMethod:
         assert result.core_concept != ""
 
 
+@pytest.mark.slow
 class TestFindDomainReferencesMethod:
     def test_calls_llm_once(self):
         calls = []
@@ -705,15 +728,13 @@ class TestFindDomainReferencesMethod:
 # ---------------------------------------------------------------------------
 
 _ANNOTATION_RESPONSE = """\
-PAPER [arxiv-1904.06019]:
-OVERLAP: Both use mini-batch gradient descent and momentum optimisers.
-DIFFERENCES: The submitted paper targets image classification; the reference focuses on language models.
-DERIVATION: The learning-rate scheduling heuristic in the submitted paper appears adapted from Shallue et al. 2019.
-
-PAPER [bert2018]:
-OVERLAP: Both pre-train on large text corpora.
-DIFFERENCES: The submitted paper uses a custom tokeniser instead of WordPiece.
-DERIVATION: None identified.
+DERIVATION_MAP:
+- attention mechanism: REF-1, REF-2
+- training recipe: REF-3
+COMBINATION_ANALYSIS: The submitted paper combines multi-head attention from REF-1 with the training recipe from REF-3, yielding a moderately novel synthesis.
+NOVEL_ELEMENTS:
+- Dynamic masking strategy
+- Adaptive learning rate schedule
 """
 
 
@@ -725,43 +746,51 @@ class TestParseSimilarPaperAnnotationsResponse:
 
     def test_correct_number_of_annotations(self):
         result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
-        assert len(result) == 2
+        assert len(result) == 1  # 1-to-all: always returns a single annotation
 
-    def test_first_annotation_paper_id(self):
+    def test_derivation_map_keys_extracted(self):
         result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
-        assert result[0].paper_id == "arxiv-1904.06019"
+        assert "attention mechanism" in result[0].derivation_map
 
-    def test_second_annotation_paper_id(self):
+    def test_derivation_map_refs_extracted(self):
         result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
-        assert result[1].paper_id == "bert2018"
+        refs = result[0].derivation_map["attention mechanism"]
+        assert "REF-1" in refs
+        assert "REF-2" in refs
 
-    def test_overlap_extracted(self):
+    def test_combination_analysis_extracted(self):
         result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
-        assert "mini-batch gradient descent" in result[0].overlap
+        assert "multi-head attention" in result[0].combination_analysis
 
-    def test_differences_extracted(self):
+    def test_novel_elements_extracted(self):
         result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
-        assert "image classification" in result[0].differences
+        assert "Dynamic masking strategy" in result[0].novel_elements
 
-    def test_derivation_extracted(self):
-        result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
-        assert "learning-rate scheduling" in result[0].derivation
-
-    def test_empty_response_returns_empty_list(self):
+    def test_empty_response_returns_single_empty_annotation(self):
         result = _parse_similar_paper_annotations_response("")
-        assert result == []
+        assert len(result) == 1
+        assert result[0].derivation_map == {}
+        assert result[0].combination_analysis == ""
+        assert result[0].novel_elements == []
 
-    def test_malformed_blocks_skipped(self):
+    def test_unstructured_response_returns_single_empty_annotation(self):
         result = _parse_similar_paper_annotations_response(
-            "Some preamble without any PAPER markers."
+            "Some preamble without any structured markers."
         )
-        assert result == []
+        assert len(result) == 1
+        assert result[0].derivation_map == {}
 
-    def test_none_derivation_preserved(self):
+    def test_paper_id_defaults_to_empty(self):
         result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
-        assert result[1].derivation == "None identified."
+        assert result[0].paper_id == ""
+
+    def test_training_recipe_component_present(self):
+        result = _parse_similar_paper_annotations_response(_ANNOTATION_RESPONSE)
+        assert "training recipe" in result[0].derivation_map
+        assert "REF-3" in result[0].derivation_map["training recipe"]
 
 
+@pytest.mark.slow
 class TestAnnotateSimilarPapersMethod:
     def test_calls_llm_and_stores_in_raw(self):
         evaluator = NoveltyEvaluator(llm=lambda _: _ANNOTATION_RESPONSE)
@@ -788,3 +817,445 @@ class TestAnnotateSimilarPapersMethod:
         assert isinstance(result, list)
         assert len(result) >= 1
         assert isinstance(result[0], SimilarityAnnotation)
+
+# ---------------------------------------------------------------------------
+# ConceptNode dataclass
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import ConceptNode
+
+
+class TestConceptNode:
+    def test_leaf_node(self):
+        node = ConceptNode(label="leaf")
+        assert node.label == "leaf"
+        assert node.children == []
+
+    def test_node_with_children(self):
+        child = ConceptNode(label="child")
+        parent = ConceptNode(label="parent", children=[child])
+        assert parent.children[0].label == "child"
+
+    def test_default_children_empty(self):
+        node = ConceptNode(label="x")
+        assert node.children == []
+
+    def test_deep_nesting(self):
+        leaf = ConceptNode(label="leaf")
+        mid = ConceptNode(label="mid", children=[leaf])
+        root = ConceptNode(label="root", children=[mid])
+        assert root.children[0].children[0].label == "leaf"
+
+
+# ---------------------------------------------------------------------------
+# _parse_concept_tree_text
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import _parse_concept_tree_text
+
+
+class TestParseConceptTreeText:
+    def test_empty_returns_none(self):
+        assert _parse_concept_tree_text("") is None
+
+    def test_whitespace_only_returns_none(self):
+        assert _parse_concept_tree_text("   \n   ") is None
+
+    def test_single_line_no_indent_returns_single_root(self):
+        result = _parse_concept_tree_text("Problem")
+        assert result is not None
+        assert result.label == "Problem"
+        assert result.children == []
+
+    def test_multiple_non_indented_lines_returns_none(self):
+        result = _parse_concept_tree_text("Problem\nMethod\nEvidence")
+        assert result is None
+
+    def test_two_level_tree(self):
+        text = "Problem\n  Sub-problem A\n  Sub-problem B"
+        root = _parse_concept_tree_text(text)
+        assert root is not None
+        assert root.label == "Problem"
+        assert len(root.children) == 2
+        assert root.children[0].label == "Sub-problem A"
+        assert root.children[1].label == "Sub-problem B"
+
+    def test_three_level_tree(self):
+        text = (
+            "Problem\n"
+            "  Sub-problem A\n"
+            "    Detail 1\n"
+            "    Detail 2\n"
+            "  Sub-problem B\n"
+        )
+        root = _parse_concept_tree_text(text)
+        assert root is not None
+        assert root.label == "Problem"
+        assert len(root.children) == 2
+        assert len(root.children[0].children) == 2
+        assert root.children[0].children[0].label == "Detail 1"
+
+    def test_four_space_indent(self):
+        text = "Root\n    Child A\n    Child B"
+        root = _parse_concept_tree_text(text)
+        assert root is not None
+        assert len(root.children) == 2
+        assert root.children[0].label == "Child A"
+
+    def test_multiple_root_level_items(self):
+        text = "Problem\n  Sub A\nMethod\n  Component A"
+        result = _parse_concept_tree_text(text)
+        # Multiple depth-0 items → virtual root with 2 children
+        assert result is not None
+        assert len(result.children) == 2
+        assert result.children[0].label == "Problem"
+        assert result.children[1].label == "Method"
+
+    def test_blank_lines_skipped(self):
+        text = "Root\n\n  Child A\n\n  Child B\n"
+        root = _parse_concept_tree_text(text)
+        assert root is not None
+        assert len(root.children) == 2
+
+    def test_parse_decomp_response_includes_concept_tree(self):
+        text = (
+            "CORE_CONCEPT: A new method.\n"
+            "CONCEPT_TREE:\n"
+            "Problem\n"
+            "  Sub A\n"
+            "IMPLEMENTATION_STEPS:\n"
+            "1. Step one\n"
+            "2. Step two\n"
+            "ASSUMPTIONS:\n"
+            "1. Assumes X\n"
+            "LIMITATIONS:\n"
+            "1. Limited to Y\n"
+        )
+        d = _parse_decomposition_response(text)
+        assert d.concept_tree is not None
+        assert d.concept_tree.label == "Problem"
+
+
+# ---------------------------------------------------------------------------
+# _format_decomp_context
+# ---------------------------------------------------------------------------
+
+from open_idea_sourcing.novelty_evaluator import _format_decomp_context
+
+
+class TestFormatDecompContext:
+    def test_none_returns_placeholder(self):
+        result = _format_decomp_context(None)
+        assert "no decomposition" in result.lower()
+
+    def test_includes_core_concept(self):
+        d = IdeaDecomposition(core_concept="A dynamic attention mechanism.")
+        result = _format_decomp_context(d)
+        assert "dynamic attention" in result.lower()
+
+    def test_includes_sub_ideas_when_no_tree(self):
+        d = IdeaDecomposition(
+            core_concept="Core with details.",
+            concept_tree=None,
+        )
+        result = _format_decomp_context(d)
+        assert "Core with details." in result
+
+    def test_tree_preferred_over_sub_ideas(self):
+        tree = ConceptNode(label="Root", children=[ConceptNode(label="Child")])
+        d = IdeaDecomposition(
+            core_concept="Core.",
+            concept_tree=tree,
+        )
+        result = _format_decomp_context(d)
+        assert "Root" in result
+        assert "Child" in result
+
+    def test_includes_implementation_steps(self):
+        tree = ConceptNode(label="Plan", children=[
+            ConceptNode(label="Step 1"),
+            ConceptNode(label="Step 2"),
+        ])
+        d = IdeaDecomposition(
+            core_concept="Core.",
+            concept_tree=tree,
+        )
+        result = _format_decomp_context(d)
+        assert "Step 1" in result
+        assert "Step 2" in result
+
+    def test_empty_decomp_has_core_concept(self):
+        d = IdeaDecomposition(core_concept="Just this.")
+        result = _format_decomp_context(d)
+        assert "Just this." in result
+
+
+# ---------------------------------------------------------------------------
+# NoveltyEvaluator decomposition_llm param
+# ---------------------------------------------------------------------------
+
+class TestDecompositionLlm:
+    def test_decomposition_llm_used_for_decompose(self):
+        """When decomposition_llm is set, it (not llm) is called for decomposition."""
+        main_calls = []
+        decomp_calls = []
+
+        def main_llm(prompt: str) -> str:
+            main_calls.append(prompt)
+            return "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none"
+
+        def decomp_llm(prompt: str) -> str:
+            decomp_calls.append(prompt)
+            return _DECOMP_RESPONSE
+
+        evaluator = NoveltyEvaluator(llm=main_llm, decomposition_llm=decomp_llm)
+        evaluator.evaluate(SAMPLE_PAPER)
+        assert len(decomp_calls) == 1
+        assert len(main_calls) == 5  # dup+combo+equiv+synth+domain_refs
+
+    def test_fallback_to_main_llm_when_no_decomp_llm(self):
+        calls = []
+        def llm(prompt: str) -> str:
+            calls.append(prompt)
+            return "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none"
+        evaluator = NoveltyEvaluator(llm=llm)
+        evaluator.evaluate(SAMPLE_PAPER)
+        # All 6 calls go through the same llm
+        assert len(calls) == 6
+
+
+# ---------------------------------------------------------------------------
+# NoveltyEvaluator.decompose_idea() public method
+# ---------------------------------------------------------------------------
+
+class TestDecomposeIdeaPublicMethod:
+    def test_returns_idea_decomposition(self):
+        evaluator = NoveltyEvaluator(llm=lambda _: _DECOMP_RESPONSE)
+        raw: dict = {}
+        result = evaluator.decompose_idea(SAMPLE_PAPER, raw)
+        assert isinstance(result, IdeaDecomposition)
+        assert result.core_concept != ""
+
+    def test_raw_stored(self):
+        evaluator = NoveltyEvaluator(llm=lambda _: _DECOMP_RESPONSE)
+        raw: dict = {}
+        evaluator.decompose_idea(SAMPLE_PAPER, raw)
+        assert "idea_decomposition" in raw
+
+    def test_evaluate_skips_decomposition_when_passed(self):
+        calls = []
+        def llm(prompt: str) -> str:
+            calls.append(prompt)
+            return "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none"
+        evaluator = NoveltyEvaluator(llm=llm)
+        pre_decomp = IdeaDecomposition(core_concept="Pre-computed.")
+        evaluator.evaluate(SAMPLE_PAPER, idea_decomposition=pre_decomp)
+        # 5 calls: dup+combo+equiv+synth+domain_refs (decomp skipped)
+        assert len(calls) == 5
+
+    def test_decomp_fed_into_evaluate_shows_in_report(self):
+        evaluator = NoveltyEvaluator(llm=lambda _: "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none")
+        pre_decomp = IdeaDecomposition(core_concept="Pre-computed concept.")
+        report = evaluator.evaluate(SAMPLE_PAPER, idea_decomposition=pre_decomp)
+        assert report.idea_decomposition.core_concept == "Pre-computed concept."
+
+
+# ---------------------------------------------------------------------------
+# Helpers for evaluate_with_context tests
+# ---------------------------------------------------------------------------
+
+def _mock_llm_response(prompt: str) -> str:
+    """Generic mock LLM that returns valid structured responses for all passes."""
+    return (
+        "VERDICT: LOW\n"
+        "EXPLANATION: No significant overlap.\n"
+        "REFERENCES: none\n"
+        "OVERALL_VERDICT: NOVEL\n"
+        "CONFIDENCE: HIGH\n"
+        "SUMMARY: Paper is novel."
+    )
+
+
+# ---------------------------------------------------------------------------
+# NoveltyEvaluator.evaluate_with_context()
+# ---------------------------------------------------------------------------
+
+class TestEvaluateWithContext:
+    def test_evaluate_with_context_returns_novelty_report(self):
+        """evaluate_with_context should return a NoveltyReport."""
+        evaluator = NoveltyEvaluator(llm=_mock_llm_response)
+        paper = ParsedPaper(title="Test", abstract="Test abstract.", full_text="Test full text.")
+        ctx = PipelineContext(paper=paper, metadata=RunMetadata(model="test-model"))
+        report = evaluator.evaluate_with_context(ctx)
+        assert isinstance(report, NoveltyReport)
+        assert report.paper_title == "Test"
+
+    def test_evaluate_with_context_uses_precomputed_decomposition(self):
+        """When ctx.idea_decomposition is set, the decomposition LLM call is skipped."""
+        decomp_calls = []
+
+        def llm(prompt: str) -> str:
+            if "CORE_CONCEPT:" in prompt or "Decompose" in prompt:
+                decomp_calls.append(prompt)
+                return "CORE_CONCEPT: test\nASSUMPTIONS:\n1. none\nLIMITATIONS:\n1. none"
+            return _mock_llm_response(prompt)
+
+        evaluator = NoveltyEvaluator(llm=llm)
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        decomp = IdeaDecomposition(core_concept="pre-computed")
+        ctx = PipelineContext(
+            paper=paper,
+            metadata=RunMetadata(model="test"),
+            idea_decomposition=decomp,
+        )
+        report = evaluator.evaluate_with_context(ctx)
+        assert report.idea_decomposition.core_concept == "pre-computed"
+        assert len(decomp_calls) == 0
+
+    def test_evaluate_with_context_writes_dimensions_to_ctx(self):
+        """After evaluate_with_context, ctx.dimensions should have 3 entries."""
+        evaluator = NoveltyEvaluator(llm=_mock_llm_response)
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        ctx = PipelineContext(paper=paper, metadata=RunMetadata(model="test"))
+        evaluator.evaluate_with_context(ctx)
+        assert len(ctx.dimensions) == 3  # duplication, combination, equivalence
+
+    def test_evaluate_with_context_skips_domain_refs_when_precomputed(self):
+        """Pre-populated ctx.domain_references suppresses the domain-refs LLM call."""
+        calls = []
+
+        def llm(prompt: str) -> str:
+            calls.append(prompt)
+            return _mock_llm_response(prompt)
+
+        evaluator = NoveltyEvaluator(llm=llm)
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        pre_refs = [DomainReference(title="Pre-computed ref")]
+        ctx = PipelineContext(
+            paper=paper,
+            metadata=RunMetadata(model="test"),
+            domain_references=pre_refs,
+        )
+        evaluator.evaluate_with_context(ctx)
+        # domain_refs call should not have been made
+        assert ctx.domain_references[0].title == "Pre-computed ref"
+        # Only decomp + dup + combo + equiv + synth = 5 calls (no domain refs)
+        assert len(calls) == 5
+
+    def test_evaluate_with_context_appends_jobs_to_metadata(self):
+        """evaluate_with_context should add PipelineJob entries to ctx.metadata."""
+        evaluator = NoveltyEvaluator(llm=_mock_llm_response)
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        metadata = RunMetadata(model="test")
+        ctx = PipelineContext(paper=paper, metadata=metadata)
+        evaluator.evaluate_with_context(ctx)
+        assert len(ctx.metadata.jobs) > 0
+
+    def test_pipeline_context_ref_sources_field(self):
+        """PipelineContext should have a ref_sources dict field."""
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        ctx = PipelineContext(paper=paper, metadata=RunMetadata())
+        assert isinstance(ctx.ref_sources, dict)
+        ctx.ref_sources["paper123"] = "online"
+        assert ctx.ref_sources["paper123"] == "online"
+
+    def test_pipeline_context_stage_runtimes_field(self):
+        """PipelineContext should have a stage_runtimes dict field."""
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        ctx = PipelineContext(paper=paper, metadata=RunMetadata())
+        assert isinstance(ctx.stage_runtimes, dict)
+        ctx.stage_runtimes["parsing"] = 0.5
+        assert ctx.stage_runtimes["parsing"] == 0.5
+
+    def test_pipeline_context_search_queries_and_online_papers(self):
+        """PipelineContext should have search_queries list and online_papers list."""
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        ctx = PipelineContext(paper=paper, metadata=RunMetadata())
+        assert isinstance(ctx.search_queries, list)
+        assert isinstance(ctx.online_papers, list)
+        ctx.search_queries.append("deep learning transformers")
+        ctx.online_papers.append(object())
+        assert len(ctx.search_queries) == 1
+        assert len(ctx.online_papers) == 1
+
+
+# ---------------------------------------------------------------------------
+# Accumulated context in Stage 5 dimension chain
+# ---------------------------------------------------------------------------
+
+class TestAccumulatedStage5Context:
+    """Stage 5 dimension checks pass prior verdicts as accumulated context."""
+
+    def test_combination_receives_duplication_context(self):
+        """combination prompt should include prior duplication verdict text."""
+        prompts_seen = []
+
+        def llm(prompt: str) -> str:
+            prompts_seen.append(prompt)
+            if "PRIOR ANALYSIS" in prompt and "Duplication" in prompt:
+                return "VERDICT: LOW\nEXPLANATION: Not a combination.\nREFERENCES: none"
+            if "direct duplicate" in prompt.lower() or "TASK: Determine whether the submitted paper is a direct duplicate" in prompt:
+                return "VERDICT: HIGH\nEXPLANATION: Very similar to prior work.\nREFERENCES: REF-1"
+            return _mock_llm_response(prompt)
+
+        evaluator = NoveltyEvaluator(llm=llm)
+        prior = NoveltyDimension(name="Direct Duplication", verdict="HIGH", explanation="Very similar to prior work.")
+        result = evaluator._check_combination("paper", "refs", {}, prior_dup=prior)
+        combo_prompts = [p for p in prompts_seen if "PRIOR ANALYSIS" in p and "Duplication" in p]
+        assert len(combo_prompts) >= 1
+        assert "HIGH" in combo_prompts[0]
+
+    def test_equivalence_receives_both_prior_verdicts(self):
+        """equivalence prompt should include both duplication and combination verdicts."""
+        prompts_seen = []
+
+        def llm(prompt: str) -> str:
+            prompts_seen.append(prompt)
+            return "VERDICT: LOW\nEXPLANATION: No equivalence.\nREFERENCES: none"
+
+        evaluator = NoveltyEvaluator(llm=llm)
+        prior_dup = NoveltyDimension(name="Direct Duplication", verdict="MEDIUM", explanation="Partially similar.")
+        prior_combo = NoveltyDimension(name="Simple Combination", verdict="LOW", explanation="Not a simple combo.")
+        evaluator._check_equivalence("paper", "refs", {}, prior_dup=prior_dup, prior_combo=prior_combo)
+
+        equiv_prompts = [p for p in prompts_seen if "PRIOR ANALYSIS" in p]
+        assert len(equiv_prompts) >= 1
+        assert "MEDIUM" in equiv_prompts[0] or "Partially similar" in equiv_prompts[0]
+        assert "LOW" in equiv_prompts[0] or "Not a simple combo" in equiv_prompts[0]
+
+    def test_evaluate_chains_context_through_stages(self):
+        """evaluate() should chain dup→combo→equiv with accumulated context."""
+        prior_verdicts_in_combo = []
+        prior_verdicts_in_equiv = []
+
+        def llm(prompt: str) -> str:
+            # Equivalence prompt uniquely contains "Combination Check" in its PRIOR ANALYSIS
+            if "PRIOR ANALYSIS — Combination Check" in prompt:
+                if "PRIOR ANALYSIS" in prompt:
+                    prior_verdicts_in_equiv.append(prompt)
+                return "VERDICT: LOW\nEXPLANATION: No equivalence.\nREFERENCES: none"
+            # Combination prompt uniquely contains "Duplication Check" but NOT "Combination Check"
+            if "PRIOR ANALYSIS — Duplication Check" in prompt:
+                if "PRIOR ANALYSIS" in prompt:
+                    prior_verdicts_in_combo.append(prompt)
+                return "VERDICT: MEDIUM\nEXPLANATION: Partly assembled.\nREFERENCES: REF-1"
+            return _mock_llm_response(prompt)
+
+        evaluator = NoveltyEvaluator(llm=llm)
+        paper = ParsedPaper(title="T", abstract="A", full_text="F")
+        report = evaluator.evaluate(paper)
+        # Combo prompt should contain the dup verdict; equiv should contain both priors
+        assert len(prior_verdicts_in_combo) >= 1, "combination prompt should include duplication prior"
+        assert len(prior_verdicts_in_equiv) >= 1, "equivalence prompt should include prior analyses"
+
+    def test_no_prior_context_when_not_provided(self):
+        """When prior_dup is None, combination prompt should still work."""
+        evaluator = NoveltyEvaluator(llm=lambda p: "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none")
+        result = evaluator._check_combination("paper", "refs", {})
+        assert result.verdict == "LOW"
+
+    def test_no_prior_context_equivalence(self):
+        """When no priors, equivalence prompt should still work."""
+        evaluator = NoveltyEvaluator(llm=lambda p: "VERDICT: LOW\nEXPLANATION: ok\nREFERENCES: none")
+        result = evaluator._check_equivalence("paper", "refs", {})
+        assert result.verdict == "LOW"

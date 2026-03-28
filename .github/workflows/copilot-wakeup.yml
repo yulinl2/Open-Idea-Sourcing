@@ -1,0 +1,92 @@
+name: Auto-wake Copilot on CI timeout
+
+# Triggers whenever the "CI" workflow finishes.  If it timed out and
+# there is an open PR with the `copilot-wakeup` label associated with
+# the run's branch, post a wake-up comment so the Copilot agent picks
+# up where it left off.
+#
+# Opt-in: add the label `copilot-wakeup` to any PR that should receive
+# automatic wake-ups on timeout.  Without this label the workflow does
+# nothing, so routine test runs are never interrupted.
+#
+# Cooldown: a second wake-up is suppressed if one was already posted in
+# the last 30 minutes, preventing a burst of duplicate comments.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  wake-copilot:
+    # Only act on genuine timeouts (not failures, rate-limit errors, etc.)
+    if: github.event.workflow_run.conclusion == 'timed_out'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: read
+
+    steps:
+      - name: Post wake-up comment on labelled PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const headBranch = run.head_branch;
+            const headOwner = run.head_repository.owner.login;
+            const COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+
+            // Find open PRs whose head matches this branch + owner.
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              head: `${headOwner}:${headBranch}`,
+            });
+
+            if (prs.length === 0) {
+              console.log('No open PRs found for branch: ' + headBranch);
+              return;
+            }
+
+            const runUrl = run.html_url;
+            const runNumber = run.run_number;
+
+            for (const pr of prs) {
+              // --- Opt-in gate: PR must have the `copilot-wakeup` label ---
+              const labels = pr.labels.map(l => l.name);
+              if (!labels.includes('copilot-wakeup')) {
+                console.log(`PR #${pr.number} does not have 'copilot-wakeup' label — skipping.`);
+                continue;
+              }
+
+              // --- Cooldown gate: skip if a wake-up was posted recently ---
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                per_page: 20,
+              });
+              const cutoff = new Date(Date.now() - COOLDOWN_MS);
+              const recentWakeup = comments.some(c =>
+                c.user.login === 'github-actions[bot]' &&
+                c.body.includes('timed out') &&
+                new Date(c.created_at) > cutoff
+              );
+              if (recentWakeup) {
+                console.log(`PR #${pr.number}: wake-up posted within cooldown window — skipping.`);
+                continue;
+              }
+
+              const body =
+                `⏰ **CI run [#${runNumber}](${runUrl}) timed out.** ` +
+                `Waking up Copilot to continue from where it left off.\n\n` +
+                `↑ @copilot 👀 Keep on going`;
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body,
+              });
+              console.log(`Posted wake-up comment on PR #${pr.number}`);
+            }
