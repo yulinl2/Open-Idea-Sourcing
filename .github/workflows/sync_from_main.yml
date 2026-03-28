@@ -1,0 +1,54 @@
+name: Sync baseline from main
+
+# Keeps the ip_debate branch up-to-date with the open_idea_sourcing baseline.
+#
+# Triggered automatically every time a commit lands on main, plus on demand.
+# The job performs a fast-forward-or-merge of main into this branch and pushes
+# it directly — no PR required for routine baseline syncs.
+#
+# If the merge produces conflicts (e.g. because ip_debate files were edited on
+# both tracks simultaneously) the push step will fail and the job will exit
+# non-zero, alerting you to resolve the conflict manually:
+#
+#   git fetch origin
+#   git checkout copilot/ip-debate-reconstruction-demo
+#   git merge origin/main
+#   # resolve conflicts, then:
+#   git push origin copilot/ip-debate-reconstruction-demo
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  sync:
+    name: Merge main → debate branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: copilot/ip-debate-reconstruction-demo
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge main into debate branch
+        run: |
+          git fetch origin main
+          if git merge --ff-only origin/main 2>/dev/null; then
+            echo "Fast-forward successful."
+          else
+            git merge --no-edit origin/main
+            echo "Merge commit created."
+          fi
+
+      - name: Push updated debate branch
+        run: git push origin copilot/ip-debate-reconstruction-demo

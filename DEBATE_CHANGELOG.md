@@ -24,6 +24,26 @@ avoid clashing with the baseline `v1.x.x` tags that trigger `release.yml`.
 
 ---
 
+**Q: How do we keep the baseline track up-to-date on this branch?**
+
+The debate branch is a **regular branch** off the same repo — it shares commit
+history with `main`, so a plain `git merge` is all that's needed:
+
+```bash
+git fetch origin
+git checkout copilot/ip-debate-reconstruction-demo
+git merge origin/main          # or: git rebase origin/main
+git push origin copilot/ip-debate-reconstruction-demo
+```
+
+This is **automated** by `.github/workflows/sync_from_main.yml`, which
+triggers every time a commit lands on `main` and merges it into this branch
+(fast-forward when possible, merge commit otherwise).  If the auto-merge
+produces a conflict you'll receive a workflow failure notification and can
+resolve it manually with the commands above.
+
+---
+
 ## [Unreleased]
 
 *(nothing yet — pipeline not built)*
@@ -42,3 +62,6 @@ avoid clashing with the baseline `v1.x.x` tags that trigger `release.yml`.
   `workflow_dispatch` inputs adapted for the debate / reconstruction pipeline.
 - `DEBATE_CHANGELOG.md` — this file; tracks the 0.x version series.
 - `tests/test_ip_debate.py` — smoke tests for the v0.0.0 scaffold.
+- `.github/workflows/sync_from_main.yml` — auto-merges `main` into this
+  branch on every push to `main`, keeping the baseline track current.
+- Initial merge of `main` (v2.6.0 baseline) into this branch.
