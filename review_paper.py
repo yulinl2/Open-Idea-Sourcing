@@ -14,7 +14,7 @@ Environment variables
 OPENAI_API_KEY
     Required when using the default OpenAI backend.
 OPENAI_MODEL
-    OpenAI model name (default: gpt-4o).
+    OpenAI model name (default: gpt-4.1).
 
 Examples
 --------
@@ -271,8 +271,8 @@ def _build_llm(model: str):
 
     client = openai.OpenAI(api_key=api_key)
 
-    # Reasoning models (o1-*, o3-*, o4-*) do not accept a temperature parameter.
-    _is_reasoning = model.startswith(("o1-", "o3-", "o4-"))
+    # Reasoning models (o1*, o3*, o4*) do not accept a temperature parameter.
+    _is_reasoning = model.startswith(("o1", "o3", "o4"))
 
     def call_llm(prompt: str) -> str:
         try:
@@ -412,8 +412,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        default=os.environ.get("OPENAI_MODEL", "gpt-4o"),
-        help="OpenAI model name (default: gpt-4o or OPENAI_MODEL env var).",
+        default=os.environ.get("OPENAI_MODEL", "gpt-4.1"),
+        help="OpenAI model name (default: gpt-4.1 or OPENAI_MODEL env var).",
     )
     parser.add_argument(
         "--top-k",
@@ -495,7 +495,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "OpenAI model name to use for the idea decomposition step "
             "(Stage 2). When not set, the main --model is used. "
             "Useful for routing the expensive decomposition pass to a "
-            "reasoning model (e.g. o3-mini) while keeping a cheaper "
+            "reasoning model (e.g. o3) while keeping a cheaper "
             "model for the analysis passes. "
             "(default: OPENAI_DECOMPOSITION_MODEL env var or empty)"
         ),

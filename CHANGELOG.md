@@ -37,6 +37,17 @@ The `release.yml` workflow will:
 
 ---
 
+## [2.6.1] — 2026-03-28
+
+### Changed
+
+- **Default LLM upgraded to `gpt-4.1`** — all pipeline stages now default to `gpt-4.1` instead of `gpt-4o` (overridable via `--model` / `OPENAI_MODEL` env var or `pipeline_config.yaml`).
+- **`_is_reasoning` detection broadened** — temperature is now correctly suppressed for bare model names like `o3` (previously only `o3-*` / `o4-*` variants were detected; bare `o1`/`o3`/`o4` names were missed).
+- **`pipeline_config.yaml` comment** updated to reflect the new `gpt-4.1` default.
+- **`--decomposition-model` help** example updated from `o3-mini` to `o3`.
+
+---
+
 ## [2.6.0] — 2026-03-27
 
 ### Added
