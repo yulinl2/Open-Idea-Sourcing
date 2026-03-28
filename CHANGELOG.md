@@ -35,12 +35,192 @@ The `release.yml` workflow will:
 
 ## [Unreleased]
 
-### Fixed
+---
 
-**Paper parser**
-- `ParsedPaper` gains an `authors: list[str]` field; `PaperParser._extract_authors()` heuristically extracts author names (capitalised-word lines between the title and institutional affiliations).
-- `_extract_title()` now joins continuation lines (lines starting with a lowercase letter or connector word such as "of", "for", "via") so multi-line PDF titles are reconstructed correctly (e.g. "Conformal Inference" + "of Counterfactuals …" → full title).
-- PaperParser Pipeline Job Log detail section now shows an **Authors** field.
+## [2.6.0] — 2026-03-27
+
+### Added
+
+**Stage 2: Hardcoded decomposition swap-in**
+- `--decomposition-mode hardcoded` + `--hardcoded-decomposition-file <path>` — bypasses the LLM for Stage 2 entirely; loads a JSON file with `core_concept` and `concept_tree` fields directly into the pipeline. Useful for ablation studies and reproducibility.
+- `decomposition_mode` and `hardcoded_decomposition_file` settable in `pipeline_config.yaml`.
+- `decomposition_model` field added to `RunMetadata` and displayed in the **Configuration** table of both Markdown and text reports when a separate Stage 2 model is configured.
+
+**Stage 3: `include_paper_citations` guard**
+- `OnlineReferenceSearch.search(include_paper_citations=True/False)` — when `False`, Phase 1 (both the arXiv-ID path and the title-lookup path) is entirely skipped; keyword search (Phase 2) still runs.
+- `--no-paper-cited-refs` CLI flag now reliably skips *all* references-endpoint calls via this parameter.
+- `fetch_citations(title, arxiv_id)` split out as a dedicated method on `OnlineReferenceSearch`, separate from `search()`. Cited papers are added to the reference store with `source="paper-cited"` (previously they were incorrectly tagged as `"online"`).
+
+**Report: merged Reference Papers table**
+- The separate "Most Similar Reference Papers" table and "Reference Index" section are merged into a single **Reference Papers** table with columns `Ref | Score | Source | Title | Year | Authors`.
+- Source tags (`user`, `paper-cited`, `online`, `domain`) shown inline per row.
+
+**Pipeline config: decomposition model field**
+- `pipeline_config.yaml` gains a `decomposition_model` field (default commented out to `o3`) so Stage 2 can be routed to a high-reasoning model without changing the general `model` setting.
+
+**Fast / slow test split**
+- `pytest.ini` defines a `slow` marker.
+- 15 large end-to-end test classes in `test_review_paper.py` and `test_novelty_evaluator.py` are marked `@pytest.mark.slow`.
+- CI runs `pytest -m "not slow"` on feature-branch push/PR (~3 min); full suite runs on `main` push and `workflow_dispatch` only.
+- `make test-fast` target added to `Makefile` for local use.
+
+**Wake-up workflow: label opt-in + cooldown**
+- `copilot-wakeup.yml` now requires the `copilot-wakeup` label on the PR — only PRs you explicitly opt in to will receive auto-wake-up comments.
+- 30-minute cooldown guard: skips posting if the bot already commented within the last 30 minutes, preventing comment spam on repeated timeouts.
+
+**Pipeline log improvements**
+- Stage 1: parser failure is logged with the specific error so operators know what went wrong.
+- Stage 2: core concept and concept tree depth/node count logged after decomposition.
+- Stage 3: per-source load counts (`user`, `paper-cited`, `online`, `domain`) logged separately; online search errors now report how each error was handled and how many fetches each query produced.
+
+### Fixed
+- `paper-cited` source tagging: cited papers were previously tagged `"online"` in the reference store. They are now correctly tagged `"paper-cited"`.
+- `get_source()` docstring corrected to distinguish "not tracked" (`""`) from "tracked with default label" (`"unknown"`).
+- `_render_concept_tree_ascii()` docstring corrected: "no children" → "no label AND no children".
+- `find_domain_references()` now correctly threads the `decomp` argument to `_find_domain_references()`; `{decomposition}` slot added to `domain_references.txt` prompt template.
+- `_count_tree_depth()` and `_count_tree_nodes()` were using dict API (`.get("children")`) on `ConceptNode` dataclass; fixed to use `.children` attribute — resolves `AttributeError` crash during pipeline log output.
+
+### Removed
+- Dead `_build_mindmap()` function from `report_generator.py` (always returned `""` after `IdeaDecomposition` was slimmed in v2.4). Removed 10 associated tests.
+
+---
+
+## [2.5.0] — 2026-03-26
+
+### Added
+
+**Source priority deduplication**
+- `ReferenceStore.add()` now respects a strict priority order when the same paper arrives from multiple sources: `user > paper-cited > online > domain`.
+- The highest-priority label wins as the primary source tag; all provenance labels ever seen for a paper are retained and accessible via the new `get_all_sources(paper_id)` method.
+- `_SOURCE_PRIORITY` dict at module level maps each source tag to an integer (lower = higher priority).
+
+**REF-N Reference Index in reports**
+- Both Markdown and text reports now include a **Reference Index** section that maps every `REF-N` label cited by the LLM to the actual paper title, year, authors, similarity score, source tag, and URL.
+- The "Most Similar Reference Papers" table gains a `Ref` column so `REF-1` / `REF-10` are identifiable inline without scrolling to the index.
+
+**Auto wake-up workflow**
+- `.github/workflows/copilot-wakeup.yml` — listens for `workflow_run` completion with `conclusion: timed_out` on the CI workflow and automatically posts a Copilot wake-up comment on the associated PR.
+
+### Fixed
+- `UnboundLocalError: OnlineReferenceSearch` — removed a redundant `from ... import OnlineReferenceSearch` inside `_review_one()` that shadowed the module-level import. Fixes all 21 failures in `test_review_paper.py`.
+
+---
+
+## [2.4.0] — 2026-03-26
+
+### Added
+
+**Stage 1: LLM-only parser**
+- `LLMPaperParser` now retries the LLM call up to 3× before raising `RuntimeError`. Regex fallback removed entirely — the LLM is always used when an API key is present.
+
+**Stage 2: Slim `IdeaDecomposition`**
+- `IdeaDecomposition` slimmed to two fields: `core_concept: str` and `concept_tree: ConceptNode | None`. All hard-structure fields (`sub_ideas`, `assumptions`, `limitations`, `implementation_steps`) removed.
+- `decomposition.txt` prompt rewritten as a minimal, open-ended instruction — no structural prescription; the LLM determines depth and breadth from the scientific content.
+
+**Stage 3: Threshold-only similarity filter**
+- `[:self._top_k]` cap removed from both `evaluate()` and `evaluate_with_context()`. `similarity_threshold` is now the sole filter; all papers above the threshold are passed to evaluation.
+
+**Stage 3d / Stage 4: Domain references as 4th source**
+- `lookup_domain_refs()` added to `OnlineReferenceSearch` — resolves LLM-identified domain references via Semantic Scholar title lookup and adds them to the store with `source="domain"`.
+- The four reference sources are now cleanly separated: `"user"`, `"paper-cited"`, `"online"`, `"domain"`.
+
+**Stage 4: 1-to-all derivation annotation**
+- `SimilarityAnnotation` redesigned: `derivation_map: dict[str, list[str]]` (concept component → `[REF-N, …]`), `combination_analysis: str`, `novel_elements: list[str]`.
+- `annotation.txt` rewritten as a single prompt that sees all references simultaneously and identifies combination patterns across subsets.
+
+**Pipeline: config file and reflection log**
+- `pipeline_config.yaml` — central config file for all model, flag, and prompt settings; loaded via `--config FILE` CLI flag.
+- `--save-reflection FILE` (env: `REFLECTION_FILE`) — appends one dated Markdown entry per evaluation to a growing audit-trail document.
+
+### Changed
+- Source tag `"bundled"` collapsed into `"user"` everywhere.
+- `--no-bundled-refs` renamed to `--no-user-refs` (env: `NO_USER_REFS=1`).
+
+---
+
+## [2.3.0] — 2026-03-26
+
+### Added
+
+**Stage 5: Accumulated context in dimension chain**
+- `_check_combination()` now receives `prior_dup` — the duplication verdict and
+  explanation — injected as `PRIOR ANALYSIS` context into `combination.txt`.
+- `_check_equivalence()` now receives both `prior_dup` and `prior_combo` — both
+  prior verdicts — injected as accumulated `PRIOR ANALYSIS` context into
+  `equivalence.txt`.
+- `evaluate()` and `evaluate_with_context()` chain results:
+  duplication → combination(dup) → equivalence(dup + combo).
+- Implements the "increasingly deep digestion" design principle from Issue #42:
+  each pass builds on the prior evidence rather than starting cold.
+
+**Stage 3: Sub-stage toggle flags**
+- `--no-bundled-refs` CLI flag (env: `NO_BUNDLED_REFS=1`) — skip loading
+  `data/references.json` to isolate online-retrieval-only runs.
+- `--no-paper-cited-refs` CLI flag (env: `NO_PAPER_CITED_REFS=1`) — skip the
+  paper's own citation list retrieval from Semantic Scholar to isolate keyword-
+  search-only retrieval.
+- Together with the existing `--no-online-search`, all three Stage 3 sub-stages
+  are now independently togglable for clean ablation studies.
+
+---
+
+## [2.2.0] — 2026-03-25
+
+### Added
+
+**Pipeline: `PipelineContext` as shared state bus**
+- `PipelineContext` is now the single shared state object threaded through all pipeline stages in `_review_one()`.
+- `NoveltyEvaluator.evaluate_with_context(ctx)` — ablation-friendly entry point that reads inputs from and writes results back to context, replacing the 6-parameter `evaluate()` call in the main pipeline.
+- Enables: independent stage re-runs, per-stage checkpointing, reliable ablations (swap model/prompt/pipeline without touching adjacent stages).
+- `PipelineContext` gains `search_queries`, `online_papers`, `stage_runtimes`, and `ref_sources` fields.
+- Backward-compatible: the existing `evaluate()` method remains fully functional.
+
+**Stage 1: LLM-based paper parser**
+- `LLMPaperParser` in `paper_parser.py` — uses an LLM to extract title, abstract, authors, and section list from raw paper text. More robust than regex for real PDFs.
+- Prompt template: `open_idea_sourcing/prompts/paper_parse.txt`.
+- Falls back gracefully to the regex-based `PaperParser` when the LLM call fails or returns empty output.
+- `--llm-parser` CLI flag (env: `LLM_PARSER=1`) to enable.
+
+**Stage 3: Reference source separation and annotated audit list**
+- `ReferenceStore.add(paper, source=...)` and `ReferenceStore.load(path, source=...)` accept a source label.
+- `ReferenceStore.get_source(paper_id)` returns the source label for any loaded paper.
+- Source labels: `"bundled"` (data/references.json), `"user"` (--references file), `"online"` (keyword search).
+- Pipeline log similarity-search job detail shows a complete annotated reference list grouped by source. Enables full audit trail without mixing or auto-ingesting sources.
+
+---
+
+## [2.1.0] — 2026-03-25
+
+### Added
+
+**Stage 5: REF-N evidence IDs in analysis prompts**
+- `format_references()` now labels each reference as `REF-N [id]: Title…` — enables LLMs to cite references by short label (REF-1, REF-3) rather than opaque 40-char Semantic Scholar UUIDs.
+- All dimension prompts (`duplication`, `combination`, `equivalence`) updated to request `REF-N` citations in their REFERENCES field.
+- Reports display cited `REF-N` labels inline with each analysis dimension.
+
+**Stage 3: Temporal reference filter**
+- `OnlineReferenceSearch(min_year=YYYY)` — filters retrieved papers by publication year.
+- `--since-year YEAR` CLI flag: only online references published in or after YEAR are included.
+- Year filter applied to both `/paper/search` query params (Semantic Scholar `year=YYYY-` param) and post-processing of `/references` endpoint results.
+
+**Stage 3: Retry logic for transient HTTP errors**
+- `OnlineReferenceSearch._http_get()` — shared HTTP-GET helper with exponential-backoff retry (up to 3 attempts, base delay 2 s) for HTTP 429 (rate limit), 500, and 503 errors.
+- Non-retryable errors (400, 401, 404) fail immediately as before.
+
+**Stage 3: All 3 reference sources always aggregated**
+- For non-arXiv papers, `OnlineReferenceSearch.search()` now calls `_lookup_paper_id_by_title()` to find the Semantic Scholar paper ID and fetch the paper's own reference list — the same depth signal previously only available for arXiv submissions.
+
+**Stage 3 / Stage 5: Threshold-based reference filtering**
+- Default `similarity_threshold` raised from 0.05 → 0.1 (papers below this score are never included).
+- Default `top_k_similar` cap raised from 5 → 20 (threshold is now the primary filter).
+- `--similarity-threshold FLOAT` CLI flag (env: `SIMILARITY_THRESHOLD`).
+- `--top-k` default raised to 20.
+
+### Changed
+- `decomposition.txt` prompt relaxed: removes "exactly 3 levels" prescription; tree size is now "as needed" (typically 2–4 levels). Prompt shortened and more flexible.
+- `--top-k` default changed from 5 → 20 to work with the new threshold-first filtering.
+
+---
 
 **Online reference search**
 - Fixed URL encoding bug in `OnlineReferenceSearch._fetch_references`: `urllib.parse.quote(safe="")` encoded the colon in `arXiv:XXXX.XXXXX` to `%3A`. Semantic Scholar's API expects the literal colon; changed to `safe=":"`.
@@ -51,7 +231,46 @@ The `release.yml` workflow will:
 
 ---
 
-## [1.3.0] — 2026-03-20
+## [2.0.0] — 2026-03-25
+
+### Added
+
+**Deep concept tree decomposition (Stage 2 — Understand)**
+- `ConceptNode` dataclass — recursive tree node (`label: str`, `children: list[ConceptNode]`).
+- `IdeaDecomposition` gains two new fields: `concept_tree: ConceptNode | None` and `implementation_steps: list[str]`.
+- `decomposition.txt` prompt updated to elicit a `CONCEPT_TREE` indented outline (3 levels: Problem/Method/Evidence at L1, sub-problems at L2, key terms at L3) and `IMPLEMENTATION_STEPS` (5–8 numbered concrete steps).
+- `_parse_concept_tree_text()` — indent-aware parser; auto-detects 2-space or 4-space indent unit; handles multi-root outlines via a virtual root.
+- `_format_decomp_context()` — compact formatter for injecting decomposition context into LLM prompts.
+- `_render_concept_tree_ascii()` in `report_generator.py` — renders `ConceptNode` trees with `├──`, `└──`, `│` box-drawing chars; replaces Mermaid mind-map in reports.
+- `implementation_steps` rendered as a numbered **Implementation Roadmap** in Markdown and text reports.
+- JSON output includes `concept_tree` (nested dict) and `implementation_steps` in `idea_decomposition`.
+
+**Prompts directory**
+- All prompt templates moved from inline constants in `novelty_evaluator.py` into versioned `.txt` files under `open_idea_sourcing/prompts/`.
+- `_load_prompt(name)` helper reads templates at import time.
+- All dimension prompts (`duplication`, `combination`, `equivalence`, `annotation`) gain a `{decomposition}` slot — verdicts are now grounded in the structural concept breakdown.
+
+**Stage 2 before Stage 3**
+- `NoveltyEvaluator.decompose_idea(paper, raw)` public method — callable before the retrieval step.
+- `review_paper.py` calls decomposition before online search (Stage 2 → Stage 3) so the concept tree can inform Semantic Scholar query generation.
+- `generate_search_queries()` accepts an optional `decomposition` keyword argument; when provided, the concept context is appended to the query-generation prompt.
+- `evaluate()` accepts `idea_decomposition` parameter — skips internal decomposition when a pre-computed result is passed.
+
+**Separate decomposition model**
+- `NoveltyEvaluator(decomposition_llm=...)` — routes the decomposition step through a separate callable; enables using a reasoning model for the expensive structural pass.
+- `--decomposition-model NAME` CLI flag (env: `OPENAI_DECOMPOSITION_MODEL`) — passes a separate LLM to `NoveltyEvaluator`.
+- `_build_llm()` auto-detects reasoning models (`o1-*`, `o3-*`, `o4-*` prefix) and omits `temperature` from the API call.
+
+**Pipeline context**
+- `PipelineContext` dataclass — typed shared state bus for pipeline stages (foundation for future `Pipeline` class refactor).
+
+### Changed
+- Idea Decomposition report section: ASCII concept tree replaces Mermaid mind-map when `concept_tree` is populated; `implementation_steps` appear as a numbered roadmap.
+- Pipeline Job Log: Stage 2 (Idea decomposition) now appears before Stage 3 (Online reference search).
+
+---
+
+## [1.3.0] — 2026-03-25
 
 ### Added
 
@@ -89,7 +308,7 @@ The `release.yml` workflow will:
 
 ---
 
-## [1.2.0] — 2026-03-20
+## [1.2.0] — 2026-03-25
 
 ### Added
 
@@ -134,7 +353,14 @@ The `release.yml` workflow will:
 ---
 
 <!-- Links are auto-maintained — update when a new version is tagged -->
-[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.5.0...v2.6.0
+[2.5.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.4.0...v2.5.0
+[2.4.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.3.0...v2.4.0
+[2.3.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.2.0...v2.3.0
+[2.2.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.3.0...v2.0.0
 [1.3.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/yulinl2/Open-Idea-Sourcing/compare/v1.0.0...v1.1.0

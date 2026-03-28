@@ -1,0 +1,31 @@
+You are a rigorous academic novelty reviewer.
+
+TASK: Identify whether the methods proposed in the submitted paper are
+subtly equivalent to well-established methodologies, even if the notation,
+framing, or application domain differ. Look for mathematical equivalences,
+algorithmic re-derivations, or conceptual renamings.
+
+SUBMITTED PAPER:
+{paper_content}
+
+IDEA DECOMPOSITION:
+{decomposition}
+
+REFERENCE PAPERS (most similar by text):
+{reference_papers}
+
+PRIOR ANALYSIS — Duplication Check:
+{prior_duplication}
+
+PRIOR ANALYSIS — Combination Check:
+{prior_combination}
+
+INSTRUCTIONS:
+- Consider the prior analyses above as accumulated context. Build on the
+  evidence already established; do not repeat their conclusions verbatim.
+- Respond with a structured analysis.
+- Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = no equivalence found).
+- Then write EXPLANATION: describe any equivalences found, citing the
+  established method.
+- Then write REFERENCES: comma-separated REF-N labels for equivalent papers
+  (e.g. REF-1), or "none".

@@ -13,7 +13,6 @@ import review_paper
 # Import the helpers we want to test
 from review_paper import _normalise_arxiv_url, _extract_arxiv_id, _download_paper, _build_llm, main
 from open_idea_sourcing.reference_store import ReferenceStore
-
 # ---------------------------------------------------------------------------
 # _normalise_arxiv_url
 # ---------------------------------------------------------------------------
@@ -153,6 +152,7 @@ class TestDownloadPaper:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestMainWithUrl:
     """Verify that main() accepts a URL, downloads the paper, and evaluates it."""
 
@@ -173,7 +173,13 @@ class TestMainWithUrl:
         return fake_download
 
     def test_url_input_invokes_download(self, tmp_path):
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with (
             patch("review_paper._download_paper", side_effect=self._make_fake_download(tmp_path)),
@@ -200,7 +206,13 @@ class TestMainWithUrl:
         def fake_download(url: str, dest_dir: str) -> Path:
             return dest
 
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: done.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: done.\n"
+))
 
         with (
             patch("review_paper.tempfile.mkdtemp", side_effect=tracking_mkdtemp),
@@ -217,7 +229,13 @@ class TestMainWithUrl:
         """Passing a local file path must continue to work as before."""
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "text", "--reports-dir", str(tmp_path)])
@@ -318,6 +336,7 @@ class TestBuildLlm:
                 _build_llm("gpt-4o")
 
 
+@pytest.mark.slow
 class TestMainLlmError:
     """Verify that main() handles LLM/API failures gracefully."""
 
@@ -382,6 +401,7 @@ class TestMainLlmError:
 
 
 
+@pytest.mark.slow
 class TestMainOutputFlag:
     """Verify that main() writes to a file when --output is given."""
 
@@ -395,7 +415,13 @@ class TestMainOutputFlag:
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
         out_file = tmp_path / "report.md"
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "markdown", "--output", str(out_file)])
@@ -408,7 +434,13 @@ class TestMainOutputFlag:
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
         out_file = tmp_path / "report.md"
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             main([str(paper), "--format", "markdown", "--output", str(out_file)])
@@ -422,7 +454,13 @@ class TestMainOutputFlag:
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
         out_file = tmp_path / "report.json"
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "json", "--output", str(out_file)])
@@ -432,6 +470,7 @@ class TestMainOutputFlag:
         assert "paper_title" in data
 
 
+@pytest.mark.slow
 class TestMainMetadata:
     """Verify that run metadata is attached to the generated report."""
 
@@ -444,7 +483,13 @@ class TestMainMetadata:
     def test_metadata_present_in_markdown_output(self, tmp_path, capsys):
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "markdown", "--model", "gpt-4o-test",
@@ -459,7 +504,13 @@ class TestMainMetadata:
         import json as _json
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "json", "--reports-dir", str(tmp_path)])
@@ -476,7 +527,13 @@ class TestMainMetadata:
         import json as _json
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             main([str(paper), "--format", "json", "--reports-dir", str(tmp_path)])
@@ -489,7 +546,13 @@ class TestMainMetadata:
         import json as _json
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             main([str(paper), "--format", "json", "--reports-dir", str(tmp_path)])
@@ -505,7 +568,13 @@ class TestMainMetadata:
         import json as _json
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             main([str(paper), "--format", "json", "--reports-dir", str(tmp_path)])
@@ -515,6 +584,7 @@ class TestMainMetadata:
         assert data["metadata"]["code_version"] != ""
 
 
+@pytest.mark.slow
 class TestMainReportsDir:
     """Verify the reports directory auto-save behaviour."""
 
@@ -528,7 +598,13 @@ class TestMainReportsDir:
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
         reports_dir = tmp_path / "my_reports"
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "markdown",
@@ -543,7 +619,13 @@ class TestMainReportsDir:
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
         reports_dir = tmp_path / "new_dir" / "nested"
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "text",
@@ -556,7 +638,13 @@ class TestMainReportsDir:
         paper = tmp_path / "paper.txt"
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
         reports_dir = tmp_path / "reports"
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             main([str(paper), "--format", "markdown",
@@ -573,7 +661,13 @@ class TestMainReportsDir:
         paper.write_text(self._SAMPLE_TEXT, encoding="utf-8")
         out_file = tmp_path / "explicit.md"
         reports_dir = tmp_path / "reports"
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "markdown",
@@ -696,6 +790,7 @@ class TestPaperArgOptional:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestMainBatchMode:
     """Verify batch review behaviour via --papers-file."""
 
@@ -733,7 +828,24 @@ class TestMainBatchMode:
             {"path": str(paper2)},
         ])
 
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        # The side_effect returns a BERT-themed response when the prompt contains
+        # "BERT" or "bidirectional" (unique to paper2's raw content injected into
+        # the LLM parse/evaluation prompts), and an Attention-themed response
+        # otherwise.  This ensures the two batched papers produce distinct
+        # filenames so both reports are retained on disk.
+        fake_llm = MagicMock(side_effect=lambda prompt: (
+            "TITLE: BERT: Pre-training Deep Bidirectional Transformers\n"
+            "ABSTRACT: We introduce BERT for language representation.\n"
+            "AUTHORS: Devlin et al.\n"
+            "VERDICT: NOVEL\n"
+            "EXPLANATION: original.\n"
+        ) if "BERT" in prompt or "bidirectional" in prompt.lower() else (
+            "TITLE: Attention Is All You Need\n"
+            "ABSTRACT: We propose the Transformer.\n"
+            "AUTHORS: Vaswani et al.\n"
+            "VERDICT: NOVEL\n"
+            "EXPLANATION: original.\n"
+        ))
         reports_dir = tmp_path / "reports"
 
         with patch("review_paper._build_llm", return_value=fake_llm):
@@ -756,7 +868,13 @@ class TestMainBatchMode:
             {"path": str(tmp_path / "missing.txt")},  # does not exist
         ])
 
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([
@@ -807,12 +925,13 @@ class TestMainBatchMode:
 _BUNDLED_REFS_PATH = Path(__file__).resolve().parent.parent / "data" / "references.json"
 
 
+@pytest.mark.slow
 class TestBundledReferences:
     """Verify the bundled data/references.json file and default-loading behaviour."""
 
     def test_bundled_references_file_exists(self):
         assert _BUNDLED_REFS_PATH.exists(), (
-            "data/references.json must exist as the bundled reference store"
+            "data/references.json must exist as the user reference store"
         )
 
     def test_bundled_references_is_valid_json_list(self):
@@ -855,21 +974,28 @@ _SAMPLE_TEXT = (
 )
 
 
+@pytest.mark.slow
 class TestBundledReferencesLoadedByDefault:
-    """Verify that _review_one() always loads bundled references."""
+    """Verify that _review_one() always loads user references."""
 
     def test_bundled_refs_loaded_even_without_references_flag(self, tmp_path, capsys):
         """Running without --references must still load the bundled store."""
         paper = tmp_path / "paper.txt"
         paper.write_text(_SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: ok.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([str(paper), "--format", "text", "--reports-dir", str(tmp_path)])
 
         assert rc == 0
         err = capsys.readouterr().err
-        assert "bundled reference" in err.lower()
+        assert "user reference" in err.lower()
 
     def test_user_references_merged_on_top_of_bundled(self, tmp_path, capsys):
         """When --references is given, user refs are added to the bundled set."""
@@ -891,7 +1017,13 @@ class TestBundledReferencesLoadedByDefault:
         user_refs_path = tmp_path / "user_refs.json"
         user_refs_path.write_text(_json.dumps(user_refs), encoding="utf-8")
 
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: ok.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([
@@ -903,7 +1035,7 @@ class TestBundledReferencesLoadedByDefault:
         assert rc == 0
         err = capsys.readouterr().err
         # Both the bundled load and user references load messages should appear
-        assert "bundled reference" in err.lower()
+        assert "user reference" in err.lower()
         assert "user_refs.json" in err
 
     def test_bundled_refs_path_constant_is_set(self):
@@ -926,10 +1058,16 @@ class TestBundledReferencesLoadedByDefault:
         assert args.references == custom
 
     def test_empty_references_disables_all_reference_loading(self, tmp_path, capsys):
-        """Passing --references '' must skip the bundled reference store too."""
+        """Passing --references '' must skip the user reference store too."""
         paper = tmp_path / "paper.txt"
         paper.write_text(_SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: ok.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: ok.\n"
+))
 
         with patch("review_paper._build_llm", return_value=fake_llm):
             rc = main([
@@ -941,7 +1079,7 @@ class TestBundledReferencesLoadedByDefault:
         assert rc == 0
         err = capsys.readouterr().err
         # Neither bundled nor user reference loading should be reported.
-        assert "bundled reference" not in err.lower()
+        assert "user reference" not in err.lower()
         assert "loading reference store" not in err.lower()
 
 
@@ -956,6 +1094,7 @@ _ONLINE_SEARCH_SAMPLE_TEXT = (
 )
 
 
+@pytest.mark.slow
 class TestOnlineSearchIntegration:
     """Verify that online reference search is invoked by default and can be
     disabled via --no-online-search."""
@@ -964,10 +1103,16 @@ class TestOnlineSearchIntegration:
         """OnlineReferenceSearch.search must be called when the flag is absent."""
         paper = tmp_path / "paper.txt"
         paper.write_text(_ONLINE_SEARCH_SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
         call_count = {"n": 0}
 
-        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None):
+        def tracking_search(self_obj, title, abstract="", queries=None):
             call_count["n"] += 1
             return []  # empty so the rest of the pipeline is unaffected
 
@@ -987,10 +1132,16 @@ class TestOnlineSearchIntegration:
         """OnlineReferenceSearch.search must NOT be called with --no-online-search."""
         paper = tmp_path / "paper.txt"
         paper.write_text(_ONLINE_SEARCH_SAMPLE_TEXT, encoding="utf-8")
-        fake_llm = MagicMock(return_value="VERDICT: NOVEL\nEXPLANATION: original.")
+        fake_llm = MagicMock(return_value=(
+    "TITLE: Attention Is All You Need\n"
+    "ABSTRACT: We propose the Transformer.\n"
+    "AUTHORS: Vaswani et al.\n"
+    "VERDICT: NOVEL\n"
+    "EXPLANATION: original.\n"
+))
         call_count = {"n": 0}
 
-        def tracking_search(self_obj, title, abstract="", arxiv_id="", queries=None):
+        def tracking_search(self_obj, title, abstract="", queries=None):
             call_count["n"] += 1
             return []
 
@@ -1021,3 +1172,111 @@ class TestOnlineSearchIntegration:
         from review_paper import _parse_args
         args = _parse_args(["paper.txt", "--format", "text", "--no-online-search"])
         assert args.no_online_search is True
+
+# ---------------------------------------------------------------------------
+# _build_llm reasoning model support
+# ---------------------------------------------------------------------------
+
+
+class TestBuildLlmReasoningModel:
+    """_build_llm must omit temperature for reasoning model families."""
+
+    def _run_and_capture_kwargs(self, model: str):
+        """Invoke _build_llm(model) and capture the kwargs passed to create()."""
+        captured = {}
+
+        class FakeCompletion:
+            choices = [MagicMock(message=MagicMock(content="ok"))]
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+                return FakeCompletion()
+
+        class FakeClient:
+            chat = MagicMock()
+            chat.completions = FakeCompletions()
+
+        import openai
+        with patch("openai.OpenAI", return_value=FakeClient()):
+            with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}):
+                llm = _build_llm(model)
+                llm("hello")
+        return captured
+
+    def test_standard_model_has_temperature(self):
+        kwargs = self._run_and_capture_kwargs("gpt-4o")
+        assert "temperature" in kwargs
+
+    def test_o1_model_omits_temperature(self):
+        kwargs = self._run_and_capture_kwargs("o1-mini")
+        assert "temperature" not in kwargs
+
+    def test_o3_model_omits_temperature(self):
+        kwargs = self._run_and_capture_kwargs("o3-mini")
+        assert "temperature" not in kwargs
+
+    def test_o4_model_omits_temperature(self):
+        kwargs = self._run_and_capture_kwargs("o4-mini")
+        assert "temperature" not in kwargs
+
+
+# ---------------------------------------------------------------------------
+# --decomposition-model CLI flag
+# ---------------------------------------------------------------------------
+
+
+class TestDecompositionModelArg:
+    def test_default_is_empty_string(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text"])
+        assert args.decomposition_model == "" or args.decomposition_model is None or not args.decomposition_model
+
+    def test_can_be_set(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text", "--decomposition-model", "o3-mini"])
+        assert args.decomposition_model == "o3-mini"
+
+
+class TestSimilarityThresholdArg:
+    def test_default_threshold_is_0_1(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text"])
+        assert args.similarity_threshold == pytest.approx(0.1)
+
+    def test_threshold_can_be_set(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text", "--similarity-threshold", "0.25"])
+        assert args.similarity_threshold == pytest.approx(0.25)
+
+    def test_default_top_k_is_20(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--format", "text"])
+        assert args.top_k == 20
+
+
+# ---------------------------------------------------------------------------
+# Stage 3 sub-stage toggle flags
+# ---------------------------------------------------------------------------
+
+@pytest.mark.slow
+class TestStageToggles:
+    def test_no_user_refs_flag_parsed(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--no-user-refs"])
+        assert args.no_user_refs is True
+
+    def test_no_user_refs_default_is_false(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt"])
+        assert args.no_user_refs is False
+
+    def test_no_paper_cited_refs_flag_parsed(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt", "--no-paper-cited-refs"])
+        assert args.no_paper_cited_refs is True
+
+    def test_no_paper_cited_refs_default_is_false(self):
+        from review_paper import _parse_args
+        args = _parse_args(["paper.txt"])
+        assert args.no_paper_cited_refs is False

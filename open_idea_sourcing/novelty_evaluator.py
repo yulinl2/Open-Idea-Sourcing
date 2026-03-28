@@ -15,6 +15,7 @@ and is straightforward to test without live API calls.
 
 from __future__ import annotations
 
+import pathlib as _pathlib
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
@@ -25,6 +26,13 @@ from .similarity_search import SimilarityResult
 
 # Type alias for the LLM callable
 LLMCallable = Callable[[str], str]
+
+_PROMPTS_DIR = _pathlib.Path(__file__).resolve().parent / "prompts"
+
+
+def _load_prompt(name: str) -> str:
+    """Load a prompt template from the prompts/ directory."""
+    return (_PROMPTS_DIR / f"{name}.txt").read_text(encoding="utf-8")
 
 
 @dataclass
@@ -95,6 +103,7 @@ class RunMetadata:
     """
 
     model: str = ""
+    decomposition_model: str = ""  # separate model used for Stage 2 (when set)
     input_source: str = ""
     timestamp: str = ""
     total_runtime_seconds: float = 0.0
@@ -119,6 +128,13 @@ class NoveltyDimension:
 
 
 @dataclass
+class ConceptNode:
+    """A node in the hierarchical concept tree."""
+    label: str
+    children: list[ConceptNode] = field(default_factory=list)
+
+
+@dataclass
 class IdeaDecomposition:
     """Structured decomposition of the paper's core idea.
 
@@ -126,18 +142,14 @@ class IdeaDecomposition:
     ----------
     core_concept:
         One-sentence description of the central contribution.
-    sub_ideas:
-        Key component ideas or sub-contributions.
-    assumptions:
-        Underlying assumptions the work makes.
-    limitations:
-        Acknowledged or implicit limitations of the approach.
+    concept_tree:
+        Hierarchical breakdown of the contribution.  Fully adaptive —
+        the LLM determines depth, breadth, and granularity based on
+        the paper's content and scientific significance.
     """
 
     core_concept: str
-    sub_ideas: list[str] = field(default_factory=list)
-    assumptions: list[str] = field(default_factory=list)
-    limitations: list[str] = field(default_factory=list)
+    concept_tree: ConceptNode | None = None
 
 
 @dataclass
@@ -164,26 +176,26 @@ class DomainReference:
 
 @dataclass
 class SimilarityAnnotation:
-    """LLM-generated comparative annotation for one similar reference paper.
+    """LLM-generated derivation analysis comparing the submitted paper against
+    the full pool of similar reference papers.
 
     Attributes
     ----------
+    derivation_map:
+        Mapping from concept-tree component label to source REF-N labels.
+        E.g. ``{"attention mechanism": ["REF-1", "REF-3"], "training recipe": ["REF-2"]}``.
+    combination_analysis:
+        Prose analysis of whether the paper combines subsets of references.
+    novel_elements:
+        Elements that appear not derivable from any listed reference.
     paper_id:
-        ID of the similar reference paper being annotated.
-    overlap:
-        Aspects shared between the submitted paper and this reference
-        (methods, concepts, results).
-    differences:
-        Ways the submitted paper differs from or goes beyond this reference.
-    derivation:
-        Specific elements of the submitted paper that appear derived from
-        or inspired by this reference.
+        Kept for backward compatibility (set to empty string for 1-to-all mode).
     """
 
-    paper_id: str
-    overlap: str = ""
-    differences: str = ""
-    derivation: str = ""
+    derivation_map: dict[str, list[str]] = field(default_factory=dict)
+    combination_analysis: str = ""
+    novel_elements: list[str] = field(default_factory=list)
+    paper_id: str = ""
 
 
 @dataclass
@@ -201,6 +213,39 @@ class NoveltyReport:
     idea_decomposition: IdeaDecomposition | None = None
     domain_references: list[DomainReference] = field(default_factory=list)
     similar_paper_annotations: list[SimilarityAnnotation] = field(default_factory=list)
+    # Maps paper_id → primary source label ("user", "paper-cited", "online", "domain")
+    ref_sources: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class PipelineContext:
+    """Shared state bus threaded through all pipeline stages.
+
+    Each stage reads from and writes to this object.  Using
+    ``PipelineContext`` as the shared bus (rather than function
+    parameters) makes it possible to:
+
+    * Inspect or checkpoint pipeline state at any point mid-run.
+    * Replay any stage independently without re-running earlier stages.
+    * Swap any stage implementation (e.g. swap the parser, the retriever,
+      or a single dimension check) without touching adjacent stages.
+    * Run reliable ablations — separate the effects of model choice, prompt
+      design, and pipeline structure cleanly.
+    """
+
+    paper: ParsedPaper
+    metadata: RunMetadata
+    raw_llm_responses: dict[str, str] = field(default_factory=dict)
+    idea_decomposition: IdeaDecomposition | None = None
+    similar_papers: list[SimilarityResult] = field(default_factory=list)
+    domain_references: list[DomainReference] = field(default_factory=list)
+    similar_paper_annotations: list[SimilarityAnnotation] = field(default_factory=list)
+    dimensions: list[NoveltyDimension] = field(default_factory=list)
+    search_queries: list[str] = field(default_factory=list)
+    online_papers: list = field(default_factory=list)
+    stage_runtimes: dict[str, float] = field(default_factory=dict)
+    # Maps paper_id → source label ("user", "paper-cited", "online", "domain")
+    ref_sources: dict[str, str] = field(default_factory=dict)
 
 
 class NoveltyEvaluator:
@@ -230,12 +275,14 @@ class NoveltyEvaluator:
     def __init__(
         self,
         llm: LLMCallable,
-        top_k_similar: int = 5,
-        similarity_threshold: float = 0.05,
+        top_k_similar: int = 10_000,
+        similarity_threshold: float = 0.1,
+        decomposition_llm: LLMCallable | None = None,
     ) -> None:
         self._llm = llm
         self._top_k = top_k_similar
         self._threshold = similarity_threshold
+        self._decomposition_llm = decomposition_llm
 
     # ------------------------------------------------------------------
     # Public API
@@ -246,6 +293,7 @@ class NoveltyEvaluator:
         content: str,
         refs_text: str,
         raw: dict[str, str],
+        decomp: IdeaDecomposition | None = None,
     ) -> list[DomainReference]:
         """Identify key domain references for a paper (Stage 3d — Retrieve).
 
@@ -272,7 +320,28 @@ class NoveltyEvaluator:
             LLM-identified key references contextualising the paper in its
             field.
         """
-        return self._find_domain_references(content, refs_text, raw)
+        return self._find_domain_references(content, refs_text, raw, decomp=decomp)
+
+    def decompose_idea(self, paper: ParsedPaper, raw: dict[str, str]) -> IdeaDecomposition:
+        """Decompose *paper*'s core idea into structured components (Stage 2).
+
+        Calling this before :meth:`evaluate` (Stage 3+) lets the concept tree
+        inform query generation in the online retrieval step.
+
+        Parameters
+        ----------
+        paper:
+            The parsed paper to decompose.
+        raw:
+            Mutable dict into which the raw LLM response is stored under
+            ``"idea_decomposition"``.
+
+        Returns
+        -------
+        IdeaDecomposition
+            Structured breakdown of the paper's core idea.
+        """
+        return self._decompose_idea(paper.key_content(), raw)
 
     def evaluate(
         self,
@@ -282,6 +351,7 @@ class NoveltyEvaluator:
         _run_start: Optional[float] = None,
         domain_references: Optional[list[DomainReference]] = None,
         _domain_references_raw: Optional[dict[str, str]] = None,
+        idea_decomposition: Optional[IdeaDecomposition] = None,
     ) -> NoveltyReport:
         """Run all evaluation passes and return a :class:`NoveltyReport`.
 
@@ -314,10 +384,10 @@ class NoveltyEvaluator:
             complete even when domain references were pre-computed.
         """
         similar_papers = similar_papers or []
-        # Apply threshold and top-k filtering
+        # Apply threshold filtering
         similar_papers = [
             p for p in similar_papers if p.score >= self._threshold
-        ][: self._top_k]
+        ]
         content = paper.key_content()
         refs_text = self.format_references(similar_papers)
         raw: dict[str, str] = {}
@@ -328,13 +398,17 @@ class NoveltyEvaluator:
         # Idea decomposition runs FIRST — it provides the structural context
         # that informs all subsequent novelty analysis passes.
         t0 = time.monotonic()
-        idea_decomp = self._decompose_idea(content, raw)
-        t1 = time.monotonic()
-        dup = self._check_duplication(content, refs_text, raw)
+        if idea_decomposition is not None:
+            idea_decomp = idea_decomposition
+            t1 = time.monotonic()
+        else:
+            idea_decomp = self._decompose_idea(content, raw)
+            t1 = time.monotonic()
+        dup = self._check_duplication(content, refs_text, raw, decomp=idea_decomp)
         t2 = time.monotonic()
-        combo = self._check_combination(content, refs_text, raw)
+        combo = self._check_combination(content, refs_text, raw, decomp=idea_decomp, prior_dup=dup)
         t3 = time.monotonic()
-        equiv = self._check_equivalence(content, refs_text, raw)
+        equiv = self._check_equivalence(content, refs_text, raw, decomp=idea_decomp, prior_dup=dup, prior_combo=combo)
         t4 = time.monotonic()
         overall, confidence, summary = self._synthesise(
             paper.title, dup, combo, equiv, raw
@@ -359,19 +433,21 @@ class NoveltyEvaluator:
         annotations: list[SimilarityAnnotation] = []
         t7 = t6
         if similar_papers:
-            annotations = self._annotate_similar_papers(content, similar_papers, raw)
+            annotations = self._annotate_similar_papers(content, similar_papers, raw, decomp=idea_decomp)
             t7 = time.monotonic()
 
         if metadata is not None:
-            jobs: list[PipelineJob] = [
-                PipelineJob(
+            jobs: list[PipelineJob] = []
+            if idea_decomposition is None:
+                jobs.append(PipelineJob(
                     name="Idea decomposition",
                     agent=agent,
                     offset_s=round(t0 - run_start, 3),
                     duration_s=round(t1 - t0, 3),
                     input_summary="paper content",
-                    output_summary=f"{len(idea_decomp.sub_ideas)} sub-idea(s)",
-                ),
+                    output_summary="concept tree" if idea_decomp.concept_tree else "core concept only",
+                ))
+            jobs += [
                 PipelineJob(
                     name="Duplication check",
                     agent=agent,
@@ -442,16 +518,189 @@ class NoveltyEvaluator:
             similar_paper_annotations=annotations,
         )
 
+    def evaluate_with_context(self, ctx: "PipelineContext") -> "NoveltyReport":
+        """Run all evaluation passes using *ctx* as the shared state bus.
+
+        Reads inputs from *ctx* and writes all results back to it, making
+        this the ablation-friendly entry point for the evaluation stage.
+
+        When ``ctx.idea_decomposition`` is already populated (e.g. pre-run
+        at Stage 2), the internal decomposition LLM call is skipped.
+        Likewise, when ``ctx.domain_references`` is already populated
+        (pre-run at Stage 3d), the internal domain-references call is
+        skipped and no duplicate ``PipelineJob`` entry is added.
+
+        Reads
+        -----
+        ctx.paper, ctx.similar_papers, ctx.idea_decomposition,
+        ctx.domain_references, ctx.metadata, ctx.raw_llm_responses
+
+        Writes
+        ------
+        ctx.idea_decomposition, ctx.domain_references,
+        ctx.similar_paper_annotations, ctx.dimensions, ctx.raw_llm_responses,
+        ctx.metadata.jobs (appended)
+
+        Parameters
+        ----------
+        ctx:
+            Shared pipeline context.
+
+        Returns
+        -------
+        NoveltyReport
+            Fully assembled report with all dimension verdicts and metadata.
+        """
+        similar_papers = [
+            p for p in ctx.similar_papers if p.score >= self._threshold
+        ]
+        content = ctx.paper.key_content()
+        refs_text = self.format_references(similar_papers)
+        raw = ctx.raw_llm_responses
+        refs_summary = f"{len(similar_papers)} reference paper(s)"
+        agent = (
+            f"LLM ({ctx.metadata.model})"
+            if (ctx.metadata and ctx.metadata.model)
+            else "LLM"
+        )
+        run_start = time.monotonic()
+
+        decomp_ran_internally = False
+        t0 = time.monotonic()
+        if ctx.idea_decomposition is not None:
+            idea_decomp = ctx.idea_decomposition
+            t1 = time.monotonic()
+        else:
+            idea_decomp = self._decompose_idea(content, raw)
+            ctx.idea_decomposition = idea_decomp
+            decomp_ran_internally = True
+            t1 = time.monotonic()
+
+        dup = self._check_duplication(content, refs_text, raw, decomp=idea_decomp)
+        t2 = time.monotonic()
+        combo = self._check_combination(content, refs_text, raw, decomp=idea_decomp, prior_dup=dup)
+        t3 = time.monotonic()
+        equiv = self._check_equivalence(content, refs_text, raw, decomp=idea_decomp, prior_dup=dup, prior_combo=combo)
+        t4 = time.monotonic()
+        overall, confidence, summary = self._synthesise(
+            ctx.paper.title, dup, combo, equiv, raw
+        )
+        t5 = time.monotonic()
+
+        domain_refs_ran_internally = False
+        if ctx.domain_references:
+            domain_refs = ctx.domain_references
+            t6 = t5
+        else:
+            domain_refs = self._find_domain_references(content, refs_text, raw)
+            ctx.domain_references = domain_refs
+            domain_refs_ran_internally = True
+            t6 = time.monotonic()
+
+        annotations: list[SimilarityAnnotation] = []
+        t7 = t6
+        if similar_papers:
+            annotations = self._annotate_similar_papers(
+                content, similar_papers, raw, decomp=idea_decomp
+            )
+            ctx.similar_paper_annotations = annotations
+            t7 = time.monotonic()
+
+        ctx.dimensions = [dup, combo, equiv]
+
+        if ctx.metadata is not None:
+            jobs: list[PipelineJob] = []
+            if decomp_ran_internally:
+                jobs.append(PipelineJob(
+                    name="Idea decomposition",
+                    agent=agent,
+                    offset_s=round(t0 - run_start, 3),
+                    duration_s=round(t1 - t0, 3),
+                    input_summary="paper content",
+                    output_summary="concept tree" if idea_decomp.concept_tree else "core concept only",
+                ))
+            jobs += [
+                PipelineJob(
+                    name="Duplication check",
+                    agent=agent,
+                    offset_s=round(t1 - run_start, 3),
+                    duration_s=round(t2 - t1, 3),
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"verdict={dup.verdict}",
+                ),
+                PipelineJob(
+                    name="Combination check",
+                    agent=agent,
+                    offset_s=round(t2 - run_start, 3),
+                    duration_s=round(t3 - t2, 3),
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"verdict={combo.verdict}",
+                ),
+                PipelineJob(
+                    name="Equivalence check",
+                    agent=agent,
+                    offset_s=round(t3 - run_start, 3),
+                    duration_s=round(t4 - t3, 3),
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"verdict={equiv.verdict}",
+                ),
+                PipelineJob(
+                    name="Synthesis",
+                    agent=agent,
+                    offset_s=round(t4 - run_start, 3),
+                    duration_s=round(t5 - t4, 3),
+                    input_summary="3 dimension results",
+                    output_summary=f"verdict={overall}, confidence={confidence}",
+                ),
+            ]
+            if domain_refs_ran_internally:
+                jobs.append(PipelineJob(
+                    name="Domain references",
+                    agent=agent,
+                    offset_s=round(t5 - run_start, 3),
+                    duration_s=round(t6 - t5, 3),
+                    input_summary=f"paper content + {refs_summary}",
+                    output_summary=f"{len(domain_refs)} domain reference(s)",
+                ))
+            if annotations:
+                jobs.append(PipelineJob(
+                    name="Reference annotation",
+                    agent=agent,
+                    offset_s=round(t6 - run_start, 3),
+                    duration_s=round(t7 - t6, 3),
+                    input_summary=f"paper + {len(similar_papers)} similar paper(s)",
+                    output_summary=f"{len(annotations)} annotation(s)",
+                ))
+            ctx.metadata.jobs.extend(jobs)
+
+        return NoveltyReport(
+            paper_title=ctx.paper.title,
+            overall_verdict=overall,
+            confidence=confidence,
+            summary=summary,
+            dimensions=[dup, combo, equiv],
+            similar_papers=similar_papers,
+            raw_llm_responses=dict(raw),
+            metadata=ctx.metadata,
+            idea_decomposition=idea_decomp,
+            domain_references=domain_refs,
+            similar_paper_annotations=annotations,
+            ref_sources=dict(ctx.ref_sources),
+        )
+
     # ------------------------------------------------------------------
     # Analysis passes
     # ------------------------------------------------------------------
 
     def _check_duplication(
-        self, content: str, refs_text: str, raw: dict[str, str]
+        self, content: str, refs_text: str, raw: dict[str, str],
+        decomp: IdeaDecomposition | None = None,
     ) -> NoveltyDimension:
         """Detect whether the paper directly duplicates existing work."""
         prompt = _DUPLICATION_PROMPT.format(
-            paper_content=content, reference_papers=refs_text
+            paper_content=content,
+            reference_papers=refs_text,
+            decomposition=_format_decomp_context(decomp),
         )
         response = self._llm(prompt)
         raw["duplication"] = response
@@ -464,11 +713,29 @@ class NoveltyEvaluator:
         )
 
     def _check_combination(
-        self, content: str, refs_text: str, raw: dict[str, str]
+        self, content: str, refs_text: str, raw: dict[str, str],
+        decomp: IdeaDecomposition | None = None,
+        prior_dup: "NoveltyDimension | None" = None,
     ) -> NoveltyDimension:
-        """Detect whether the paper is merely a combination of prior works."""
+        """Detect whether the paper is merely a combination of prior works.
+
+        Parameters
+        ----------
+        prior_dup:
+            Result of the duplication check (Stage 5a).  When provided, the
+            combination prompt receives it as ``PRIOR ANALYSIS`` context so
+            this pass builds on — rather than duplicates — the prior verdict.
+        """
+        prior_text = (
+            f"Verdict: {prior_dup.verdict}\n{prior_dup.explanation}"
+            if prior_dup is not None
+            else "Not yet performed."
+        )
         prompt = _COMBINATION_PROMPT.format(
-            paper_content=content, reference_papers=refs_text
+            paper_content=content,
+            reference_papers=refs_text,
+            decomposition=_format_decomp_context(decomp),
+            prior_duplication=prior_text,
         )
         response = self._llm(prompt)
         raw["combination"] = response
@@ -481,11 +748,38 @@ class NoveltyEvaluator:
         )
 
     def _check_equivalence(
-        self, content: str, refs_text: str, raw: dict[str, str]
+        self, content: str, refs_text: str, raw: dict[str, str],
+        decomp: IdeaDecomposition | None = None,
+        prior_dup: "NoveltyDimension | None" = None,
+        prior_combo: "NoveltyDimension | None" = None,
     ) -> NoveltyDimension:
-        """Detect methodological equivalence to known methods."""
+        """Detect methodological equivalence to known methods.
+
+        Parameters
+        ----------
+        prior_dup:
+            Result of the duplication check (Stage 5a).
+        prior_combo:
+            Result of the combination check (Stage 5b).
+        When provided, both are passed as ``PRIOR ANALYSIS`` context so this
+        pass builds on the accumulated evidence from earlier checks.
+        """
+        dup_text = (
+            f"Verdict: {prior_dup.verdict}\n{prior_dup.explanation}"
+            if prior_dup is not None
+            else "Not yet performed."
+        )
+        combo_text = (
+            f"Verdict: {prior_combo.verdict}\n{prior_combo.explanation}"
+            if prior_combo is not None
+            else "Not yet performed."
+        )
         prompt = _EQUIVALENCE_PROMPT.format(
-            paper_content=content, reference_papers=refs_text
+            paper_content=content,
+            reference_papers=refs_text,
+            decomposition=_format_decomp_context(decomp),
+            prior_duplication=dup_text,
+            prior_combination=combo_text,
         )
         response = self._llm(prompt)
         raw["equivalence"] = response
@@ -501,24 +795,29 @@ class NoveltyEvaluator:
         self, content: str, raw: dict[str, str]
     ) -> IdeaDecomposition:
         """Ask the LLM to decompose the paper's core idea into components."""
+        llm = self._decomposition_llm if self._decomposition_llm is not None else self._llm
         prompt = _IDEA_DECOMPOSITION_PROMPT.format(paper_content=content)
-        response = self._llm(prompt)
+        response = llm(prompt)
         raw["idea_decomposition"] = response
         return _parse_decomposition_response(response)
 
     def _find_domain_references(
-        self, content: str, refs_text: str, raw: dict[str, str]
+        self, content: str, refs_text: str, raw: dict[str, str],
+        decomp: IdeaDecomposition | None = None,
     ) -> list[DomainReference]:
         """Ask the LLM to identify key domain references for this paper."""
         prompt = _DOMAIN_REFERENCES_PROMPT.format(
-            paper_content=content, reference_papers=refs_text
+            paper_content=content,
+            reference_papers=refs_text,
+            decomposition=_format_decomp_context(decomp),
         )
         response = self._llm(prompt)
         raw["domain_references"] = response
         return _parse_domain_references_response(response)
 
     def _annotate_similar_papers(
-        self, content: str, similar: list[SimilarityResult], raw: dict[str, str]
+        self, content: str, similar: list[SimilarityResult], raw: dict[str, str],
+        decomp: IdeaDecomposition | None = None,
     ) -> list[SimilarityAnnotation]:
         """Ask the LLM to annotate each similar paper with comparative analysis.
 
@@ -528,6 +827,7 @@ class NoveltyEvaluator:
         prompt = _SIMILAR_PAPERS_ANNOTATION_PROMPT.format(
             paper_content=content,
             reference_papers=self.format_references(similar),
+            decomposition=_format_decomp_context(decomp),
         )
         response = self._llm(prompt)
         raw["similar_paper_annotations"] = response
@@ -564,7 +864,7 @@ class NoveltyEvaluator:
         for i, r in enumerate(similar, 1):
             p = r.paper
             lines.append(
-                f"{i}. [{p.id}] {p.title} "
+                f"REF-{i} [{p.id}]: {p.title} "
                 f"({p.year or 'year unknown'}) — similarity {r.score:.2f}\n"
                 f"   Abstract: {p.abstract[:300]}"
             )
@@ -572,163 +872,16 @@ class NoveltyEvaluator:
 
 
 # ---------------------------------------------------------------------------
-# Prompt templates
+# Prompt templates (loaded from prompts/ directory)
 # ---------------------------------------------------------------------------
 
-_DUPLICATION_PROMPT = """You are a rigorous academic novelty reviewer.
-
-TASK: Determine whether the submitted paper is a direct duplicate of any
-known or referenced work. Direct duplication means the core ideas,
-methods, or results are essentially identical to prior art, even if the
-wording or framing differ.
-
-SUBMITTED PAPER:
-{paper_content}
-
-REFERENCE PAPERS (most similar by text):
-{reference_papers}
-
-INSTRUCTIONS:
-- Respond with a structured analysis.
-- Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = paper is NOT a duplicate).
-- Then write EXPLANATION: one or two paragraphs.
-- Then write REFERENCES: comma-separated IDs of papers that are duplicated
-  (or "none").
-"""
-
-_COMBINATION_PROMPT = """You are a rigorous academic novelty reviewer.
-
-TASK: Determine whether the submitted paper is merely a simple combination
-of existing works without a unifying contribution. Identify the individual
-components, trace each to its origin, and assess whether their combination
-constitutes a genuine insight.
-
-SUBMITTED PAPER:
-{paper_content}
-
-REFERENCE PAPERS (most similar by text):
-{reference_papers}
-
-INSTRUCTIONS:
-- Respond with a structured analysis.
-- Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = not a simple combination).
-- Then write EXPLANATION: one or two paragraphs describing which components
-  come from which prior works, and whether the combination adds value.
-- Then write REFERENCES: comma-separated IDs of source papers (or "none").
-"""
-
-_EQUIVALENCE_PROMPT = """You are a rigorous academic novelty reviewer.
-
-TASK: Identify whether the methods proposed in the submitted paper are
-subtly equivalent to well-established methodologies, even if the notation,
-framing, or application domain differ. Look for mathematical equivalences,
-algorithmic re-derivations, or conceptual renamings.
-
-SUBMITTED PAPER:
-{paper_content}
-
-REFERENCE PAPERS (most similar by text):
-{reference_papers}
-
-INSTRUCTIONS:
-- Respond with a structured analysis.
-- Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = no equivalence found).
-- Then write EXPLANATION: describe any equivalences found, citing the
-  established method.
-- Then write REFERENCES: comma-separated IDs of equivalent papers (or "none").
-"""
-
-_SYNTHESIS_PROMPT = """You are a senior programme-committee member.
-
-Given the individual novelty analyses below for the paper titled
-"{paper_title}", produce a final holistic verdict.
-
-DUPLICATION ANALYSIS:
-{duplication_result}
-
-COMBINATION ANALYSIS:
-{combination_result}
-
-EQUIVALENCE ANALYSIS:
-{equivalence_result}
-
-INSTRUCTIONS:
-Respond with:
-OVERALL_VERDICT: <NOVEL|MARGINAL|NOT_NOVEL>
-CONFIDENCE: <HIGH|MEDIUM|LOW>
-SUMMARY: two to four sentences explaining the overall conclusion and the
-main reasons behind it.
-"""
-
-_IDEA_DECOMPOSITION_PROMPT = """You are an expert research analyst.
-
-TASK: Decompose the following paper's core idea into its fundamental components.
-
-SUBMITTED PAPER:
-{paper_content}
-
-INSTRUCTIONS:
-Respond with the following structured fields.
-
-CORE_CONCEPT: One sentence describing the central contribution or idea.
-
-SUB_IDEAS:
-1. <first key component or sub-contribution>
-2. <second key component or sub-contribution>
-3. <additional components as needed>
-
-ASSUMPTIONS:
-1. <first underlying assumption the work makes>
-2. <additional assumptions as needed>
-
-LIMITATIONS:
-1. <first acknowledged or implicit limitation>
-2. <additional limitations as needed>
-"""
-
-_DOMAIN_REFERENCES_PROMPT = """You are an expert research librarian.
-
-TASK: Identify the most important foundational and closely related works
-in the domain of the following paper. Focus on seminal papers that a
-reader would need to understand the context of this contribution.
-
-SUBMITTED PAPER:
-{paper_content}
-
-ALREADY IDENTIFIED SIMILAR PAPERS (from text similarity search):
-{reference_papers}
-
-INSTRUCTIONS:
-List 3 to 6 key domain references in the format below.
-Each entry must appear on its own line starting with a number.
-
-REFERENCES:
-1. TITLE: <paper title> | AUTHORS: <author(s)> | YEAR: <year> | RELEVANCE: <why this reference matters>
-2. TITLE: <paper title> | AUTHORS: <author(s)> | YEAR: <year> | RELEVANCE: <why this reference matters>
-"""
-
-_SIMILAR_PAPERS_ANNOTATION_PROMPT = """You are an expert research analyst.
-
-TASK: For each similar reference paper listed below, write a concise comparative
-annotation against the submitted paper. Describe shared aspects, key differences,
-and any elements in the submitted paper that appear derived from or inspired by
-that reference. Every claim should be grounded in the paper content provided.
-
-SUBMITTED PAPER:
-{paper_content}
-
-SIMILAR REFERENCE PAPERS (ranked by TF-IDF cosine similarity score):
-{reference_papers}
-
-INSTRUCTIONS:
-Respond with one block per reference paper, in the order listed.
-Use the paper ID exactly as shown in brackets.
-
-PAPER [<id>]:
-OVERLAP: <1–2 sentences on shared methods, concepts, or results between the submitted paper and this reference>
-DIFFERENCES: <1–2 sentences on what distinguishes the submitted paper from this reference>
-DERIVATION: <1 sentence on what in the submitted paper appears derived from or inspired by this reference, or "None identified">
-"""
+_DUPLICATION_PROMPT = _load_prompt("duplication")
+_COMBINATION_PROMPT = _load_prompt("combination")
+_EQUIVALENCE_PROMPT = _load_prompt("equivalence")
+_SYNTHESIS_PROMPT = _load_prompt("synthesis")
+_IDEA_DECOMPOSITION_PROMPT = _load_prompt("decomposition")
+_DOMAIN_REFERENCES_PROMPT = _load_prompt("domain_references")
+_SIMILAR_PAPERS_ANNOTATION_PROMPT = _load_prompt("annotation")
 
 
 # ---------------------------------------------------------------------------
@@ -803,21 +956,13 @@ def _parse_numbered_list(text: str) -> list[str]:
 
 
 def _parse_decomposition_response(text: str) -> "IdeaDecomposition":
-    """Extract an :class:`IdeaDecomposition` from an LLM response.
-
-    Falls back gracefully: if ``CORE_CONCEPT`` is missing the full
-    response text is used; if a list section is missing it defaults to
-    an empty list.
-    """
+    """Extract an :class:`IdeaDecomposition` from an LLM response."""
     core_concept = _extract_field(text, "CORE_CONCEPT", default=text.strip())
-    sub_ideas_raw = _extract_field(text, "SUB_IDEAS", default="")
-    assumptions_raw = _extract_field(text, "ASSUMPTIONS", default="")
-    limitations_raw = _extract_field(text, "LIMITATIONS", default="")
+    concept_tree_raw = _extract_field(text, "CONCEPT_TREE", default="")
+    concept_tree = _parse_concept_tree_text(concept_tree_raw) if concept_tree_raw.strip() else None
     return IdeaDecomposition(
         core_concept=core_concept,
-        sub_ideas=_parse_numbered_list(sub_ideas_raw),
-        assumptions=_parse_numbered_list(assumptions_raw),
-        limitations=_parse_numbered_list(limitations_raw),
+        concept_tree=concept_tree,
     )
 
 
@@ -863,35 +1008,103 @@ def _parse_domain_references_response(text: str) -> "list[DomainReference]":
 def _parse_similar_paper_annotations_response(
     text: str,
 ) -> "list[SimilarityAnnotation]":
-    """Extract per-paper comparative annotations from an LLM response.
+    """Extract a single 1-to-all derivation annotation from an LLM response."""
+    derivation_map_raw = _extract_field(text, "DERIVATION_MAP", default="")
+    combination_analysis = _extract_field(text, "COMBINATION_ANALYSIS", default="")
+    novel_elements_raw = _extract_field(text, "NOVEL_ELEMENTS", default="")
 
-    Expected format (one block per paper)::
+    # Parse derivation map: "- component: REF-1, REF-3"
+    derivation_map: dict[str, list[str]] = {}
+    for line in derivation_map_raw.splitlines():
+        line = line.strip().lstrip("-").strip()
+        if ":" in line:
+            component, refs_str = line.split(":", 1)
+            component = component.strip()
+            if component:
+                refs = [r.strip() for r in refs_str.split(",") if r.strip()]
+                derivation_map[component] = refs
 
-        PAPER [<id>]:
-        OVERLAP: <shared aspects>
-        DIFFERENCES: <distinguishing aspects>
-        DERIVATION: <derived elements>
+    # Parse novel elements list
+    novel_elements = [
+        line.strip().lstrip("-•*").strip()
+        for line in novel_elements_raw.splitlines()
+        if line.strip().lstrip("-•*").strip()
+    ]
 
-    Blocks that cannot be parsed are silently skipped; the result list
-    may therefore be shorter than the number of similar papers.
+    return [SimilarityAnnotation(
+        derivation_map=derivation_map,
+        combination_analysis=combination_analysis,
+        novel_elements=novel_elements,
+    )]
+
+
+def _parse_concept_tree_text(text: str) -> "ConceptNode | None":
+    """Parse an indented text outline into a :class:`ConceptNode` tree.
+
+    Auto-detects the indent unit from the first indented line.
+    Returns ``None`` when *text* is empty or contains no indented lines.
     """
-    results: list[SimilarityAnnotation] = []
-    # Split on "PAPER [id]:" markers (case-insensitive, allowing whitespace)
-    blocks = _re.split(r"(?mi)^PAPER\s*\[([^\]]+)\]\s*:", text)
-    # blocks[0] is preamble; blocks[1::2] are IDs; blocks[2::2] are content
-    ids = blocks[1::2]
-    contents = blocks[2::2]
-    for paper_id, content_block in zip(ids, contents):
-        paper_id = paper_id.strip()
-        if not paper_id:
-            continue
-        overlap = _extract_field(content_block, "OVERLAP", default="")
-        differences = _extract_field(content_block, "DIFFERENCES", default="")
-        derivation = _extract_field(content_block, "DERIVATION", default="")
-        results.append(SimilarityAnnotation(
-            paper_id=paper_id,
-            overlap=overlap,
-            differences=differences,
-            derivation=derivation,
-        ))
-    return results
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return None
+
+    # Detect indent unit: first line that has leading whitespace.
+    indent_unit = ""
+    for ln in lines:
+        stripped = ln.lstrip()
+        if len(ln) > len(stripped):
+            indent_unit = ln[: len(ln) - len(stripped)]
+            break
+
+    if not indent_unit:
+        # No indented lines — either a single-level flat list or one item.
+        return None if len(lines) > 1 else ConceptNode(label=lines[0].strip())
+
+    # Build the tree: virtual_root collects all depth-0 items.
+    virtual_root = ConceptNode(label="")
+    # ancestors[d] = most-recently-seen node at depth d; index 0 = virtual_root.
+    ancestors: list[ConceptNode] = [virtual_root]
+    for ln in lines:
+        stripped = ln.lstrip()
+        leading = ln[: len(ln) - len(stripped)]
+        depth = len(leading) // len(indent_unit)
+        node = ConceptNode(label=stripped)
+        # Trim ancestors to the parent level.
+        del ancestors[depth + 1 :]
+        parent = ancestors[depth] if depth < len(ancestors) else ancestors[-1]
+        parent.children.append(node)
+        ancestors.append(node)   # ancestors[depth + 1] = node
+
+    if not virtual_root.children:
+        return None
+    if len(virtual_root.children) == 1:
+        return virtual_root.children[0]
+    return virtual_root  # virtual root with multiple depth-0 children
+
+
+def _concept_tree_to_text(node: "ConceptNode", indent: int = 0) -> str:
+    """Render a :class:`ConceptNode` tree as an indented text string.
+
+    Uses 2-space indentation per level.  Suitable for embedding in LLM
+    prompts where box-drawing characters may confuse the tokeniser.
+    """
+    prefix = "  " * indent
+    lines = [f"{prefix}{node.label}"]
+    for child in node.children:
+        lines.append(_concept_tree_to_text(child, indent + 1))
+    return "\n".join(lines)
+
+
+def _format_decomp_context(decomp: "IdeaDecomposition | None") -> str:
+    """Return a concise text representation of *decomp* for LLM prompt injection."""
+    if decomp is None:
+        return "(no decomposition available)"
+
+    parts: list[str] = [f"Core concept: {decomp.core_concept}"]
+
+    if decomp.concept_tree is not None:
+        tree_str = _concept_tree_to_text(decomp.concept_tree)
+        if tree_str:
+            parts.append("Concept tree:\n" + tree_str)
+
+    return "\n\n".join(parts)

@@ -7,3 +7,4 @@ markdown>=3.0
 weasyprint>=68.0
 pytest>=8.0.0
 pytest-mock>=3.14.0
+pyyaml>=6.0
