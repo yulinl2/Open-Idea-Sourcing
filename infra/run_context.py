@@ -100,8 +100,12 @@ class RunContext:
         lines.append(f"model: {self.model}")
         if self.response_id:
             lines.append(f"response_id: {self.response_id}")
-        tool_list_yaml = ", ".join(self.tool_list) if self.tool_list else "none"
-        lines.append(f"tool_list: [{tool_list_yaml}]")
+        if self.tool_list:
+            lines.append("tool_list:")
+            for tool in self.tool_list:
+                lines.append(f"  - \"{tool}\"")
+        else:
+            lines.append("tool_list: []")
         lines.append(f"start_time: {self.start_time}")
         lines.append(f"finish_time: {self.finish_time}")
         lines.append(f"git_commit: {self.git_commit}")
@@ -131,6 +135,6 @@ class RunContext:
             finish_time=data.get("finish_time", ""),
             git_commit=data.get("git_commit", "unknown"),
             final_verdict=data.get("final_verdict", ""),
-            confidence=float(data.get("confidence", 0.0)),
+            confidence=max(0.0, min(1.0, float(data.get("confidence", 0.0)))),
             main_cited_evidence=list(data.get("main_cited_evidence", [])),
         )

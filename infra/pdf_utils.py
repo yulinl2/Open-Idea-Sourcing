@@ -36,9 +36,15 @@ def extract_text_from_pdf(source: str | Path, max_chars: int = 200_000) -> str:
     path = _resolve_source(source)
     try:
         return _extract_with_pdfminer(path, max_chars)
-    except Exception:
-        # pdfminer not available or failed — return empty string so callers
-        # can fall back to abstract-only mode
+    except ImportError:
+        # pdfminer.six not installed — return empty string so callers can
+        # fall back to abstract-only mode
+        return ""
+    except Exception as exc:  # noqa: BLE001
+        # pdfminer failed on this specific file (encrypted PDF, corrupt file, etc.)
+        # Log and return empty string rather than crashing the agent
+        import warnings
+        warnings.warn(f"PDF extraction failed for {path}: {exc}", RuntimeWarning, stacklevel=2)
         return ""
     finally:
         # clean up temp file if we downloaded one

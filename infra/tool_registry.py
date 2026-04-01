@@ -18,6 +18,9 @@ from typing import Any, Callable
 from infra.run_context import RunContext
 
 
+LOG_TRUNCATE_LENGTH = 200  # max chars to store per tool call argument/result
+
+
 class ToolRegistry:
     """
     Thin registry that maps tool names to callables and records usage.
@@ -50,8 +53,8 @@ class ToolRegistry:
         self._call_log.append(
             {
                 "tool": name,
-                "kwargs": {k: str(v)[:200] for k, v in kwargs.items()},
-                "summary": str(result)[:200] if result is not None else "None",
+                "kwargs": {k: str(v)[:LOG_TRUNCATE_LENGTH] for k, v in kwargs.items()},
+                "summary": str(result)[:LOG_TRUNCATE_LENGTH] if result is not None else "None",
             }
         )
         return result

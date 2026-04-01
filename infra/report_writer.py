@@ -25,6 +25,7 @@ Required report.md structure (§7, §8 of PROJECT_INSTRUCTIONS_AGENT.md):
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -234,7 +235,6 @@ class ReportWriter:
 
         if content.raw_json_blocks:
             lines.append("\n### Machine-Readable Data\n")
-            import json
             for key, data in content.raw_json_blocks.items():
                 lines.append(f"**{key}:**\n```json\n{json.dumps(data, indent=2)}\n```")
 

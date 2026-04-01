@@ -28,7 +28,8 @@ S2_PAPER_URL = "https://api.semanticscholar.org/graph/v1/paper/{paper_id}"
 S2_CITATIONS_URL = "https://api.semanticscholar.org/graph/v1/paper/{paper_id}/citations"
 
 S2_FIELDS = "paperId,title,year,authors,abstract,publicationDate,externalIds"
-S2_RATE_LIMIT_DELAY = 1.0  # seconds between requests (unauthenticated tier)
+S2_RATE_LIMIT_DELAY = 1.0          # seconds between requests (unauthenticated tier)
+S2_RATE_LIMIT_RETRY_MULTIPLIER = 3  # backoff multiplier on 429 retry
 
 
 def _s2_get(url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
@@ -36,8 +37,13 @@ def _s2_get(url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
     if params:
         url = url + "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"Semantic Scholar API error {exc.code} for {url}: {exc.reason}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Semantic Scholar network error for {url}: {exc.reason}") from exc
 
 
 def search_semantic_scholar(
@@ -58,7 +64,7 @@ def search_semantic_scholar(
         return data.get("data", [])
     except urllib.error.HTTPError as exc:
         if exc.code == 429 and retry_on_429:
-            time.sleep(S2_RATE_LIMIT_DELAY * 3)
+            time.sleep(S2_RATE_LIMIT_DELAY * S2_RATE_LIMIT_RETRY_MULTIPLIER)
             data = _s2_get(S2_SEARCH_URL, params)
             return data.get("data", [])
         raise
