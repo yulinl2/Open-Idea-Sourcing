@@ -3,6 +3,12 @@
 These rules apply to every Copilot coding agent session in this repository.
 See `.github/AGENT_INSTRUCTIONS.md` for the full rationale behind each rule.
 
+Project docs (charter, roadmap, guides, changelog) live in **`docs/`**:
+- `docs/PROJECT_INSTRUCTIONS_AGENT.md` — agent-track charter; read before touching any agent branch
+- `docs/AGENT_TRACK_ROADMAP.md` — per-branch build sequences
+- `docs/WORKFLOW_GUIDE.md` — end-to-end developer guide
+- `docs/CHANGELOG.md` — release history
+
 ---
 
 ## Branch hygiene — check this FIRST on every session

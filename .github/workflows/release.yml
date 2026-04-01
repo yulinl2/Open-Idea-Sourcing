@@ -49,7 +49,7 @@ jobs:
           fi
           echo "Version check passed: $PKG_VERSION"
 
-      # Extract the changelog entry for this tag from CHANGELOG.md.
+      # Extract the changelog entry for this tag from docs/CHANGELOG.md.
       # The stop pattern matches only the next versioned heading (## [x.y.z])
       # so sub-headings (###) inside an entry are included correctly.
       # Falls back to a generic message if no entry is found.
@@ -58,9 +58,9 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           # Grab lines between "## [VERSION]" and the next "## [" heading.
-          NOTES=$(awk "/^## \[$VERSION\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md 2>/dev/null || true)
+          NOTES=$(awk "/^## \[$VERSION\]/{found=1; next} found && /^## \[/{exit} found{print}" docs/CHANGELOG.md 2>/dev/null || true)
           if [ -z "$NOTES" ]; then
-            NOTES="See [CHANGELOG.md](CHANGELOG.md) for details."
+            NOTES="See [CHANGELOG.md](docs/CHANGELOG.md) for details."
           fi
           # Write to a temp file to avoid quoting issues with multiline strings.
           printf '%s' "$NOTES" > /tmp/release_notes.txt

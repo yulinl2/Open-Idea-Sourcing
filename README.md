@@ -178,11 +178,20 @@ open_idea_sourcing/
 data/
 └── references.json       Bundled baseline reference corpus
 
+docs/
+├── PROJECT_INSTRUCTIONS_AGENT.md  Agent-track charter (read before touching agent branches)
+├── AGENT_TRACK_ROADMAP.md         Per-branch implementation roadmap
+├── WORKFLOW_GUIDE.md              End-to-end developer guide for CI, local runs, and releases
+└── CHANGELOG.md                   Release history (Keep-a-Changelog format)
+
 review_paper.py           CLI entry point (orchestrates all stages)
 tests/                    Unit + integration tests (417 total, no live API calls)
-.github/workflows/
-├── ci.yml                Test + paper-review workflow (workflow_dispatch + push)
-└── release.yml           Automated GitHub Release on v* tags
+.github/
+├── AGENT_INSTRUCTIONS.md          Canonical rules for AI coding agents (branch hygiene, git hygiene)
+├── copilot-instructions.md        Auto-applied condensed rules (read by GitHub Copilot automatically)
+└── workflows/
+    ├── ci.yml                     Test + paper-review workflow (workflow_dispatch + push)
+    └── release.yml                Automated GitHub Release on v* tags
 ```
 
 ---

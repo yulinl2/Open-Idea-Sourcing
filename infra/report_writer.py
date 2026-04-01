@@ -10,7 +10,7 @@ helper methods for building each section.
 The report is assembled from a ReportContext (the structured data) and rendered
 to Markdown. No LLM calls occur here — this is a pure rendering function.
 
-Required report.md structure (§7, §8 of PROJECT_INSTRUCTIONS_AGENT.md):
+Required report.md structure (§7, §8 of docs/PROJECT_INSTRUCTIONS_AGENT.md):
   - YAML front matter (from RunContext)
   - Table of contents
   - Executive summary
