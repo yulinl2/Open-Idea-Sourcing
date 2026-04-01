@@ -18,8 +18,8 @@ INSTRUCTIONS:
 - Base your evaluation ONLY on the reference papers listed above (REF-1,
   REF-2, etc.). Do NOT claim duplication with any paper that is not
   explicitly included in the reference list above, even if you recognise
-  the content from your training data.  If no reference paper matches
-  closely enough to constitute a duplicate, the verdict MUST be LOW.
+  the content from your training data.  Absence of a close match in the
+  provided reference list is itself evidence against duplication.
 - Respond with a structured analysis.
 - Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = paper is NOT a duplicate
   of any listed reference).
