@@ -1,0 +1,16 @@
+[
+  {
+    "id": "arxiv-1904.06019",
+    "title": "Conformal Prediction Under Covariate Shift",
+    "abstract": "We extend conformal prediction to the setting where the test and training data are drawn from different distributions. Standard conformal prediction requires exchangeability, and so it breaks down in the presence of covariate shift. Our approach uses a weighted version of the conformal score that corrects for the distributional shift, yielding valid marginal coverage guarantees under covariate shift.",
+    "authors": [
+      "Ryan J. Tibshirani",
+      "Rina Foygel Barber",
+      "Emmanuel J. Candes",
+      "Aaditya Ramdas"
+    ],
+    "year": 2020,
+    "venue": "NeurIPS",
+    "url": "https://arxiv.org/abs/1904.06019"
+  }
+]
