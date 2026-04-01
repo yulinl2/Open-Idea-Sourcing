@@ -46,6 +46,7 @@ import time as _time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
 from . import __version__
@@ -111,6 +112,16 @@ _MAX_CITED_REFS_LIMIT = 500
 # The S2 API accepts up to 100 per page.  Fetching the full page gives the
 # caller a richer pool before deduplication across multiple queries.
 _MAX_KEYWORD_SEARCH_LIMIT = 100
+# Number of keyword queries to issue concurrently.  S2's public endpoint
+# allows ~100 unauthenticated requests per 5 minutes; 5 parallel threads
+# keeps well within that limit while reducing wall-clock time proportionally.
+_MAX_SEARCH_WORKERS = 5
+# Relevance cap: keep only the top N results from each individual query before
+# merging.  S2 returns results in descending relevance order, so the first N
+# are the most relevant to that query.  This limits the total pool to at most
+# _MAX_RESULTS_PER_QUERY * N_queries papers and prevents low-relevance
+# long-tail hits from diluting the merged corpus.
+_MAX_RESULTS_PER_QUERY = 25
 
 _USER_AGENT = (
     f"open-idea-sourcing/{__version__} (academic novelty evaluator; "
@@ -310,12 +321,16 @@ class OnlineReferenceSearch:
 
         Strategy
         --------
-        1. **Conceptual keyword search** (breadth): when LLM-generated *queries*
-           are provided, each query is issued independently against
-           ``/paper/search``; results are merged.  This surfaces work that is
-           conceptually equivalent to the submitted paper even when the wording
-           differs.  When *queries* is *None* or empty, the raw *title* is used
-           as a single fallback query.
+        1. **Concurrent keyword search** (breadth): each LLM-generated query is
+           issued in parallel against ``/paper/search`` (up to
+           ``_MAX_SEARCH_WORKERS`` concurrent threads).  S2 returns results in
+           descending relevance order; each query contributes at most
+           ``_MAX_RESULTS_PER_QUERY`` results so that low-relevance long-tail
+           hits are excluded.  The merged pool is deduplicated by paper ID and
+           sorted by cross-query hit count — papers returned by multiple queries
+           are ranked higher as they are more likely to be genuinely related.
+           When *queries* is *None* or empty, the raw *title* is used as a
+           single fallback query.
         2. **Abstract fallback** (when above is sparse): an additional keyword
            query derived from the opening of *abstract*.
 
@@ -336,32 +351,59 @@ class OnlineReferenceSearch:
         Returns
         -------
         list[ReferencePaper]
-            Deduplicated list of keyword-matched papers (all unique hits across
-            all queries, without an artificial cap).
+            Deduplicated list of keyword-matched papers, sorted by relevance
+            (papers matching more queries appear first).
         """
-        results: dict[str, ReferencePaper] = {}
+        # Track first-seen paper objects and how many queries returned each ID.
+        result_papers: dict[str, ReferencePaper] = {}
+        result_counts: dict[str, int] = {}
         self._last_errors = []
         self._last_query_counts = {}
 
         # Phase 2: conceptual keyword search (breadth).
         # Use LLM-generated queries when available; fall back to the raw title.
         search_queries = queries if queries else ([title] if title else [])
-        for q in search_queries:
+
+        # Issue all queries concurrently to reduce wall-clock time.  S2 returns
+        # results in descending relevance order; we cap each query's contribution
+        # at _MAX_RESULTS_PER_QUERY so that only the most relevant papers per
+        # query are kept.  Papers returned by multiple queries get their hit
+        # count incremented and appear first in the merged pool (cross-query
+        # frequency is a strong relevance signal).
+        def _run_query(q: str) -> tuple[str, list[ReferencePaper]]:
             hits = self._query(q)
-            self._last_query_counts[q] = len(hits)
-            for paper in hits:
-                results.setdefault(paper.id, paper)
+            # Apply per-query relevance cap (top N by S2 relevance score).
+            return q, hits[:_MAX_RESULTS_PER_QUERY]
+
+        with ThreadPoolExecutor(max_workers=_MAX_SEARCH_WORKERS) as pool:
+            futures = {pool.submit(_run_query, q): q for q in search_queries}
+            for future in as_completed(futures):
+                try:
+                    q, hits = future.result()
+                except Exception as exc:
+                    q = futures[future]
+                    self._last_errors.append(f"{q}: {type(exc).__name__}: {exc}")
+                    hits = []
+                self._last_query_counts[q] = len(hits)
+                for paper in hits:
+                    if paper.id not in result_papers:
+                        result_papers[paper.id] = paper
+                    result_counts[paper.id] = result_counts.get(paper.id, 0) + 1
 
         # Phase 3: abstract fallback when keyword search is sparse.
-        if len(results) < max(1, self._max_results // 2) and abstract:
+        if len(result_papers) < max(1, self._max_results // 2) and abstract:
             fallback_query = _extract_query_from_abstract(abstract)
             if fallback_query:
-                hits = self._query(fallback_query)
+                hits = self._query(fallback_query)[:_MAX_RESULTS_PER_QUERY]
                 self._last_query_counts[fallback_query] = len(hits)
                 for paper in hits:
-                    results.setdefault(paper.id, paper)
+                    if paper.id not in result_papers:
+                        result_papers[paper.id] = paper
+                    result_counts[paper.id] = result_counts.get(paper.id, 0) + 1
 
-        return list(results.values())
+        # Sort by cross-query hit count descending: papers appearing in more
+        # queries are more likely to be genuinely related and surface first.
+        return sorted(result_papers.values(), key=lambda p: result_counts[p.id], reverse=True)
 
     def lookup_domain_refs(
         self, domain_refs: list,  # list[DomainReference]

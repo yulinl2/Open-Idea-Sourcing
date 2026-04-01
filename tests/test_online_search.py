@@ -343,13 +343,13 @@ class TestOnlineReferenceSearchSearch:
         assert len(ids) == len(set(ids))
 
     def test_max_results_no_longer_caps_search_results(self):
-        """search() returns all unique hits from all queries without a cap."""
+        """search() returns all unique hits up to _MAX_RESULTS_PER_QUERY per query."""
         body = self._make_api_response([f"p{i}" for i in range(20)])
         mock_resp = _make_mock_response(body)
         searcher = OnlineReferenceSearch(max_results=3)
         with patch("urllib.request.urlopen", return_value=mock_resp):
             papers = searcher.search("My Title")
-        # All 20 results pass through; max_results no longer truncates search().
+        # 20 results < _MAX_RESULTS_PER_QUERY (25), so all pass through.
         assert len(papers) == 20
 
     def test_network_error_returns_empty_list(self):
@@ -367,20 +367,26 @@ class TestOnlineReferenceSearchSearch:
 
     def test_last_query_counts_populated_after_search(self):
         """last_query_counts must map each query to the number of raw API hits."""
+        import threading
+
         body1 = self._make_api_response(["p1", "p2"])
         body2 = self._make_api_response(["p3"])
         responses = [_make_mock_response(body1), _make_mock_response(body2)]
+        lock = threading.Lock()
 
         def fake_urlopen(req, timeout=None):
-            return responses.pop(0)
+            with lock:
+                return responses.pop(0)
 
         searcher = OnlineReferenceSearch(max_results=10)
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
             searcher.search("t", queries=["query A", "query B"])
 
         counts = searcher.last_query_counts
-        assert counts["query A"] == 2
-        assert counts["query B"] == 1
+        # Both queries must be tracked; total hits = 2 + 1 = 3 (order may vary
+        # when queries are issued concurrently).
+        assert set(counts.keys()) == {"query A", "query B"}
+        assert sum(counts.values()) == 3
 
     def test_last_query_counts_includes_fallback_query(self):
         """Fallback abstract query should appear in last_query_counts."""
@@ -412,6 +418,29 @@ class TestOnlineReferenceSearchSearch:
         with patch("urllib.request.urlopen", return_value=_make_mock_response(body)):
             searcher.search("second", queries=["only-q"])
         assert list(searcher.last_query_counts.keys()) == ["only-q"]
+
+    def test_cross_query_papers_ranked_first(self):
+        """Papers returned by multiple queries appear first in the results."""
+        import threading
+
+        # p_shared appears in both queries; p_a only in query A; p_b only in B.
+        body_a = self._make_api_response(["p_shared", "p_a"])
+        body_b = self._make_api_response(["p_shared", "p_b"])
+        responses = [_make_mock_response(body_a), _make_mock_response(body_b)]
+        lock = threading.Lock()
+
+        def fake_urlopen(req, timeout=None):
+            with lock:
+                return responses.pop(0)
+
+        searcher = OnlineReferenceSearch(max_results=10)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            papers = searcher.search("t", queries=["query A", "query B"])
+
+        ids = [p.id for p in papers]
+        # p_shared (hit count 2) must come before p_a and p_b (hit count 1).
+        assert ids[0] == "p_shared"
+        assert set(ids) == {"p_shared", "p_a", "p_b"}
 
 
 # ---------------------------------------------------------------------------
