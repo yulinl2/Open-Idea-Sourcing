@@ -36,61 +36,31 @@ on:
 
 jobs:
   # ------------------------------------------------------------------
-  # Fan-out: dispatch agent-review.yml for every track in parallel
+  # Fan-out: dispatch agent-review.yml for every track in parallel.
+  # matrix.track drives 3 parallel runners from one job definition,
+  # so future edits only need to touch a single place.
+  # github.event.inputs.* is used (not inputs.*) so the expression
+  # evaluates safely on both workflow_dispatch and push events.
   # ------------------------------------------------------------------
-  dispatch-e2e:
-    name: Dispatch agent-review (e2e)
+  dispatch-tracks:
+    name: Dispatch agent-review (${{ matrix.track }})
     runs-on: ubuntu-latest
     permissions:
       actions: write
+    strategy:
+      matrix:
+        track: [e2e, linear, reconstruct]
     steps:
-      - name: Trigger agent-review for e2e
+      - name: Trigger agent-review for ${{ matrix.track }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PAPER_URL: ${{ inputs.paper_url || 'https://arxiv.org/abs/2006.06138' }}
-          MODEL: ${{ inputs.model || 'gpt-4o' }}
+          PAPER_URL: ${{ github.event.inputs.paper_url || 'https://arxiv.org/abs/2006.06138' }}
+          MODEL: ${{ github.event.inputs.model || 'gpt-4o' }}
+          TRACK: ${{ matrix.track }}
         run: |
           gh workflow run agent-review.yml \
             --repo "${{ github.repository }}" \
             --field paper_url="$PAPER_URL" \
-            --field track="e2e" \
+            --field track="$TRACK" \
             --field model="$MODEL"
-          echo "Dispatched agent-review for track=e2e"
-
-  dispatch-linear:
-    name: Dispatch agent-review (linear)
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-    steps:
-      - name: Trigger agent-review for linear
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PAPER_URL: ${{ inputs.paper_url || 'https://arxiv.org/abs/2006.06138' }}
-          MODEL: ${{ inputs.model || 'gpt-4o' }}
-        run: |
-          gh workflow run agent-review.yml \
-            --repo "${{ github.repository }}" \
-            --field paper_url="$PAPER_URL" \
-            --field track="linear" \
-            --field model="$MODEL"
-          echo "Dispatched agent-review for track=linear"
-
-  dispatch-reconstruct:
-    name: Dispatch agent-review (reconstruct)
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-    steps:
-      - name: Trigger agent-review for reconstruct
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PAPER_URL: ${{ inputs.paper_url || 'https://arxiv.org/abs/2006.06138' }}
-          MODEL: ${{ inputs.model || 'gpt-4o' }}
-        run: |
-          gh workflow run agent-review.yml \
-            --repo "${{ github.repository }}" \
-            --field paper_url="$PAPER_URL" \
-            --field track="reconstruct" \
-            --field model="$MODEL"
-          echo "Dispatched agent-review for track=reconstruct"
+          echo "Dispatched agent-review for track=$TRACK"
