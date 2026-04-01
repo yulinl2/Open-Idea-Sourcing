@@ -170,7 +170,7 @@ jobs:
           else
             git worktree add --detach /tmp/agent-reports-branch HEAD
             git -C /tmp/agent-reports-branch checkout --orphan agent-reports
-            git -C /tmp/agent-reports-branch rm -rf . --quiet 2>/dev/null || true
+            git -C /tmp/agent-reports-branch rm -rf --quiet -- . 2>/dev/null || true
           fi
 
           mkdir -p "/tmp/agent-reports-branch/${TARGET_DIR}"
