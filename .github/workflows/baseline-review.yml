@@ -1,4 +1,4 @@
-name: Review baseline
+name: Baseline review
 
 # Manual trigger: provide a single URL or a batch file.
 # Automatic trigger: runs after CI passes on the main branch.

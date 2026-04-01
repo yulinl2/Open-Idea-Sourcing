@@ -363,6 +363,54 @@ class TestOnlineReferenceSearchSearch:
             papers = searcher.search("Any Title")
         assert papers == []
 
+    def test_last_query_counts_populated_after_search(self):
+        """last_query_counts must map each query to the number of raw API hits."""
+        body1 = self._make_api_response(["p1", "p2"])
+        body2 = self._make_api_response(["p3"])
+        responses = [_make_mock_response(body1), _make_mock_response(body2)]
+
+        def fake_urlopen(req, timeout=None):
+            return responses.pop(0)
+
+        searcher = OnlineReferenceSearch(max_results=10)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            searcher.search("t", queries=["query A", "query B"])
+
+        counts = searcher.last_query_counts
+        assert counts["query A"] == 2
+        assert counts["query B"] == 1
+
+    def test_last_query_counts_includes_fallback_query(self):
+        """Fallback abstract query should appear in last_query_counts."""
+        resp1 = self._make_api_response(["p1"])           # sparse primary
+        resp2 = self._make_api_response(["p2", "p3"])     # fallback
+
+        responses = [_make_mock_response(resp1), _make_mock_response(resp2)]
+
+        def fake_urlopen(req, timeout=None):
+            return responses.pop(0)
+
+        searcher = OnlineReferenceSearch(max_results=10)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            searcher.search("t", abstract="neural network attention mechanism")
+
+        counts = searcher.last_query_counts
+        assert len(counts) == 2  # primary + fallback
+        assert sum(counts.values()) == 3
+
+    def test_last_query_counts_cleared_on_new_search(self):
+        """last_query_counts must be reset at the start of each search call."""
+        body = self._make_api_response(["p1"])
+
+        searcher = OnlineReferenceSearch(max_results=5)
+        with patch("urllib.request.urlopen", return_value=_make_mock_response(body)):
+            searcher.search("first", queries=["q1", "q2", "q3"])
+        assert len(searcher.last_query_counts) == 3
+
+        with patch("urllib.request.urlopen", return_value=_make_mock_response(body)):
+            searcher.search("second", queries=["only-q"])
+        assert list(searcher.last_query_counts.keys()) == ["only-q"]
+
 
 # ---------------------------------------------------------------------------
 # OnlineReferenceSearch._fetch_references

@@ -875,6 +875,14 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 f"  Found {online_papers_count} keyword-matched paper(s) online.",
                 file=sys.stderr,
             )
+            # Per-query hit counts for pipeline audit.
+            query_counts = online_searcher.last_query_counts
+            if query_counts:
+                for q, cnt in query_counts.items():
+                    print(
+                        f"    {cnt:3d}  {q!r}",
+                        file=sys.stderr,
+                    )
 
         # --- Similarity search ---
         query = paper.key_content()

@@ -219,6 +219,7 @@ class OnlineReferenceSearch:
         self._min_year = min_year
         self._max_year = max_year
         self._last_errors: list[str] = []
+        self._last_query_counts: dict[str, int] = {}
 
     @property
     def last_errors(self) -> list[str]:
@@ -230,6 +231,18 @@ class OnlineReferenceSearch:
         surface rate-limit or network problems in the pipeline job log.
         """
         return list(self._last_errors)
+
+    @property
+    def last_query_counts(self) -> dict[str, int]:
+        """Per-query raw hit counts from the most recent :meth:`search` call.
+
+        Maps each query string to the number of papers returned by Semantic
+        Scholar for that query *before* deduplication across queries.  Useful
+        for pipeline audit — a count of zero indicates the query was too
+        specific or returned no results.  Cleared at the start of every
+        :meth:`search` call.
+        """
+        return dict(self._last_query_counts)
 
     # ------------------------------------------------------------------
     # Public API
@@ -318,19 +331,24 @@ class OnlineReferenceSearch:
         """
         results: dict[str, ReferencePaper] = {}
         self._last_errors = []
+        self._last_query_counts = {}
 
         # Phase 2: conceptual keyword search (breadth).
         # Use LLM-generated queries when available; fall back to the raw title.
         search_queries = queries if queries else ([title] if title else [])
         for q in search_queries:
-            for paper in self._query(q):
+            hits = self._query(q)
+            self._last_query_counts[q] = len(hits)
+            for paper in hits:
                 results.setdefault(paper.id, paper)
 
         # Phase 3: abstract fallback when keyword search is sparse.
         if len(results) < max(1, self._max_results // 2) and abstract:
             fallback_query = _extract_query_from_abstract(abstract)
             if fallback_query:
-                for paper in self._query(fallback_query):
+                hits = self._query(fallback_query)
+                self._last_query_counts[fallback_query] = len(hits)
+                for paper in hits:
                     results.setdefault(paper.id, paper)
 
         return list(results.values())[: self._max_results]
