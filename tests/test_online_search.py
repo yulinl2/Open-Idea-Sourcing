@@ -342,13 +342,15 @@ class TestOnlineReferenceSearchSearch:
         ids = [p.id for p in papers]
         assert len(ids) == len(set(ids))
 
-    def test_max_results_respected(self):
+    def test_max_results_no_longer_caps_search_results(self):
+        """search() returns all unique hits from all queries without a cap."""
         body = self._make_api_response([f"p{i}" for i in range(20)])
         mock_resp = _make_mock_response(body)
         searcher = OnlineReferenceSearch(max_results=3)
         with patch("urllib.request.urlopen", return_value=mock_resp):
             papers = searcher.search("My Title")
-        assert len(papers) <= 3
+        # All 20 results pass through; max_results no longer truncates search().
+        assert len(papers) == 20
 
     def test_network_error_returns_empty_list(self):
         searcher = OnlineReferenceSearch()

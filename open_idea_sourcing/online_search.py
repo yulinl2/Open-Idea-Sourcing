@@ -107,6 +107,10 @@ _RETRYABLE_HTTP_CODES = frozenset({429, 500, 503})
 # endpoint.  The paper-cited reference list should not be capped at top_k * 2
 # (which is the keyword-search max_results); a paper may have 100+ references.
 _MAX_CITED_REFS_LIMIT = 500
+# Maximum results per keyword-search request to the S2 /paper/search endpoint.
+# The S2 API accepts up to 100 per page.  Fetching the full page gives the
+# caller a richer pool before deduplication across multiple queries.
+_MAX_KEYWORD_SEARCH_LIMIT = 100
 
 _USER_AGENT = (
     f"open-idea-sourcing/{__version__} (academic novelty evaluator; "
@@ -332,7 +336,8 @@ class OnlineReferenceSearch:
         Returns
         -------
         list[ReferencePaper]
-            Deduplicated list of keyword-matched papers, capped at *max_results*.
+            Deduplicated list of keyword-matched papers (all unique hits across
+            all queries, without an artificial cap).
         """
         results: dict[str, ReferencePaper] = {}
         self._last_errors = []
@@ -356,7 +361,7 @@ class OnlineReferenceSearch:
                 for paper in hits:
                     results.setdefault(paper.id, paper)
 
-        return list(results.values())[: self._max_results]
+        return list(results.values())
 
     def lookup_domain_refs(
         self, domain_refs: list,  # list[DomainReference]
@@ -609,7 +614,7 @@ class OnlineReferenceSearch:
         query_params: dict[str, str | int] = {
             "query": query,
             "fields": _FIELDS,
-            "limit": self._max_results,
+            "limit": _MAX_KEYWORD_SEARCH_LIMIT,
         }
         if self._min_year is not None or self._max_year is not None:
             min_part = str(self._min_year) if self._min_year is not None else ""
