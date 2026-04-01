@@ -1280,3 +1280,61 @@ class TestStageToggles:
         from review_paper import _parse_args
         args = _parse_args(["paper.txt"])
         assert args.no_paper_cited_refs is False
+
+
+# ---------------------------------------------------------------------------
+# _parse_bool_env
+# ---------------------------------------------------------------------------
+
+class TestParseBoolEnv:
+    """Unit tests for the _parse_bool_env helper."""
+
+    def test_true_string_returns_true(self, monkeypatch):
+        from review_paper import _parse_bool_env
+        monkeypatch.setenv("TEST_BOOL_FLAG", "true")
+        assert _parse_bool_env("TEST_BOOL_FLAG") is True
+
+    def test_false_string_returns_false(self, monkeypatch):
+        from review_paper import _parse_bool_env
+        monkeypatch.setenv("TEST_BOOL_FLAG", "false")
+        assert _parse_bool_env("TEST_BOOL_FLAG") is False
+
+    def test_one_returns_true(self, monkeypatch):
+        from review_paper import _parse_bool_env
+        monkeypatch.setenv("TEST_BOOL_FLAG", "1")
+        assert _parse_bool_env("TEST_BOOL_FLAG") is True
+
+    def test_zero_returns_false(self, monkeypatch):
+        from review_paper import _parse_bool_env
+        monkeypatch.setenv("TEST_BOOL_FLAG", "0")
+        assert _parse_bool_env("TEST_BOOL_FLAG") is False
+
+    def test_missing_env_var_returns_default_false(self, monkeypatch):
+        from review_paper import _parse_bool_env
+        monkeypatch.delenv("TEST_BOOL_FLAG", raising=False)
+        assert _parse_bool_env("TEST_BOOL_FLAG") is False
+
+    def test_missing_env_var_returns_custom_default(self, monkeypatch):
+        from review_paper import _parse_bool_env
+        monkeypatch.delenv("TEST_BOOL_FLAG", raising=False)
+        assert _parse_bool_env("TEST_BOOL_FLAG", default=True) is True
+
+    def test_case_insensitive(self, monkeypatch):
+        from review_paper import _parse_bool_env
+        monkeypatch.setenv("TEST_BOOL_FLAG", "TRUE")
+        assert _parse_bool_env("TEST_BOOL_FLAG") is True
+
+    def test_no_user_refs_env_false_string(self, monkeypatch):
+        """Regression test: NO_USER_REFS='false' (from GitHub Actions) must not raise."""
+        from review_paper import _parse_args
+        monkeypatch.setenv("NO_USER_REFS", "false")
+        args = _parse_args(["paper.txt"])
+        assert args.no_user_refs is False
+
+    def test_no_paper_cited_refs_env_false_string(self, monkeypatch):
+        """Regression test: NO_PAPER_CITED_REFS='false' (from GitHub Actions) must not raise."""
+        from review_paper import _parse_args
+        monkeypatch.setenv("NO_PAPER_CITED_REFS", "false")
+        args = _parse_args(["paper.txt"])
+        assert args.no_paper_cited_refs is False
+
