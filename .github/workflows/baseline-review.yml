@@ -24,15 +24,18 @@ on:
       no_online_search:
         description: "Disable Semantic Scholar keyword search (true/false, default: false)"
         required: false
-        default: "false"
+        type: boolean
+        default: false
       no_paper_cited_refs:
         description: "Skip fetching references cited by the paper from Semantic Scholar (true/false, default: false)"
         required: false
-        default: "false"
+        type: boolean
+        default: false
       no_user_refs:
         description: "Skip loading the bundled user reference corpus data/references.json (true/false, default: false)"
         required: false
-        default: "false"
+        type: boolean
+        default: false
   workflow_run:
     workflows: ["CI"]
     branches: ["main"]
