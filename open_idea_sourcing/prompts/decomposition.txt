@@ -1,4 +1,4 @@
-TASK: Decompose the following paper's core intellectual contribution.
+TASK: Decompose the following paper's main ideas.
 
 SUBMITTED PAPER:
 {paper_content}
