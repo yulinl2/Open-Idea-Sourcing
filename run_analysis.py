@@ -44,17 +44,21 @@ def _get_openai_client():
     return openai.OpenAI(api_key=api_key)
 
 
-def _make_llm_callable(client, model: str = "gpt-4o"):
-    """Create a simple LLM callable for text extraction."""
-    def llm(prompt: str) -> str:
+def _make_llm_json(client, model: str = "gpt-4o"):
+    """Create a (system, user) -> response callable for the agentic extractor."""
+    def llm_json(system_prompt: str, user_prompt: str) -> str:
         response = client.chat.completions.create(
             model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=4000,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=8000,
             temperature=0.0,
+            response_format={"type": "json_object"},
         )
         return response.choices[0].message.content or ""
-    return llm
+    return llm_json
 
 
 def _extract_arxiv_id(source: str) -> str:
@@ -89,22 +93,19 @@ def _download_source(source: str) -> str:
     sys.exit(1)
 
 
-def _parse_target_paper(pdf_path: str, llm) -> dict:
-    """Parse the target paper and return title, abstract, full_text."""
-    try:
-        import pdfplumber
-    except ImportError:
-        print("ERROR: pdfplumber required. pip install pdfplumber", file=sys.stderr)
+def _parse_target_paper(pdf_path: str, llm_json) -> dict:
+    """Parse the target paper via the agentic LLM extractor.
+
+    Returns dict with title, abstract, full_text.
+    """
+    from geo_perplexity.text_extractor import extract_text_llm_agentic, extract_text_pdfplumber
+
+    raw_text = extract_text_pdfplumber(pdf_path)
+    if not raw_text:
+        print("ERROR: could not extract any text from PDF", file=sys.stderr)
         sys.exit(1)
 
-    with pdfplumber.open(pdf_path) as pdf:
-        pages = [page.extract_text() or "" for page in pdf.pages]
-    raw_text = "\n".join(pages)
-
-    # Use LLM for structured extraction
-    from geo_perplexity.text_extractor import extract_text_llm
-
-    full_text = extract_text_llm(raw_text, llm)
+    full_text = extract_text_llm_agentic(raw_text, llm_json)
 
     # Extract title from first lines
     title = ""
@@ -150,13 +151,13 @@ def run_single_paper(
 
     # Step 0: Set up OpenAI client
     client = _get_openai_client()
-    llm = _make_llm_callable(client, model="gpt-4o")  # use 4o for extraction
+    llm_json = _make_llm_json(client, model="gpt-4o")  # use 4o for extraction
 
     # Step 1: Parse target paper
     print("[1/5] Parsing target paper...")
     arxiv_id = _extract_arxiv_id(source)
     pdf_path = _download_source(source)
-    target = _parse_target_paper(pdf_path, llm)
+    target = _parse_target_paper(pdf_path, llm_json)
     print(f"  Title: {target['title']}")
     print(f"  Abstract: {target['abstract'][:100]}...")
 
@@ -172,7 +173,7 @@ def run_single_paper(
 
     # Step 3: Extract full text for cited papers (batched LLM)
     print("\n[3/5] Extracting full text from cited papers (batched LLM)...")
-    cited_papers = batch_extract_full_text(cited_papers, llm)
+    cited_papers = batch_extract_full_text(cited_papers, llm_json)
     n_with_text = sum(1 for p in cited_papers if p.has_content)
     print(f"  {n_with_text}/{len(cited_papers)} papers have extractable text")
 
@@ -187,7 +188,7 @@ def run_single_paper(
     )
     if random_ref:
         # Also extract its text
-        batch_extract_full_text([random_ref], llm)
+        batch_extract_full_text([random_ref], llm_json)
         print(f"  Random ref: {random_ref.title[:60]}...")
     else:
         print("  WARNING: Could not find a random non-cited reference")

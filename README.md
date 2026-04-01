@@ -17,12 +17,20 @@ Lower perplexity = more predictable = less novel contribution beyond the context
 
 ## Method
 
-Perplexity is estimated via OpenAI chat completions with `logprobs=True`:
+**Exact conditional perplexity** via verbatim-echo with `logprobs=True`:
 
-1. Context paper text → system message (~4K tokens)
-2. First ~40% of target paper → user prompt prefix
-3. Model generates continuation (`max_tokens=500, temperature=0`)
-4. **PPL = exp(−mean(token_logprobs))**
+1. Reference paper text → system message (~6K tokens)
+2. Target paper text is chunked into ~800-token windows
+3. Model is instructed to **reproduce each chunk verbatim**
+4. `logprobs=True` returns P(token_i | context, token_1..i-1) for each echoed token
+5. **PPL = exp(−(1/N) Σ log p(token_i))**
+
+This gives us the true conditional probability P(entire target | entire ref),
+not a continuation-based approximation.
+
+**Text extraction** uses an agentic multi-turn LLM parser: a first pass
+extracts structured JSON from the PDF text, and if confidence is low, a
+second refinement pass feeds additional pages to fill gaps.
 
 ## Pipeline
 

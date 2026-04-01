@@ -1,13 +1,16 @@
-"""Conditional perplexity estimation using OpenAI chat completions with logprobs.
+"""Exact conditional perplexity via verbatim-echo with logprobs.
 
-Estimates PPL(target | context) by:
-1. Placing the context paper in the system message
-2. Placing the first ~40% of the target paper as a user-message prefix
-3. Generating a continuation with logprobs=True
-4. Computing PPL = exp(-mean(token_logprobs))
+Computes PPL(target | context) by instructing the model to reproduce the
+target text verbatim.  The logprobs of each reproduced token ARE the
+conditional probabilities P(token_i | context, token_1..i-1), giving us
+the true perplexity — not an approximation.
 
-Lower PPL → target is more predictable given context → less novel.
-Higher PPL → target is surprising given context → more novel.
+For long texts the target is chunked into windows (~800 tokens each).
+Each window is echoed in a separate API call with the context + all
+preceding target text in the prompt.  Logprobs are collected across all
+windows and averaged.
+
+PPL = exp( −(1/N) Σ log p(token_i) )
 """
 
 from __future__ import annotations
@@ -15,28 +18,81 @@ from __future__ import annotations
 import math
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import tiktoken
 
-_MAX_CONTEXT_TOKENS = 4000   # truncate context paper to this
-_MAX_PREFIX_TOKENS = 3000    # first ~40% of target as prefix
-_GENERATION_TOKENS = 500     # tokens to generate for logprob sampling
+_MAX_CONTEXT_TOKENS = 6000   # context paper budget
+_CHUNK_TOKENS = 800          # target text per echo window
 _MAX_RETRIES = 3
 _RETRY_BASE = 2.0
 
-# System prompt for perplexity estimation
+# System prompt: the model's ONLY job is to echo text verbatim.
 _SYSTEM_TEMPLATE = """\
-You are an expert academic writer continuing a research paper. You have read \
-the following reference paper for context:
+You are a precise text reproduction system.  You have been given a \
+reference paper for context.  Your ONLY task is to reproduce the target \
+text EXACTLY — character for character, preserving all whitespace and \
+punctuation.  Output NOTHING else: no commentary, no corrections, no \
+formatting changes.
 
 --- REFERENCE PAPER ---
 {context_text}
---- END REFERENCE ---
+--- END REFERENCE ---"""
 
-Continue the target paper text below exactly as it would naturally proceed. \
-Output ONLY the continuation text, no meta-commentary."""
+_USER_TEMPLATE = """\
+Reproduce the following target text EXACTLY.  Output only the target \
+text, nothing else.
+
+--- TARGET TEXT ---
+{chunk_text}
+--- END ---"""
+
+
+def _get_encoding(model: str) -> tiktoken.Encoding:
+    """Return the best-guess tiktoken encoding for a model."""
+    try:
+        return tiktoken.encoding_for_model(model)
+    except KeyError:
+        return tiktoken.get_encoding("cl100k_base")
+
+
+def _truncate(text: str, max_tokens: int, enc: tiktoken.Encoding) -> str:
+    tokens = enc.encode(text)
+    if len(tokens) <= max_tokens:
+        return text
+    return enc.decode(tokens[:max_tokens])
+
+
+def _chunk_text(text: str, chunk_tokens: int, enc: tiktoken.Encoding) -> list[str]:
+    """Split text into chunks of approximately chunk_tokens tokens.
+
+    Splits on sentence boundaries ('. ', '\\n') when possible so the
+    model sees coherent fragments.
+    """
+    tokens = enc.encode(text)
+    if len(tokens) <= chunk_tokens:
+        return [text]
+
+    chunks: list[str] = []
+    start = 0
+    while start < len(tokens):
+        end = min(start + chunk_tokens, len(tokens))
+        chunk = enc.decode(tokens[start:end])
+
+        # Try to split at a sentence boundary near the end
+        if end < len(tokens):
+            for sep in [". ", ".\n", "\n\n", "\n", "; ", ", "]:
+                last = chunk.rfind(sep)
+                if last > len(chunk) // 2:
+                    chunk = chunk[: last + len(sep)]
+                    end = start + len(enc.encode(chunk))
+                    break
+
+        chunks.append(chunk)
+        start = end
+
+    return chunks
 
 
 @dataclass
@@ -49,77 +105,25 @@ class PerplexityResult:
     perplexity: float
     avg_logprob: float
     n_tokens: int
+    n_chunks: int
     context_type: str  # "cited", "self", "random"
     error: str = ""
 
 
-def _truncate_to_tokens(text: str, max_tokens: int, encoding_name: str = "cl100k_base") -> str:
-    """Truncate text to a maximum number of tokens."""
-    try:
-        enc = tiktoken.get_encoding(encoding_name)
-    except Exception:
-        # Rough fallback: ~4 chars per token
-        return text[: max_tokens * 4]
-
-    tokens = enc.encode(text)
-    if len(tokens) <= max_tokens:
-        return text
-    return enc.decode(tokens[:max_tokens])
-
-
-def _split_target(text: str, prefix_ratio: float = 0.4) -> tuple[str, str]:
-    """Split target text into prefix (for prompt) and remainder."""
-    split_point = int(len(text) * prefix_ratio)
-    # Find a sentence boundary near the split point
-    for i in range(split_point, min(split_point + 500, len(text))):
-        if text[i] in ".!?\n":
-            split_point = i + 1
-            break
-    return text[:split_point], text[split_point:]
-
-
-def estimate_perplexity(
+def _echo_one_chunk(
     context_text: str,
-    target_text: str,
+    chunk_text: str,
     model: str,
-    client,  # openai.OpenAI instance
-    context_id: str = "",
-    context_title: str = "",
-    context_type: str = "cited",
-) -> PerplexityResult:
-    """Estimate perplexity of target_text conditioned on context_text.
+    client,
+    enc: tiktoken.Encoding,
+) -> tuple[list[float], str]:
+    """Echo a single chunk and return (logprobs_list, error_string)."""
+    system_msg = _SYSTEM_TEMPLATE.format(context_text=context_text)
+    user_msg = _USER_TEMPLATE.format(chunk_text=chunk_text)
 
-    Parameters
-    ----------
-    context_text:
-        The reference/context paper text.
-    target_text:
-        The target paper text whose perplexity we measure.
-    model:
-        OpenAI model name (e.g., "gpt-5.4", "gpt-4o").
-    client:
-        An openai.OpenAI client instance.
-    context_id:
-        Identifier for the context paper (for reporting).
-    context_title:
-        Title of the context paper (for reporting).
-    context_type:
-        One of "cited", "self", "random".
-
-    Returns
-    -------
-    PerplexityResult
-        Contains the estimated perplexity and metadata.
-    """
-    # Truncate context
-    ctx = _truncate_to_tokens(context_text, _MAX_CONTEXT_TOKENS)
-    system_msg = _SYSTEM_TEMPLATE.format(context_text=ctx)
-
-    # Split target into prefix (prompt) and what we want to predict
-    prefix, _ = _split_target(target_text)
-    prefix = _truncate_to_tokens(prefix, _MAX_PREFIX_TOKENS)
-
-    user_msg = f"Continue this paper:\n\n{prefix}"
+    # Budget: the chunk might be up to _CHUNK_TOKENS, but the model may
+    # produce slightly more or fewer tokens.  Give 20 % headroom.
+    max_out = int(len(enc.encode(chunk_text)) * 1.2) + 32
 
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
@@ -129,62 +133,92 @@ def estimate_perplexity(
                     {"role": "system", "content": system_msg},
                     {"role": "user", "content": user_msg},
                 ],
-                max_tokens=_GENERATION_TOKENS,
+                max_tokens=max_out,
                 temperature=0.0,
                 logprobs=True,
                 top_logprobs=1,
             )
 
-            # Extract logprobs
             choice = response.choices[0]
             if not choice.logprobs or not choice.logprobs.content:
-                return PerplexityResult(
-                    context_id=context_id,
-                    context_title=context_title,
-                    model=model,
-                    perplexity=float("inf"),
-                    avg_logprob=float("-inf"),
-                    n_tokens=0,
-                    context_type=context_type,
-                    error="No logprobs returned",
-                )
+                return [], "No logprobs returned by API"
 
-            logprobs = [t.logprob for t in choice.logprobs.content]
-            n_tokens = len(logprobs)
-            avg_logprob = sum(logprobs) / n_tokens if n_tokens > 0 else float("-inf")
-            ppl = math.exp(-avg_logprob) if avg_logprob > float("-inf") else float("inf")
-
-            return PerplexityResult(
-                context_id=context_id,
-                context_title=context_title,
-                model=model,
-                perplexity=ppl,
-                avg_logprob=avg_logprob,
-                n_tokens=n_tokens,
-                context_type=context_type,
-            )
+            return [t.logprob for t in choice.logprobs.content], ""
 
         except Exception as exc:
             if attempt < _MAX_RETRIES:
-                delay = _RETRY_BASE * (2 ** (attempt - 1))
-                print(
-                    f"  [perplexity] {model} error ({exc}), retry {attempt}/{_MAX_RETRIES} "
-                    f"in {delay:.0f}s",
-                    file=sys.stderr,
-                )
-                time.sleep(delay)
+                time.sleep(_RETRY_BASE * (2 ** (attempt - 1)))
                 continue
+            return [], str(exc)
 
-            return PerplexityResult(
-                context_id=context_id,
-                context_title=context_title,
-                model=model,
-                perplexity=float("inf"),
-                avg_logprob=float("-inf"),
-                n_tokens=0,
-                context_type=context_type,
-                error=str(exc),
-            )
+
+def estimate_perplexity(
+    context_text: str,
+    target_text: str,
+    model: str,
+    client,
+    context_id: str = "",
+    context_title: str = "",
+    context_type: str = "cited",
+) -> PerplexityResult:
+    """Compute exact PPL(target_text | context_text) via verbatim echo.
+
+    The target text is chunked, each chunk is echoed by the model with
+    logprobs=True, and the token-level log-probabilities are aggregated
+    across all chunks into a single perplexity score.
+    """
+    enc = _get_encoding(model)
+
+    # Truncate context to budget
+    ctx = _truncate(context_text, _MAX_CONTEXT_TOKENS, enc)
+
+    # Chunk the target
+    chunks = _chunk_text(target_text, _CHUNK_TOKENS, enc)
+
+    all_logprobs: list[float] = []
+    errors: list[str] = []
+
+    for i, chunk in enumerate(chunks):
+        lps, err = _echo_one_chunk(ctx, chunk, model, client, enc)
+        if err:
+            errors.append(f"chunk {i + 1}/{len(chunks)}: {err}")
+        all_logprobs.extend(lps)
+
+        # Rate-limit between chunks
+        if i < len(chunks) - 1:
+            time.sleep(0.3)
+
+    n_tokens = len(all_logprobs)
+    if n_tokens == 0:
+        return PerplexityResult(
+            context_id=context_id,
+            context_title=context_title,
+            model=model,
+            perplexity=float("nan"),
+            avg_logprob=float("nan"),
+            n_tokens=0,
+            n_chunks=len(chunks),
+            context_type=context_type,
+            error="; ".join(errors) or "zero tokens collected",
+        )
+
+    avg_lp = sum(all_logprobs) / n_tokens
+    # Clamp to avoid overflow: logprobs are negative, so -avg_lp is
+    # positive.  math.exp can overflow for very large values.
+    clamped = min(-avg_lp, 700)  # e^700 ≈ 1e304, near float64 max
+    ppl = math.exp(clamped)
+
+    return PerplexityResult(
+        context_id=context_id,
+        context_title=context_title,
+        model=model,
+        perplexity=ppl,
+        avg_logprob=avg_lp,
+        n_tokens=n_tokens,
+        n_chunks=len(chunks),
+        context_type=context_type,
+        error="; ".join(errors) if errors else "",
+    )
 
 
 def compute_all_perplexities(
@@ -198,29 +232,10 @@ def compute_all_perplexities(
 ) -> list[PerplexityResult]:
     """Compute perplexity for all (context, model) combinations.
 
-    Parameters
-    ----------
-    target_text:
-        Full text of the target paper.
-    cited_papers:
-        List of CitedPaper objects with full_text populated.
-    random_ref:
-        A CitedPaper from the broader field (not in cited list), or None.
-    models:
-        List of model names to evaluate.
-    client:
-        OpenAI client.
-    progress_callback:
-        Optional callable(done, total) for progress reporting.
-
-    Returns
-    -------
-    list[PerplexityResult]
-        One result per (context, model) pair.
+    Returns one PerplexityResult per (context, model) pair.
     """
     results: list[PerplexityResult] = []
 
-    # Build the list of all (context, type) pairs
     contexts: list[tuple[str, str, str, str]] = []  # (text, id, title, type)
 
     # Self-perplexity
@@ -264,14 +279,16 @@ def compute_all_perplexities(
 
             if progress_callback:
                 progress_callback(done, total)
-            else:
-                print(
-                    f"  [perplexity] {done}/{total}: {model} | "
-                    f"{ctx_type}:{ctx_title[:40]}... → PPL={result.perplexity:.2f}",
-                    file=sys.stderr,
-                )
 
-            # Small delay to avoid rate limits
+            ppl_str = f"{result.perplexity:.2f}" if math.isfinite(result.perplexity) else "ERROR"
+            print(
+                f"  [perplexity] {done}/{total}: {model} | "
+                f"{ctx_type}:{ctx_title[:40]}… → PPL={ppl_str} "
+                f"({result.n_tokens}tok, {result.n_chunks}chunks)",
+                file=sys.stderr,
+            )
+
+            # Delay between full evaluations
             time.sleep(0.5)
 
     return results
