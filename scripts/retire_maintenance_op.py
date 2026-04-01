@@ -12,14 +12,16 @@ What it does:
     2. Removes the op's entry from the file-header comment block.
     3. Removes any workflow_dispatch inputs exclusively used by this operation.
     4. Removes the comment block + job block for this operation.
-    5. Commits the change and pushes it to main (unless --no-push is given).
+    5. Deletes the associated one-time script file (if listed in OP_SCRIPTS).
+    6. Commits the change and pushes it to main (unless --no-push is given).
 
 Lifecycle convention for maintenance operations in agent-track-workflows.yml:
     ADD:      Add a guarded job (if: github.event.inputs.operation == '<op>') with
               a final "Self-archive" step that calls this script.
     DISPATCH: Trigger once from the Actions UI with operation=<op>.
     RETIRE:   On success the self-archive step runs this script, removes the op
-              from the YAML, and pushes to main — so it disappears from the UI.
+              from the YAML, deletes the associated script, and pushes to main —
+              so it disappears from the UI with no dead code left behind.
 
 To add a future maintenance operation, follow AGENT_INSTRUCTIONS.md §Maintenance ops.
 """
@@ -36,6 +38,14 @@ WORKFLOW_PATH = Path(".github/workflows/agent-track-workflows.yml")
 OP_EXCLUSIVE_INPUTS: dict[str, list[str]] = {
     "patch-agent-review": ["branches", "dry_run"],
     "fix-gitignore": [],
+}
+
+# One-time script files associated with each op.  When the op retires, the
+# script is deleted too so it doesn't linger as dead code on main.
+# Set to None if the op has no associated script to delete.
+OP_SCRIPTS: dict[str, str | None] = {
+    "patch-agent-review": "scripts/fix_orphan_agent_review.py",
+    "fix-gitignore": "scripts/fix_orphan_gitignore.py",
 }
 
 
@@ -178,8 +188,18 @@ def main() -> None:
     WORKFLOW_PATH.write_text(updated)
     print(f"Retired '{op}' from {WORKFLOW_PATH}")
 
+    # Delete the associated one-time script (if any) so it doesn't linger as dead code.
+    script_path_str = OP_SCRIPTS.get(op)
+    script_path = Path(script_path_str) if script_path_str else None
+    if script_path and script_path.exists():
+        script_path.unlink()
+        print(f"Deleted associated script: {script_path}")
+
     if not args.no_push:
         run(["git", "add", str(WORKFLOW_PATH)])
+        if script_path and not script_path.exists():
+            run(["git", "rm", "--cached", "--ignore-unmatch", str(script_path)])
+            run(["git", "add", "-u", str(script_path)])
         run(
             [
                 "git",

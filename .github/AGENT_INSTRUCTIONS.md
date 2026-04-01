@@ -171,8 +171,19 @@ OP_EXCLUSIVE_INPUTS: dict[str, list[str]] = {
 }
 ```
 
-The retire script uses this dict to know which `workflow_dispatch` input blocks
-to remove when the op is retired.
+Also register the associated script (if any) in `OP_SCRIPTS` so it is deleted
+on retire.  Set to `None` if there is no associated script:
+
+```python
+OP_SCRIPTS: dict[str, str | None] = {
+    "patch-agent-review": "scripts/fix_orphan_agent_review.py",
+    "fix-gitignore": "scripts/fix_orphan_gitignore.py",
+    "my-new-op": "scripts/my_new_op.py",   # ← add here, or None
+}
+```
+
+The retire script uses these dicts to know which `workflow_dispatch` input blocks
+to remove and which script file to delete when the op is retired.
 
 All orphan branches must have a comprehensive `.gitignore`. The template is
 maintained in `scripts/bootstrap_agent_branches.py` (`ORPHAN_GITIGNORE`
