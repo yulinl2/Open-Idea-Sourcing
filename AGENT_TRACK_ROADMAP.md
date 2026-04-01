@@ -30,7 +30,8 @@ Rules:
 - **`infra-base`** is the only source all three track branches cherry-pick from.
 - Track branches never merge into each other.
 - Track branches never merge back into `main` or `infra-base`.
-- `main` carries only the CI workflow files (`.github/workflows/`).
+- `main` carries the baseline implementation and CI workflow files. Agent-track
+  implementation code lives only on `infra-base` and the `agent-*` branches.
 
 ---
 
@@ -373,16 +374,16 @@ The two workflows share no jobs and do not depend on each other.
 4. Optionally set `model` (default: `gpt-4o`)
 5. Click **Run workflow**
 
-The job checks out the `agent-<track>` branch, runs `agent.py`, uploads `report.md` as an artifact, and pushes it to the `reports` branch under `agent-<track>/<paper_id>/report.md`.
+The job checks out the `agent-<track>` branch, runs `agent.py`, uploads `report.md` as an artifact, and pushes it to the `agent-reports` branch under `agent-<track>/<paper_id>/report.md`.
 
 ### Reports namespace
 
-| Source | Path on `reports` branch |
-|--------|--------------------------|
-| Baseline | `reports/<paper_id>/` |
-| agent-e2e | `reports/agent-e2e/<paper_id>/` |
-| agent-linear | `reports/agent-linear/<paper_id>/` |
-| agent-reconstruct | `reports/agent-reconstruct/<paper_id>/` |
+| Source | Branch | Path |
+|--------|--------|------|
+| Baseline | `reports` | `<paper_id>/` |
+| agent-e2e | `agent-reports` | `agent-e2e/<paper_id>/` |
+| agent-linear | `agent-reports` | `agent-linear/<paper_id>/` |
+| agent-reconstruct | `agent-reports` | `agent-reconstruct/<paper_id>/` |
 
 ### Freezing a snapshot
 

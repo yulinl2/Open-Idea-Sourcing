@@ -91,30 +91,36 @@ class RunContext:
         Serialise to YAML front matter for embedding in report.md.
 
         Returns the block including the opening and closing '---' delimiters.
+        String values are single-quoted so that YAML-significant characters
+        (colons, hashes, leading dashes, etc.) are never misinterpreted.
         """
+        def _q(s: str) -> str:
+            """Single-quote a string, escaping embedded single quotes."""
+            return "'" + s.replace("'", "''") + "'"
+
         lines = ["---"]
-        lines.append(f"track: {self.track}")
-        lines.append(f"impl_id: {self.impl_id}")
-        lines.append(f"paper_id: {self.paper_id}")
-        lines.append(f"paper_source: {self.paper_source}")
-        lines.append(f"model: {self.model}")
+        lines.append(f"track: {_q(self.track)}")
+        lines.append(f"impl_id: {_q(self.impl_id)}")
+        lines.append(f"paper_id: {_q(self.paper_id)}")
+        lines.append(f"paper_source: {_q(self.paper_source)}")
+        lines.append(f"model: {_q(self.model)}")
         if self.response_id:
-            lines.append(f"response_id: {self.response_id}")
+            lines.append(f"response_id: {_q(self.response_id)}")
         if self.tool_list:
             lines.append("tool_list:")
             for tool in self.tool_list:
-                lines.append(f"  - \"{tool}\"")
+                lines.append(f"  - {_q(tool)}")
         else:
             lines.append("tool_list: []")
-        lines.append(f"start_time: {self.start_time}")
-        lines.append(f"finish_time: {self.finish_time}")
-        lines.append(f"git_commit: {self.git_commit}")
-        lines.append(f"final_verdict: {self.final_verdict}")
+        lines.append(f"start_time: {_q(self.start_time)}")
+        lines.append(f"finish_time: {_q(self.finish_time)}")
+        lines.append(f"git_commit: {_q(self.git_commit)}")
+        lines.append(f"final_verdict: {_q(self.final_verdict)}")
         lines.append(f"confidence: {self.confidence:.2f}")
         if self.main_cited_evidence:
             lines.append("main_cited_evidence:")
             for ev in self.main_cited_evidence:
-                lines.append(f"  - {ev}")
+                lines.append(f"  - {_q(ev)}")
         else:
             lines.append("main_cited_evidence: []")
         lines.append("---")

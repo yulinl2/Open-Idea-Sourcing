@@ -38,9 +38,13 @@ def checkout_from_main(*paths: str) -> None:
     run(["git", "checkout", "main", "--"] + list(paths))
 
 
-def commit_and_push(branch: str, message: str) -> None:
+def commit_and_push(branch: str, message: str, force: bool = False) -> None:
     run(["git", "add", "."])
     run(["git", "commit", "-m", message])
+    if force and branch_exists_remote(branch):
+        # Delete the remote branch first so an orphan root commit can be force-pushed
+        # without a non-fast-forward rejection.
+        run(["git", "push", "origin", "--delete", branch])
     run(["git", "push", "origin", f"HEAD:refs/heads/{branch}"])
 
 
@@ -98,6 +102,8 @@ AGENT_E2E_PY = textwrap.dedent("""\
     import argparse
     import sys
 
+    AGENT_IMPL_ID = "e2e_v0_0_0"
+
 
     def main() -> None:
         parser = argparse.ArgumentParser(description="agent-e2e: autonomous review loop")
@@ -105,7 +111,7 @@ AGENT_E2E_PY = textwrap.dedent("""\
         parser.add_argument("--model", default="gpt-4o")
         parser.add_argument("--output", default="reports/report.md")
         args = parser.parse_args()
-        print(f"[agent-e2e] paper_url={args.paper_url} model={args.model}")
+        print(f"[agent-e2e] impl_id={AGENT_IMPL_ID} paper_url={args.paper_url} model={args.model}")
         print("[agent-e2e] Not yet implemented -- see AGENT_TRACK_ROADMAP.md section 3")
         sys.exit(1)
 
@@ -139,6 +145,8 @@ AGENT_LINEAR_PY = textwrap.dedent("""\
     import argparse
     import sys
 
+    AGENT_IMPL_ID = "linear_v0_0_0"
+
 
     def main() -> None:
         parser = argparse.ArgumentParser(description="agent-linear: staged pipeline")
@@ -148,7 +156,7 @@ AGENT_LINEAR_PY = textwrap.dedent("""\
         parser.add_argument("--from-stage", type=int, default=1,
                             help="Resume from stage N (1-6)")
         args = parser.parse_args()
-        print(f"[agent-linear] paper_url={args.paper_url} model={args.model} "
+        print(f"[agent-linear] impl_id={AGENT_IMPL_ID} paper_url={args.paper_url} model={args.model} "
               f"from_stage={args.from_stage}")
         print("[agent-linear] Not yet implemented -- see AGENT_TRACK_ROADMAP.md section 4")
         sys.exit(1)
@@ -196,6 +204,8 @@ AGENT_RECONSTRUCT_PY = textwrap.dedent("""\
     import argparse
     import sys
 
+    AGENT_IMPL_ID = "reconstruct_v0_0_0"
+
 
     def main() -> None:
         parser = argparse.ArgumentParser(
@@ -208,7 +218,7 @@ AGENT_RECONSTRUCT_PY = textwrap.dedent("""\
         parser.add_argument("--model", default="gpt-4o")
         parser.add_argument("--output", default="reports/report.md")
         args = parser.parse_args()
-        print(f"[agent-reconstruct] paper_url={args.paper_url} "
+        print(f"[agent-reconstruct] impl_id={AGENT_IMPL_ID} paper_url={args.paper_url} "
               f"refs={args.refs} model={args.model}")
         print("[agent-reconstruct] Not yet implemented -- see AGENT_TRACK_ROADMAP.md section 5")
         sys.exit(1)
@@ -260,7 +270,8 @@ def setup_infra_base(skip_existing: bool) -> None:
         ".github/workflows/agent-review.yml",
     )
     Path("README.md").write_text(INFRA_BASE_README)
-    commit_and_push(branch, "infra-base: shared execution shell, charter, and roadmap (bootstrap)")
+    commit_and_push(branch, "infra-base: shared execution shell, charter, and roadmap (bootstrap)",
+                    force=not skip_existing)
     print(f"Created '{branch}'")
     back_to_main()
 
@@ -280,7 +291,7 @@ def setup_agent_branch(
     checkout_from_main("infra/", ".github/workflows/agent-review.yml")
     Path("README.md").write_text(readme)
     Path("agent.py").write_text(agent_py)
-    commit_and_push(branch, commit_msg)
+    commit_and_push(branch, commit_msg, force=not skip_existing)
     print(f"Created '{branch}'")
     back_to_main()
 
@@ -296,7 +307,8 @@ def setup_agent_reports(skip_existing: bool) -> None:
     for track in ("agent-e2e", "agent-linear", "agent-reconstruct"):
         Path(track).mkdir(exist_ok=True)
         Path(track, ".gitkeep").touch()
-    commit_and_push(branch, "agent-reports: orphan bootstrap (empty report directories)")
+    commit_and_push(branch, "agent-reports: orphan bootstrap (empty report directories)",
+                    force=not skip_existing)
     print(f"Created '{branch}'")
     back_to_main()
 
@@ -312,15 +324,15 @@ def main() -> None:
     parser.add_argument(
         "--skip-existing",
         action="store_true",
-        default=True,
-        help="Skip branches that already exist on origin (default: true)",
+        help="Skip branches that already exist on origin (safe re-run; default behaviour)",
     )
     parser.add_argument(
         "--no-skip-existing",
         dest="skip_existing",
         action="store_false",
-        help="Recreate branches even if they already exist (destructive)",
+        help="Recreate branches even if they already exist (destructive; deletes and re-pushes)",
     )
+    parser.set_defaults(skip_existing=True)
     args = parser.parse_args()
 
     setup_infra_base(args.skip_existing)

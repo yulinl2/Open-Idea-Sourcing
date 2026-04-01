@@ -155,7 +155,7 @@ class ReportWriter:
     def _render_verdict(self, content: ReportContent) -> str:
         ctx = content.context
         label = self.VERDICT_LABELS.get(ctx.final_verdict, ctx.final_verdict or "_pending_")
-        confidence_pct = f"{ctx.confidence * 100:.0f}%" if ctx.confidence else "_unknown_"
+        confidence_pct = f"{ctx.confidence * 100:.0f}%"
         evidence_lines = ""
         if ctx.main_cited_evidence:
             evidence_lines = "\n\n**Main cited evidence:**\n" + "\n".join(

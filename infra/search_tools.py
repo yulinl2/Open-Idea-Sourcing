@@ -40,15 +40,19 @@ S2_RATE_LIMIT_RETRY_MULTIPLIER = 3  # backoff multiplier on 429 retry
 
 
 def _s2_get(url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
-    """Make a GET request to the Semantic Scholar API and return parsed JSON."""
+    """Make a GET request to the Semantic Scholar API and return parsed JSON.
+
+    Raises urllib.error.HTTPError directly so callers can inspect the status code
+    (e.g. to retry on 429 rate-limit responses).
+    """
     if params:
         url = url + "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"Semantic Scholar API error {exc.code} for {url}: {exc.reason}") from exc
+    except urllib.error.HTTPError:
+        raise  # re-raise so callers can check exc.code (e.g. 429)
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Semantic Scholar network error for {url}: {exc.reason}") from exc
 
@@ -74,7 +78,9 @@ def search_semantic_scholar(
             time.sleep(S2_RATE_LIMIT_DELAY * S2_RATE_LIMIT_RETRY_MULTIPLIER)
             data = _s2_get(S2_SEARCH_URL, params)
             return data.get("data", [])
-        raise
+        raise RuntimeError(
+            f"Semantic Scholar API error {exc.code} for search '{query}': {exc.reason}"
+        ) from exc
 
 
 def fetch_s2_citations(
