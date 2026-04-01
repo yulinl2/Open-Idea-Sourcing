@@ -403,9 +403,8 @@ class ReportGenerator:
                     "|-------|-------|",
                 ]
                 for field_name, value in context_rows:
-                    lines.append(
-                        f"| {field_name} | {str(value).replace('|', r'\|')} |"
-                    )
+                    escaped = str(value).replace("|", r"\|")
+                    lines.append(f"| {field_name} | {escaped} |")
                 lines.append("")
 
             # --- Configuration group ---
@@ -426,9 +425,8 @@ class ReportGenerator:
                     "|-------|-------|",
                 ]
                 for field_name, value in config_rows:
-                    lines.append(
-                        f"| {field_name} | {str(value).replace('|', r'\|')} |"
-                    )
+                    escaped = str(value).replace("|", r"\|")
+                    lines.append(f"| {field_name} | {escaped} |")
                 lines.append("")
 
             # --- Performance group ---
@@ -445,9 +443,8 @@ class ReportGenerator:
                     "|-------|-------|",
                 ]
                 for field_name, value in perf_rows:
-                    lines.append(
-                        f"| {field_name} | {str(value).replace('|', r'\|')} |"
-                    )
+                    escaped = str(value).replace("|", r"\|")
+                    lines.append(f"| {field_name} | {escaped} |")
                 lines.append("")
 
         if r.metadata and r.metadata.jobs:
