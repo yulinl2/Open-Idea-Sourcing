@@ -14,7 +14,7 @@ Environment variables
 OPENAI_API_KEY
     Required when using the default OpenAI backend.
 OPENAI_MODEL
-    OpenAI model name (default: gpt-4.1).
+    OpenAI model name (default: gpt-5.4).
 
 Examples
 --------
@@ -412,8 +412,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        default=os.environ.get("OPENAI_MODEL", "gpt-4.1"),
-        help="OpenAI model name (default: gpt-4.1 or OPENAI_MODEL env var).",
+        default=os.environ.get("OPENAI_MODEL", "gpt-5.4"),
+        help="OpenAI model name (default: gpt-5.4 or OPENAI_MODEL env var).",
     )
     parser.add_argument(
         "--top-k",

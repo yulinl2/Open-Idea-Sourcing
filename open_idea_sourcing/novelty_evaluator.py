@@ -44,7 +44,7 @@ class PipelineJob:
     name:
         Human-readable step name, e.g. ``"Duplication check"``.
     agent:
-        Component that performed the step, e.g. ``"LLM (gpt-4.1)"``.
+        Component that performed the step, e.g. ``"LLM (gpt-5.4)"``.
     offset_s:
         Seconds elapsed since the start of the run when this job began.
     duration_s:
@@ -74,7 +74,7 @@ class RunMetadata:
     Attributes
     ----------
     model:
-        Name of the LLM used (e.g. ``"gpt-4.1"``).
+        Name of the LLM used (e.g. ``"gpt-5.4"``).
     input_source:
         Original filename or URL of the paper that was evaluated.
     timestamp:
@@ -261,7 +261,7 @@ class NoveltyEvaluator:
             client = openai.OpenAI()
             def call_openai(prompt: str) -> str:
                 r = client.chat.completions.create(
-                    model="gpt-4.1",
+                    model="gpt-5.4",
                     messages=[{"role": "user", "content": prompt}],
                 )
                 return r.choices[0].message.content

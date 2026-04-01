@@ -75,7 +75,7 @@ python review_paper.py my_paper.pdf --no-online-search
 | `--references FILE` | `data/references.json` | Additional JSON reference corpus (merged with bundled) |
 | `--no-online-search` | off | Skip Semantic Scholar API lookup |
 | `--top-k N` | `5` | Top-N similar papers passed to the LLM |
-| `--model NAME` | `gpt-4.1` | OpenAI model (or `OPENAI_MODEL` env var) |
+| `--model NAME` | `gpt-5.4` | OpenAI model (or `OPENAI_MODEL` env var) |
 | `--reports-dir DIR` | `reports` | Output directory for auto-named reports |
 | `--output FILE` | — | Exact output path (overrides `--reports-dir`) |
 | `--papers-file FILE` | — | NDJSON batch input (mutually exclusive with positional arg) |
