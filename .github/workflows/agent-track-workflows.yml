@@ -2,7 +2,8 @@ name: Agent track workflows
 
 # Stable public entry-point for all agent-branch development.
 # Filename: agent-track-workflows.yml  (keep this name fixed; edit content in-place).
-# Stale versions are retired by renaming to *.yml.bak (hidden from GitHub Actions).
+# Stale versions are retired by renaming to a descriptive *.yml.bak name so local
+# dev history stays clear, e.g. agent-track-workflows.v1-fan-out-3tracks.yml.bak
 #
 # Current behaviour: fans out to all three agent tracks by triggering
 # agent-review.yml once per track in parallel.  Each dispatched run checks out
