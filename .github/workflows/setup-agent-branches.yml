@@ -1,0 +1,68 @@
+name: Setup Agent Orphan Branches
+
+# One-shot bootstrap workflow.
+#
+# Run this ONCE after the PR that adds infra/ lands on main.
+# Creates (or skips if already present):
+#   • infra-base        — orphan; infra/ + charter + roadmap docs
+#   • agent-e2e         — orphan; infra/ + agent-review.yml + placeholder agent.py
+#   • agent-linear      — orphan; same
+#   • agent-reconstruct — orphan; same
+#   • agent-reports     — orphan; README.md only (accumulates published reports)
+#
+# After a successful run you may delete this workflow from main if you want
+# to keep main strictly minimal.
+#
+# To trigger:
+#   Actions → Setup Agent Orphan Branches → Run workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_existing:
+        description: "Skip branches that already exist (true = safe re-run)"
+        required: false
+        default: "true"
+
+jobs:
+  setup:
+    name: Bootstrap orphan branches
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bootstrap orphan branches
+        run: |
+          SKIP_FLAG=""
+          if [ "${{ inputs.skip_existing }}" = "false" ]; then
+            SKIP_FLAG="--no-skip-existing"
+          fi
+          python3 scripts/bootstrap_agent_branches.py $SKIP_FLAG
+
+      - name: Summary
+        run: |
+          printf '### Agent branch setup complete\n\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '| Branch | Type | Purpose |\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '|--------|------|---------|\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '| `infra-base` | orphan | Shared infra/, charter, roadmap |\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '| `agent-e2e` | orphan | Single autonomous tool loop |\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '| `agent-linear` | orphan | 6-stage checkpointed pipeline |\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '| `agent-reconstruct` | orphan | Hypothesis branching track |\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '| `agent-reports` | orphan | Accumulates published reports |\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '\nNext: implement `agent.py` on each track branch per `AGENT_TRACK_ROADMAP.md`.\n' >> "$GITHUB_STEP_SUMMARY"
