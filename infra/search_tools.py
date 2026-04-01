@@ -20,6 +20,7 @@ arXiv API docs: https://arxiv.org/help/api/user-manual
 from __future__ import annotations
 
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import json

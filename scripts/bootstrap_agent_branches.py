@@ -9,7 +9,6 @@ Usage (from the workflow's checkout directory):
     python3 scripts/bootstrap_agent_branches.py [--skip-existing]
 """
 import argparse
-import os
 import subprocess
 import sys
 import textwrap

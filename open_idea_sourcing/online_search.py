@@ -662,7 +662,7 @@ def _year_from_arxiv_id(arxiv_id: str) -> int | None:
 
     New-style arXiv IDs were introduced in April 2007 and encode the
     submission year and month as a four-digit prefix ``YYMM``.  Returns the
-    four-digit year (e.g. ``2006`` for ID ``"2006.06138"``) or *None* when
+    four-digit year (e.g. ``2020`` for ID ``"2006.06138"``) or *None* when
     the ID does not match the expected pattern.
     """
     m = re.match(r'^(\d{2})\d{2}\.\d+', arxiv_id)

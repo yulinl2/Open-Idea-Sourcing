@@ -147,9 +147,22 @@ class ReferenceStore:
             if _SOURCE_PRIORITY.get(source, _SOURCE_PRIORITY["unknown"]) < _SOURCE_PRIORITY.get(existing, _SOURCE_PRIORITY["unknown"]):
                 self._sources[paper.id] = source
 
-        # Register in title index (first entry wins as canonical).
-        if new_key and new_key not in self._title_keys:
-            self._title_keys[new_key] = paper.id
+        # If this paper ID already existed with a different title, remove the
+        # stale title-key entries before registering the updated key.
+        if paper.id in self._papers:
+            stale_keys = [
+                k for k, pid in self._title_keys.items()
+                if pid == paper.id and k != new_key
+            ]
+            for k in stale_keys:
+                del self._title_keys[k]
+
+        # Register the new key if it is non-empty and not yet claimed by a
+        # different paper (first-entry-wins for title-based canonicalisation).
+        if new_key:
+            existing_id = self._title_keys.get(new_key)
+            if existing_id is None or existing_id == paper.id:
+                self._title_keys[new_key] = paper.id
 
         self._papers[paper.id] = paper
 
@@ -178,11 +191,10 @@ class ReferenceStore:
 
     def remove(self, paper_id: str) -> bool:
         if paper_id in self._papers:
-            # Remove the title-index entry for this paper.
-            paper = self._papers[paper_id]
-            key = _alphanum_title_key(paper.title)
-            if self._title_keys.get(key) == paper_id:
-                del self._title_keys[key]
+            # Remove all title-index entries that point to this paper.
+            keys_to_delete = [k for k, pid in self._title_keys.items() if pid == paper_id]
+            for k in keys_to_delete:
+                del self._title_keys[k]
             del self._papers[paper_id]
             self._sources.pop(paper_id, None)
             self._all_sources.pop(paper_id, None)
