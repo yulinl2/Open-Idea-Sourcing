@@ -161,34 +161,55 @@ AGENT_LINEAR_PY = textwrap.dedent("""\
 AGENT_RECONSTRUCT_README = textwrap.dedent("""\
     # agent-reconstruct
 
-    Free reconstruction track: hypothesis branching, adversarial challenge sub-agents (v2+).
-    Aggressive evolution expected -- this branch history is intentionally non-linear.
+    Minimal teacher-student reconstruction track.
+
+    The teacher agent extracts a domain problem statement from the paper (no solution
+    revealed). The student agent independently develops a methodology using only the
+    hint and an allowed reference set -- no external search.
 
     See AGENT_TRACK_ROADMAP.md section 5 for the full build sequence.
 
     ## Quickstart
 
-        python agent.py --paper-url https://arxiv.org/abs/2006.06138 --model gpt-4o
+        python agent.py --paper-url https://arxiv.org/abs/2006.06138 \\\\
+                        --refs 1706.03762 1409.0473 \\\\
+                        --model gpt-4o
+
+    ## Inputs
+
+    - `--paper-url` : arXiv URL or local PDF path for the paper to reconstruct
+    - `--refs`      : space-separated arXiv IDs that the student may use
+    - `--model`     : LLM model identifier (default: gpt-4o)
+    - `--output`    : output path for report.md (default: reports/report.md)
 """)
 
 AGENT_RECONSTRUCT_PY = textwrap.dedent("""\
     #!/usr/bin/env python3
-    \"\"\"agent-reconstruct: free reconstruction track with hypothesis branching.
+    \"\"\"agent-reconstruct: minimal teacher-student reconstruction track.
 
     Implementation guide: AGENT_TRACK_ROADMAP.md section 5
-    Adversarial challenge sub-agents added in v2+.
+
+    Teacher agent: reads paper, extracts domain problem hint (no solution revealed).
+    Student agent: given hint + allowed refs only, develops methodology independently.
+                   No external search -- reconstruction from first principles.
     \"\"\"
     import argparse
     import sys
 
 
     def main() -> None:
-        parser = argparse.ArgumentParser(description="agent-reconstruct: hypothesis branching")
-        parser.add_argument("--paper-url", required=True)
+        parser = argparse.ArgumentParser(
+            description="agent-reconstruct: teacher-student reconstruction"
+        )
+        parser.add_argument("--paper-url", required=True,
+                            help="arXiv URL or local PDF path of the paper to reconstruct")
+        parser.add_argument("--refs", nargs="*", default=[],
+                            help="Allowed reference arXiv IDs or PDF paths for the student")
         parser.add_argument("--model", default="gpt-4o")
         parser.add_argument("--output", default="reports/report.md")
         args = parser.parse_args()
-        print(f"[agent-reconstruct] paper_url={args.paper_url} model={args.model}")
+        print(f"[agent-reconstruct] paper_url={args.paper_url} "
+              f"refs={args.refs} model={args.model}")
         print("[agent-reconstruct] Not yet implemented -- see AGENT_TRACK_ROADMAP.md section 5")
         sys.exit(1)
 

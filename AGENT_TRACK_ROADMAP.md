@@ -289,65 +289,90 @@ This reads `checkpoints/stage_3_refs.json` as the input and re-runs stages 4–R
 
 ---
 
-## 5. agent-reconstruct — reconstruction and discovery track
+## 5. agent-reconstruct — minimal teacher-student reconstruction track
 
 ### Scientific purpose
 
-This is the **real discovery track**. It drops the fixed stage ordering and instead
-lets the agent dynamically choose its reconstruction strategy — branching hypotheses,
-running debate rounds between sub-agents, or iteratively deepening its search on the
-highest-impact derivation paths.
+This track tests a different question from the other two: **can an agent independently
+reconstruct the methodology of a paper if it is given only the problem statement and an
+allowed reference set — without seeing the paper's own solution?**
 
-The goal is to find the best possible answer to: *"What is the irreducible residual
-contribution of this paper?"* — not to produce a clean audit trail (that is
-`agent-linear`'s job).
+If the student can reconstruct a methodology that closely matches the paper's, the paper
+is likely derivative (the methodology was derivable from the given references). If the
+student arrives at something genuinely different, the paper may contain novel
+contribution.
+
+This is the **partial key stage**: the teacher withholds the solution key while giving
+just enough context to define the problem space.
 
 ### Design principles
 
-- No fixed stage sequence; agent plans its own search strategy
-- Multiple reconstruction hypotheses may be explored in parallel
-- Sub-agents can debate or challenge each other's derivation claims
-- The final report may expose the reconstruction process itself (showing which
-  hypotheses were explored and why some were abandoned)
-- Aggressive evolution is expected; frozen snapshots preserve milestones
+- **Teacher agent**: reads the full paper; extracts a minimal problem-definition hint
+  (the domain problem to be solved) — *no solution revealed*
+- **Student agent**: given only the hint + allowed references; develops a methodology
+  from first principles and the provided references; **no external search allowed**
+- One `report.md` output: contains the student's reconstruction and a comparison
+  section noting where it matches or diverges from the actual paper
+- No fixed stage sequence; minimal external scaffolding
+- Implementation identity declared at top: `AGENT_IMPL_ID = "reconstruct_v1_0_0"`
 
-### Reconstruction strategy options
-
-The agent may employ any combination of:
-
-| Strategy | Description |
-|----------|-------------|
-| **Bottom-up decomposition** | Start from atomic technical claims and search for sources of each |
-| **Top-down elimination** | Start from the claimed contribution and progressively show it is derivable |
-| **Hypothesis branching** | Maintain multiple derivation hypotheses; evaluate each with evidence |
-| **Adversarial challenge** | One sub-agent argues novelty, another argues derivability; synthesise |
-| **Iterative deepening** | First pass identifies high-signal components; second pass deep-dives them |
-| **Domain anchor search** | Anchor on domain-specific technical vocabulary to find conceptually equivalent prior work |
-
-### Debate sub-agent structure (optional, v2+)
+### Methodology (v1 — minimal)
 
 ```
-Reconstructor agent      — builds derivation hypotheses
+[Input]  paper (PDF or URL) + allowed reference list (arXiv IDs or PDFs)
     │
-    ├─ calls ─► SearchAgent     — retrieves candidate prior-work evidence
-    ├─ calls ─► ChallengerAgent — challenges each derivation claim
-    └─ calls ─► JudgeAgent      — weighs competing claims, produces verdict
+    ▼
+[Teacher agent]
+    Reads the full paper.
+    Produces a minimal problem-definition hint:
+      - The domain and subfield
+      - The specific technical problem being addressed
+      - The evaluation criteria (what a good solution looks like)
+    Does NOT reveal: the paper's approach, key design decisions, or results.
+    │
+    ▼
+[Student agent]
+    Receives: hint + allowed reference texts only.
+    No external search. No access to the full paper.
+    Task: develop and detail a methodology to solve the stated problem,
+          using the allowed references as building blocks.
+          Aim for maximum technical depth without resorting to external sources.
+    Output: a structured methodology description (approach, components,
+            expected behaviour, any key design decisions made)
+    │
+    ▼
+[Comparison pass]
+    Compare student's methodology against the actual paper's approach.
+    Note: components matched, components diverged, components missed.
+    │
+    ▼
+[Output]  report.md
+    Contains: hint used, student methodology, comparison table,
+              reconstruction verdict (MATCHED / PARTIAL / DIVERGED)
 ```
 
-This is not a fixed architecture. It may evolve, be replaced, or be abandoned
-based on what actually produces better derivation audits.
+### Tool set
+
+| Agent | Allowed tools |
+|-------|--------------|
+| Teacher | `fetch_paper_text`, `pdf_utils.extract_text_from_pdf` |
+| Student | `fetch_paper_text` (allowed refs only), `pdf_utils.extract_text_from_pdf` |
+| Comparison | None (pure LLM synthesis) |
+
+The student agent intentionally has **no search tools**. Its task is reconstruction
+from the allowed reference set and its own reasoning — not retrieval.
 
 ### Build sequence
 
 ```
 Step 1  cherry-pick infra/ from infra-base
-Step 2  agent.py v1 — single-agent reconstruction loop (no debate)
-        Focus: better decomposition of technical units than agent-e2e/linear
-Step 3  prompts/reconstruct.txt — reconstruction-specific prompt
+Step 2  agent.py v1 — teacher + student loop (single LLM, two prompts)
+Step 3  prompts/teacher.txt — problem-extraction prompt
+        prompts/student.txt — reconstruction prompt
+        prompts/compare.txt — comparison pass prompt
 Step 4  Freeze: agent_reconstruct_v1_0_0.py
-Step 5  agent.py v2 — hypothesis branching; multiple derivation paths explored
-Step 6  agent.py v3 — debate sub-agents (if v2 shows promising signal)
-Step 7  Git tag at each meaningful milestone
+Step 5  Git tag: agent-reconstruct-v1.0.0
+        (v2+ extensions: multiple students, hypothesis branching — deferred)
 ```
 
 ### File layout
@@ -356,22 +381,20 @@ Step 7  Git tag at each meaningful milestone
 agent-reconstruct branch
 ├── agent.py                           ← active implementation
 ├── agent_reconstruct_v1_0_0.py        ← frozen snapshot
-├── hypotheses/                        ← runtime; gitignored
 ├── prompts/
-│   ├── system.txt
-│   ├── reconstruct.txt
-│   ├── challenger.txt                 ← added in v3
-│   └── judge.txt                      ← added in v3
+│   ├── teacher.txt                    ← problem-extraction prompt
+│   ├── student.txt                    ← reconstruction prompt
+│   └── compare.txt                    ← comparison pass prompt
 ├── infra/                             ← cherry-picked from infra-base
 └── README.md
 ```
 
 ### Evolution philosophy
 
-This track is allowed to **fail loudly**. If a sub-agent structure does not
-produce better derivation audits than `agent-linear`, that is a useful finding.
-Freeze the failed snapshot, document the finding in a `FINDINGS.md`, and try a
-different approach. Do not delete failed experiments — they are data.
+v1 is intentionally minimal. If the teacher-student split produces useful signal,
+evolve toward multiple students (hypothesis branching), adversarial challenge
+sub-agents, or iterative deepening — but only after v1 is frozen and evaluated.
+Document all findings in `FINDINGS.md`; do not delete failed experiments.
 
 ---
 
