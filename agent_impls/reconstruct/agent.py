@@ -45,7 +45,12 @@ PROMPTS_DIR = SCRIPT_DIR / "prompts"
 # Infra imports
 # ---------------------------------------------------------------------------
 
-sys.path.insert(0, str(SCRIPT_DIR.parent.parent))
+# Resolve infra/ whether running from infra-base (agent_impls/reconstruct/agent.py)
+# or from an agent branch (agent.py at root alongside infra/).
+for _p in [SCRIPT_DIR, SCRIPT_DIR.parent.parent]:
+    if (_p / "infra").is_dir():
+        sys.path.insert(0, str(_p))
+        break
 from infra.run_context import RunContext
 from infra.report_writer import (
     DerivationEntry,
@@ -294,9 +299,9 @@ def render_report(
         context=ctx,
         executive_summary=exec_summary,
         decomposition=[
-            {"unit": "Problem domain", "description": hint.get("domain", "")},
-            {"unit": "Specific problem", "description": hint.get("specific_problem", "")},
-            {"unit": "Evaluation criteria", "description": hint.get("evaluation_criteria", "")},
+            {"name": "Problem domain", "description": hint.get("domain", "")},
+            {"name": "Specific problem", "description": hint.get("specific_problem", "")},
+            {"name": "Evaluation criteria", "description": hint.get("evaluation_criteria", "")},
         ],
         prior_work=[
             PriorWorkEntry(

@@ -112,10 +112,10 @@ def propagate_track(track: str, config: dict, repo_root: Path, dry_run: bool) ->
         shutil.rmtree(worktree_path)
 
     try:
-        # Fetch and add worktree
+        # Fetch and add worktree (use detached HEAD to avoid local-branch conflicts)
         run(["git", "fetch", "origin", branch])
-        run(["git", "worktree", "add", str(worktree_path), f"origin/{branch}"])
-        run(["git", "-C", str(worktree_path), "checkout", "-b", branch])
+        run(["git", "worktree", "add", "--detach", str(worktree_path),
+             f"origin/{branch}"])
 
         # Copy shared files
         for src_rel in SHARED_FILES:
@@ -166,13 +166,15 @@ def propagate_track(track: str, config: dict, repo_root: Path, dry_run: bool) ->
             print(result.stdout)
             return True
 
-        # Commit
+        # Commit (disable GPG signing — worktrees can't access the signing key)
         run(["git", "-C", str(worktree_path), "add", "."])
         run([
-            "git", "-C", str(worktree_path), "commit",
+            "git", "-C", str(worktree_path),
+            "-c", "commit.gpgsign=false",
+            "commit",
             "-m", f"agent-{track}: v1 implementation ({config['impl_id']}), data/, tests/",
         ])
-        # Push
+        # Push to the remote branch by name
         run(["git", "-C", str(worktree_path), "push", "origin",
              f"HEAD:refs/heads/{branch}"])
         print(f"  Successfully propagated {track} → {branch}")

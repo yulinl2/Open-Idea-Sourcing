@@ -52,7 +52,13 @@ CHECKPOINTS_DIR = Path("checkpoints")
 # Infra imports
 # ---------------------------------------------------------------------------
 
-sys.path.insert(0, str(SCRIPT_DIR.parent.parent))
+# Resolve infra/ whether running from infra-base (agent_impls/linear/agent.py)
+# or from an agent branch (agent.py at root alongside infra/).
+for _p in [SCRIPT_DIR, SCRIPT_DIR.parent.parent]:
+    if (_p / "infra").is_dir():
+        sys.path.insert(0, str(_p))
+        break
+
 from infra.run_context import RunContext
 from infra.report_writer import (
     DerivationEntry,
@@ -425,7 +431,7 @@ def stage_render(paper_ck: dict, synthesis: dict, refs: dict,
             f"{synthesis.get('primary_reason', '')}"
         ),
         decomposition=[
-            {"unit": u.get("name", ""), "description": u.get("description", "")}
+            {"name": u.get("name", ""), "description": u.get("description", "")}
             for u in (load_checkpoint("stage_2_decomp") or {}).get("technical_units", [])
         ],
         prior_work=prior_work,

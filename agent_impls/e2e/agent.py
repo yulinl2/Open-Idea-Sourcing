@@ -48,7 +48,13 @@ VERDICT_PROMPT = (PROMPTS_DIR / "verdict.txt").read_text()
 # Infra imports
 # ---------------------------------------------------------------------------
 
-sys.path.insert(0, str(SCRIPT_DIR.parent.parent))
+# Resolve infra/ whether running from infra-base (agent_impls/e2e/agent.py)
+# or from an agent branch (agent.py at root alongside infra/).
+for _p in [SCRIPT_DIR, SCRIPT_DIR.parent.parent]:
+    if (_p / "infra").is_dir():
+        sys.path.insert(0, str(_p))
+        break
+
 from infra.run_context import RunContext
 from infra.report_writer import (
     DerivationEntry,
@@ -369,7 +375,7 @@ def _extract_decomposition(text: str) -> list[dict]:
             if len(cells) >= 3 and cells[0].lower() not in ("#", ""):
                 try:
                     int(cells[0])  # skip header row with "#"
-                    decomp.append({"unit": cells[1], "description": cells[2]})
+                    decomp.append({"name": cells[1], "description": cells[2]})
                 except ValueError:
                     pass
         elif in_table and line.startswith("##"):

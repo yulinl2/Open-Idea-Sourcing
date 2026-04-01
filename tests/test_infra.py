@@ -364,3 +364,77 @@ class TestInfraImports:
         fm = ctx.to_yaml_front_matter()
         assert "track:" in fm
         assert "smoke_tool" in fm
+
+
+# ---------------------------------------------------------------------------
+# Agent CLI smoke tests (no API key; just verify imports and arg-parsing)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentCliSmoke:
+    """Smoke tests for agent implementations — exercised by CI test-infra job.
+
+    These tests verify that each track's agent module imports correctly and
+    accepts --help without errors. No API key is required.
+    """
+
+    def _agent_path(self, track: str) -> Path:
+        # Works whether running from infra-base or an agent branch
+        candidates = [
+            ROOT / "agent_impls" / track / "agent.py",  # infra-base layout
+            ROOT / "agent.py",  # agent branch layout
+        ]
+        for p in candidates:
+            if p.exists():
+                return p
+        return None
+
+    def test_agent_e2e_help(self):
+        path = self._agent_path("e2e")
+        if path is None:
+            pytest.skip("agent-e2e agent.py not found")
+        import subprocess
+        result = subprocess.run(
+            ["python", str(path), "--help"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"--help failed:\n{result.stderr}"
+        assert "--paper-url" in result.stdout
+
+    def test_agent_linear_help(self):
+        path = self._agent_path("linear")
+        if path is None:
+            pytest.skip("agent-linear agent.py not found")
+        import subprocess
+        result = subprocess.run(
+            ["python", str(path), "--help"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"--help failed:\n{result.stderr}"
+        assert "--paper-url" in result.stdout
+        assert "--from-stage" in result.stdout
+
+    def test_agent_reconstruct_help(self):
+        path = self._agent_path("reconstruct")
+        if path is None:
+            pytest.skip("agent-reconstruct agent.py not found")
+        import subprocess
+        result = subprocess.run(
+            ["python", str(path), "--help"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"--help failed:\n{result.stderr}"
+        assert "--paper-url" in result.stdout
+        assert "--refs" in result.stdout
+
+    def test_infra_smoke_from_agent_branch(self):
+        """Replicate the inline CI smoke test to ensure it passes."""
+        from infra import RunContext, ReportContent, ReportWriter, ToolRegistry
+        from infra.run_context import RunContext as RC
+        ctx = RC(track="smoke", impl_id="smoke_v0", paper_id="test",
+                 paper_source="local", model="stub")
+        ctx.record_tool("smoke_tool")
+        ctx.mark_finished()
+        fm = ctx.to_yaml_front_matter()
+        assert "track:" in fm, "YAML front matter missing track"
+        assert "smoke_tool" in fm, "YAML front matter missing tool"
