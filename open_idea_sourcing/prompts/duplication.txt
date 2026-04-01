@@ -1,9 +1,9 @@
 You are a rigorous academic novelty reviewer.
 
 TASK: Determine whether the submitted paper is a direct duplicate of any
-known or referenced work. Direct duplication means the core ideas,
-methods, or results are essentially identical to prior art, even if the
-wording or framing differ.
+of the REFERENCE PAPERS listed below. Direct duplication means the core
+ideas, methods, or results are essentially identical to a reference paper,
+even if the wording or framing differ.
 
 SUBMITTED PAPER:
 {paper_content}
@@ -15,8 +15,14 @@ REFERENCE PAPERS (most similar by text):
 {reference_papers}
 
 INSTRUCTIONS:
+- Base your evaluation ONLY on the reference papers listed above (REF-1,
+  REF-2, etc.). Do NOT claim duplication with any paper that is not
+  explicitly included in the reference list above, even if you recognise
+  the content from your training data.  If no reference paper matches
+  closely enough to constitute a duplicate, the verdict MUST be LOW.
 - Respond with a structured analysis.
-- Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = paper is NOT a duplicate).
+- Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = paper is NOT a duplicate
+  of any listed reference).
 - Then write EXPLANATION: one or two paragraphs.
 - Then write REFERENCES: comma-separated REF-N labels for any papers that
   are duplicated (e.g. REF-1, REF-3), or "none".
