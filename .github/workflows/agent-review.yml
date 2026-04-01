@@ -46,6 +46,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # infra/ and tests/ live on infra-base (the orphan branch that owns the
+          # shared execution shell). Checking out infra-base here means infra/ does
+          # not need to be duplicated on main.
+          ref: infra-base
 
       - name: Set up Python
         uses: actions/setup-python@v5

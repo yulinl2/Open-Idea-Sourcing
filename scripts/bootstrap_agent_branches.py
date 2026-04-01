@@ -38,6 +38,10 @@ def checkout_from_main(*paths: str) -> None:
     run(["git", "checkout", "main", "--"] + list(paths))
 
 
+def checkout_from_branch(branch: str, *paths: str) -> None:
+    run(["git", "checkout", branch, "--"] + list(paths))
+
+
 def commit_and_push(branch: str, message: str, force: bool = False) -> None:
     run(["git", "add", "."])
     run(["git", "commit", "-m", message])
@@ -312,7 +316,8 @@ def setup_agent_branch(
         return
     print(f"\n=== Creating '{branch}' ===")
     switch_to_orphan(branch)
-    checkout_from_main("infra/", ".github/workflows/agent-review.yml")
+    checkout_from_branch("infra-base", "infra/")
+    checkout_from_main(".github/workflows/agent-review.yml")
     Path("README.md").write_text(readme)
     Path("agent.py").write_text(agent_py)
     Path(".gitignore").write_text(ORPHAN_GITIGNORE)
