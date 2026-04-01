@@ -8,6 +8,7 @@ paper against a known corpus.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -22,6 +23,24 @@ _SOURCE_PRIORITY: dict[str, int] = {
     "domain": 3,
     "unknown": 99,
 }
+
+# Minimum number of alphanumeric characters in the shorter of two titles for
+# the suffix-based duplicate check to trigger.  Keeps short titles (e.g.
+# "GPT-4") from being falsely matched against longer titles that happen to
+# share the same ending.
+_MIN_TITLE_SUFFIX_LEN = 30
+
+
+def _alphanum_title_key(title: str) -> str:
+    """Return a lowercase, alphanumeric-only key for *title*.
+
+    Used to detect title-based duplicates when the same paper is indexed
+    under multiple Semantic Scholar IDs (e.g. preprint and journal version,
+    or a garbled-prefix PDF-extraction artefact such as
+    ``"ST ] 2 8 M ay 2 01 8 1 Model-Robust …"`` vs
+    ``"Model-Robust …"``).
+    """
+    return re.sub(r'[^a-z0-9]', '', title.lower())
 
 
 @dataclass
@@ -49,6 +68,11 @@ class ReferenceStore:
         self._papers: dict[str, ReferencePaper] = {}
         self._sources: dict[str, str] = {}  # primary (highest-priority) source tag
         self._all_sources: dict[str, set[str]] = {}  # all observed source tags
+        # Mapping from alphanum title key → paper_id for title-based dedup.
+        # When Semantic Scholar returns the same paper under multiple IDs
+        # (e.g. preprint vs journal version, or a garbled-prefix PDF artefact),
+        # this index lets us detect and skip the duplicate entry.
+        self._title_keys: dict[str, str] = {}  # alphanum_key → paper_id
 
     # ------------------------------------------------------------------
     # CRUD
@@ -67,6 +91,15 @@ class ReferenceStore:
         :meth:`get_all_sources`, so the full provenance history is never
         lost.
 
+        Title-based deduplication is also applied: if a paper with an
+        identical normalised title is already present (same paper indexed
+        under a different Semantic Scholar ID), the new entry is silently
+        dropped to avoid polluting the reference pool with duplicates.
+        A suffix-containment check additionally catches PDF-extraction
+        artefacts where the true title appears as a suffix of a garbled
+        longer string (e.g. ``"ST ] 2 8 M ay … Model-Robust …"`` vs
+        ``"Model-Robust …"``).
+
         Parameters
         ----------
         paper:
@@ -77,6 +110,29 @@ class ReferenceStore:
             ``"domain"``.  Defaults to ``"unknown"`` for backward
             compatibility.
         """
+        new_key = _alphanum_title_key(paper.title)
+
+        # Title-based duplicate check — skip if this paper is already
+        # represented under a different S2 ID.
+        if paper.id not in self._papers and new_key:
+            for existing_key, existing_id in self._title_keys.items():
+                if existing_id == paper.id:
+                    # Same paper re-inserted under same id — fall through to
+                    # the normal ID-based update path below.
+                    break
+                shorter = min(len(new_key), len(existing_key))
+                if shorter < _MIN_TITLE_SUFFIX_LEN:
+                    continue
+                # Exact match or suffix containment (garbled-prefix artefact).
+                if new_key == existing_key or new_key.endswith(existing_key) or existing_key.endswith(new_key):
+                    # Duplicate by title — update source tracking for the
+                    # canonical entry already in the store, then bail out.
+                    self._all_sources.setdefault(existing_id, set()).add(source)
+                    existing_src = self._sources.get(existing_id, "unknown")
+                    if _SOURCE_PRIORITY.get(source, _SOURCE_PRIORITY["unknown"]) < _SOURCE_PRIORITY.get(existing_src, _SOURCE_PRIORITY["unknown"]):
+                        self._sources[existing_id] = source
+                    return
+
         # Always track every source tag seen for this paper.
         if paper.id not in self._all_sources:
             self._all_sources[paper.id] = set()
@@ -90,6 +146,10 @@ class ReferenceStore:
         else:
             if _SOURCE_PRIORITY.get(source, _SOURCE_PRIORITY["unknown"]) < _SOURCE_PRIORITY.get(existing, _SOURCE_PRIORITY["unknown"]):
                 self._sources[paper.id] = source
+
+        # Register in title index (first entry wins as canonical).
+        if new_key and new_key not in self._title_keys:
+            self._title_keys[new_key] = paper.id
 
         self._papers[paper.id] = paper
 
@@ -118,6 +178,11 @@ class ReferenceStore:
 
     def remove(self, paper_id: str) -> bool:
         if paper_id in self._papers:
+            # Remove the title-index entry for this paper.
+            paper = self._papers[paper_id]
+            key = _alphanum_title_key(paper.title)
+            if self._title_keys.get(key) == paper_id:
+                del self._title_keys[key]
             del self._papers[paper_id]
             self._sources.pop(paper_id, None)
             self._all_sources.pop(paper_id, None)
