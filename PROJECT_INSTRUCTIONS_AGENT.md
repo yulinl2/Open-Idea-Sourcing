@@ -53,12 +53,15 @@ End-to-end autonomous review baseline.
 Checkpointed linear workflow baseline. The exact number of stages is not sacred; the point is explicit ordered checkpoints.
 
 ### `agent-reconstruct`
-The real discovery track. Novelty is operationalized as **reconstruction distance**: how
-much effort (and how many mismatches) does it take to reconstruct a paper's methodology
-from its problem statement and prior work alone? A close reconstruction implies the
-contribution is largely derivable; a large divergence implies genuine novelty. This is
-analogous to a Wasserstein-like distance between the paper and its prior-work hull —
-measured through reconstruction rather than embedding similarity.
+The real discovery track. The key intuition: if an agent can independently reconstruct a
+paper's methodology from nothing but the problem statement and prior work, the paper is
+likely derivative. If the reconstruction diverges significantly, the paper likely contains
+genuine novel contribution.
+
+*(Long-term vision, not a v1 formulation: this track aspires to operationalize novelty as
+a Wasserstein-like distance between the paper and its prior-work hull — measured through
+reconstruction difficulty rather than embedding similarity. v1 produces a qualitative
+verdict only; the quantitative distance metric is future work.)*
 
 ## 4. Branch philosophy
 

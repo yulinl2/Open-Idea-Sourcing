@@ -71,11 +71,6 @@ class ReportContent:
     residual_novelty: str = ""
     uncertainties: list[str] = field(default_factory=list)
 
-    # --- agent-reconstruct only ---
-    # Reconstruction distance: 0.0 = fully matched (derivative), 1.0 = fully diverged (novel).
-    # Operationalizes novelty as a Wasserstein-like distance from the prior-work hull.
-    reconstruction_distance: float | None = None
-
     # --- audit appendix ---
     tool_call_log: list[dict[str, Any]] = field(default_factory=list)
     search_queries: list[str] = field(default_factory=list)
@@ -166,17 +161,10 @@ class ReportWriter:
             evidence_lines = "\n\n**Main cited evidence:**\n" + "\n".join(
                 f"- {ev}" for ev in ctx.main_cited_evidence
             )
-        distance_line = ""
-        if content.reconstruction_distance is not None:
-            distance_line = (
-                f"\n\n**Reconstruction distance:** {content.reconstruction_distance:.2f} "
-                f"(0.0 = fully derivable, 1.0 = fully novel)"
-            )
         return (
             f"## Final Verdict\n\n"
             f"**Verdict:** {label}  \n"
             f"**Confidence:** {confidence_pct}"
-            f"{distance_line}"
             f"{evidence_lines}"
         )
 

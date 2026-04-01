@@ -305,22 +305,19 @@ This reads `checkpoints/stage_3_refs.json` as the input and re-runs stages 4–R
 
 ### Scientific purpose
 
-This track operationalizes novelty as **reconstruction distance**: how much effort
-(measured by mismatch between student's reconstruction and the actual paper) does it
-take to recover a paper's methodology from its problem statement and prior work alone?
+The key intuition: if an agent can independently reconstruct a paper's methodology from
+nothing but the problem statement and an allowed reference set — without seeing the
+paper's own solution — the paper is likely derivative. If the reconstruction diverges
+significantly, the paper likely contains genuine novel contribution.
 
-- A close reconstruction (verdict `MATCHED`) → the paper is largely derivable; the
-  contribution was already in the prior-work hull.
-- A large divergence (verdict `DIVERGED`) → the paper required a genuinely new leap;
-  that leap is the irreducible novel contribution.
+**v1 concrete output:** a qualitative verdict (`MATCHED / PARTIAL / DIVERGED`) based on
+comparing the student's reconstruction against the actual paper's methodology.
 
-This is analogous to a **Wasserstein-like distance** between a paper and its prior-work
-hull, measured not by embedding similarity but by reconstruction difficulty. The student's
-effort and mismatch *is* the distance metric.
-
-The `agent-e2e` and `agent-linear` tracks retrieve and compare; this track
-**removes the paper from the picture entirely** and tests whether the methodology can
-be re-derived independently. The comparison verdict directly quantifies novelty.
+**Long-term vision (not a v1 formulation):** This reconstruction difficulty aspires to
+operationalize novelty as a distance metric analogous to a Wasserstein-like distance
+between the paper and its prior-work hull — measured through reconstruction effort rather
+than embedding similarity. How exactly to formulate and compute this distance is an open
+research question; v1 does not attempt it.
 
 ### Design principles
 
@@ -361,13 +358,11 @@ be re-derived independently. The comparison verdict directly quantifies novelty.
 [Comparison pass]
     Compare student's methodology against the actual paper's approach.
     Note: components matched, components diverged, components missed.
-    Quantify: reconstruction distance (MATCHED = ~0, DIVERGED = ~1)
     │
     ▼
 [Output]  report.md
     Contains: hint used, student methodology, comparison table,
-              reconstruction verdict (MATCHED / PARTIAL / DIVERGED),
-              reconstruction distance score and evidence
+              reconstruction verdict (MATCHED / PARTIAL / DIVERGED)
 ```
 
 ### Tool set
