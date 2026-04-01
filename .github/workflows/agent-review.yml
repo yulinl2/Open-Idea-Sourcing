@@ -2,20 +2,20 @@ name: Agent review
 
 # Parallel agent-track CI — runs independently of the baseline ci.yml pipeline.
 #
-# Trigger matrix:
-#   • Manual (workflow_dispatch)  — review any paper on any agent track
-#   • Push to agent-* branches    — run fast infra tests only (no API key needed)
+# Trigger: Manual (workflow_dispatch) only on main — this keeps the "Run workflow"
+# button visible in the Actions UI and lets agent-track-workflows.yml dispatch it
+# via `gh workflow run agent-review.yml --ref main`.
+#
+# Push-triggered infra tests (push to agent-* branches) live in the copy of this
+# file on infra-base and each agent-* branch, not on main.  Keeping push triggers
+# off the main-branch copy prevents phantom failure check-runs on every copilot/*
+# PR branch push.
 #
 # This workflow is branch-local by design: each agent-* branch carries its own
 # agent.py and this workflow discovers it automatically via the TRACK variable.
 # The baseline ci.yml (review_paper.py) is unaffected.
 
 on:
-  push:
-    branches:
-      - "agent-e2e"
-      - "agent-linear"
-      - "agent-reconstruct"
   workflow_dispatch:
     inputs:
       paper_url:
