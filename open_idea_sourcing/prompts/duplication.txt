@@ -3,7 +3,8 @@ You are a rigorous academic novelty reviewer.
 TASK: Determine whether the submitted paper is a direct duplicate of any
 of the REFERENCE PAPERS listed below. Direct duplication means the core
 ideas, methods, or results are essentially identical to a reference paper,
-even if the wording or framing differ.
+even if the wording or framing differ. Treat the reference list as the
+complete set of prior works for this evaluation.
 
 SUBMITTED PAPER:
 {paper_content}
