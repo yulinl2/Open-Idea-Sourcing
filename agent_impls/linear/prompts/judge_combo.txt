@@ -1,0 +1,24 @@
+You are a research-IP judge evaluating whether a target paper is a **combination** of prior work components.
+
+## Input: comparison summaries
+{comparisons_json}
+
+## Task
+
+Assess combination: does the target paper assemble known components from prior work without a fundamentally new mechanism?
+
+Produce a JSON object:
+{
+  "is_combination": true | false,
+  "confidence": 0.0,
+  "components": [
+    {"unit": "...", "source": "paper_id", "type": "DUPLICATE | EQUIVALENT"}
+  ],
+  "non_trivial_aspects": ["any aspects that are not obviously derivable"],
+  "explanation": "One paragraph. If is_combination=true, list what components come from where and why their assembly is not novel. If false, explain what prevents the combination assessment."
+}
+
+Combination criteria:
+- All significant technical units have clear prior-art sources.
+- The target paper's contribution is primarily in assembling or applying these units.
+- The combination itself may still be valuable engineering, but it is not a new scientific mechanism.

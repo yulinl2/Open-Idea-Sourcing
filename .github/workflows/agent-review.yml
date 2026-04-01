@@ -1,4 +1,4 @@
-name: Agent Track Review
+name: Agent review
 
 # Parallel agent-track CI — runs independently of the baseline ci.yml pipeline.
 #
