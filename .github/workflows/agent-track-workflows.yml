@@ -5,15 +5,19 @@ name: Agent track workflows
 # Stale versions are retired by renaming to a descriptive *.yml.bak name so local
 # dev history stays clear, e.g. agent-track-workflows.v1-fan-out-3tracks.yml.bak
 #
-# Current behaviour: fans out to all three agent tracks by triggering
-# agent-review.yml once per track in parallel.  Each dispatched run checks out
-# the appropriate agent-<track> branch, runs the agent, and publishes its
-# report to the agent-reports branch.
+# Operations (controlled by the `operation` input on manual dispatch):
+#
+#   review (default)      — fans out to all three agent tracks by triggering
+#                           agent-review.yml once per track in parallel.
+#   fix-gitignore         — writes the comprehensive .gitignore to all orphan
+#                           branches (one-shot maintenance; idempotent).
+#   patch-agent-review    — patches infra-base and agent-* branches with the
+#                           correct agent-review.yml that has the push trigger
+#                           (one-shot maintenance; idempotent).
 #
 # Trigger matrix:
-#   • Manual (workflow_dispatch) — supply a paper URL and model
-#   • Push to main               — auto-fire with the default paper/model so
-#                                  every merge to main produces fresh reports
+#   • Manual (workflow_dispatch) — supply operation, paper URL, and model
+#   • Push to main               — auto-fire `review` with default paper/model
 
 on:
   push:
@@ -25,14 +29,26 @@ on:
 
   workflow_dispatch:
     inputs:
+      operation:
+        description: "Operation to run: 'review' (default), 'fix-gitignore', 'patch-agent-review'"
+        required: false
+        default: "review"
       paper_url:
-        description: "URL of the paper to review (arXiv abstract or PDF)"
+        description: "Paper URL (arXiv abstract or PDF) — used when operation=review"
         required: false
         default: "https://arxiv.org/abs/2006.06138"
       model:
-        description: "LLM model identifier (e.g. gpt-4o, gpt-4o-mini)"
+        description: "LLM model identifier (e.g. gpt-4o) — used when operation=review"
         required: false
         default: "gpt-4o"
+      branches:
+        description: "Space-separated branches to patch — used when operation=patch-agent-review"
+        required: false
+        default: "infra-base agent-e2e agent-linear agent-reconstruct"
+      dry_run:
+        description: "Dry run (true = show changes, no push) — used when operation=patch-agent-review"
+        required: false
+        default: "false"
 
 jobs:
   # ------------------------------------------------------------------
@@ -44,6 +60,7 @@ jobs:
   # ------------------------------------------------------------------
   dispatch-tracks:
     name: Dispatch agent-review (${{ matrix.track }})
+    if: github.event_name == 'push' || github.event.inputs.operation == 'review' || github.event.inputs.operation == ''
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -65,3 +82,96 @@ jobs:
             --field track="$TRACK" \
             --field model="$MODEL"
           echo "Dispatched agent-review for track=$TRACK"
+
+  # ------------------------------------------------------------------
+  # Maintenance: write comprehensive .gitignore to all orphan branches.
+  # Trigger manually with operation=fix-gitignore.
+  # ------------------------------------------------------------------
+  fix-gitignore:
+    name: Write .gitignore to all orphan branches
+    if: github.event.inputs.operation == 'fix-gitignore'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config commit.gpgsign false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.12"
+
+      - name: Run fix script
+        run: python3 scripts/fix_orphan_gitignore.py
+
+  # ------------------------------------------------------------------
+  # Maintenance: patch the correct agent-review.yml onto infra-base
+  # and agent-* branches (adds push trigger, shell placeholder fix).
+  # Trigger manually with operation=patch-agent-review.
+  # ------------------------------------------------------------------
+  patch-agent-review:
+    name: Patch agent-review.yml on orphan branches
+    if: github.event.inputs.operation == 'patch-agent-review'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config commit.gpgsign false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.12"
+
+      - name: Fetch target branches
+        run: |
+          for branch in ${{ github.event.inputs.branches }}; do
+            git fetch origin "$branch" || true
+          done
+
+      - name: Run patch script (dry run)
+        if: github.event.inputs.dry_run == 'true'
+        run: |
+          echo "DRY RUN — would update: ${{ github.event.inputs.branches }}"
+          python3 -c "
+          import scripts.fix_orphan_agent_review as m
+          print('Target content preview (first 30 lines):')
+          for i, line in enumerate(m.INFRA_AGENT_REVIEW_YML.splitlines()[:30]):
+              print(f'  {line}')
+          "
+
+      - name: Run patch script
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          python3 scripts/fix_orphan_agent_review.py \
+            --branches ${{ github.event.inputs.branches }}
+
+      - name: Summary
+        run: |
+          printf '### Patch complete\n\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'Branches targeted: `%s`\n\n' "${{ github.event.inputs.branches }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            printf 'Dry run — no changes pushed.\n' >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf 'agent-review.yml updated on each branch that was outdated.\n' \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
