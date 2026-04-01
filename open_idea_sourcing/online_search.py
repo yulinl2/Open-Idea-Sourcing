@@ -99,8 +99,9 @@ _FIELDS = "title,abstract,year,authors,externalIds,url"
 _REFERENCE_FIELDS = ",".join(f"citedPaper.{f}" for f in _FIELDS.split(","))
 _DEFAULT_LIMIT = 10
 _DEFAULT_TIMEOUT = 15  # seconds
-_MAX_RETRIES = 3
+_MAX_RETRIES = 4
 _RETRY_BASE_DELAY = 2.0  # seconds; doubles on each attempt
+_RETRY_429_MIN_DELAY = 60.0  # minimum wait after a 429 (rate-limit) response
 _RETRYABLE_HTTP_CODES = frozenset({429, 500, 503})
 
 _USER_AGENT = (
@@ -407,6 +408,11 @@ class OnlineReferenceSearch:
     def _http_get(self, url: str, label: str) -> bytes | None:
         """GET *url* with exponential-backoff retry on transient HTTP errors.
 
+        For HTTP 429 (rate-limit) responses the ``Retry-After`` response header
+        is honoured when present; otherwise a minimum wait of
+        ``_RETRY_429_MIN_DELAY`` seconds is used so that Semantic Scholar's
+        per-minute quota has time to reset before the next attempt.
+
         Parameters
         ----------
         url:
@@ -426,7 +432,16 @@ class OnlineReferenceSearch:
                     return resp.read()
             except urllib.error.HTTPError as exc:
                 if exc.code in _RETRYABLE_HTTP_CODES and attempt < _MAX_RETRIES:
-                    delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                    if exc.code == 429:
+                        # Honour the Retry-After header when Semantic Scholar
+                        # provides it; fall back to the configured minimum.
+                        retry_after_raw = (exc.headers or {}).get("Retry-After", "")
+                        try:
+                            delay = max(float(retry_after_raw), _RETRY_429_MIN_DELAY)
+                        except (TypeError, ValueError):
+                            delay = _RETRY_429_MIN_DELAY
+                    else:
+                        delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
                     print(
                         f"  [online_search] {label}: HTTP {exc.code}, "
                         f"retrying in {delay:.0f}s (attempt {attempt}/{_MAX_RETRIES})…",
