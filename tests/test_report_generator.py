@@ -737,25 +737,14 @@ from open_idea_sourcing.novelty_evaluator import IdeaDecomposition, DomainRefere
 
 
 def _sample_decomposition() -> IdeaDecomposition:
-    from open_idea_sourcing.novelty_evaluator import ConceptNode
-    tree = ConceptNode(
-        label="Dynamic masking extension of Transformer attention",
-        children=[
-            ConceptNode(label="Dynamic attention masking"),
-            ConceptNode(label="Standard Transformer integration"),
-            ConceptNode(
-                label="Assumptions",
-                children=[ConceptNode(label="Uniform tokenisation")],
-            ),
-            ConceptNode(
-                label="Limitations",
-                children=[ConceptNode(label="Evaluated on NLP benchmarks only")],
-            ),
-        ],
-    )
     return IdeaDecomposition(
         core_concept="A dynamic masking extension of Transformer attention.",
-        concept_tree=tree,
+        concept_tree=(
+            "1. Dynamic attention masking\n"
+            "2. Standard Transformer integration\n"
+            "3. Uniform tokenisation assumption\n"
+            "4. Evaluated on NLP benchmarks only"
+        ),
     )
 
 
@@ -1111,11 +1100,10 @@ class TestMindMapEmptyBranches:
         assert "mindmap" not in out
 
     def test_mindmap_shown_when_sub_ideas_present(self):
-        from open_idea_sourcing.novelty_evaluator import ConceptNode
         report = _sample_report()
         report.idea_decomposition = IdeaDecomposition(
             core_concept="Core",
-            concept_tree=ConceptNode(label="Core idea", children=[ConceptNode(label="Idea A")]),
+            concept_tree="1. Core idea\n2. Idea A",
         )
         out = self.gen.generate(report, fmt="markdown")
         assert "Idea A" in out
@@ -1293,31 +1281,27 @@ class TestConceptTreeInJson:
     def test_json_includes_concept_tree_when_present(self):
         gen = ReportGenerator()
         report = _sample_report()
-        tree = ConceptNode(label="Root", children=[ConceptNode(label="Child")])
         report.idea_decomposition = IdeaDecomposition(
             core_concept="Core.",
-            concept_tree=tree,
+            concept_tree="1. Root\n2. Child",
         )
         data = json.loads(gen.generate(report, fmt="json"))
         assert "idea_decomposition" in data
         assert data["idea_decomposition"]["concept_tree"] is not None
-        assert data["idea_decomposition"]["concept_tree"]["label"] == "Root"
+        assert "Root" in data["idea_decomposition"]["concept_tree"]
 
     def test_json_includes_implementation_steps(self):
         gen = ReportGenerator()
         report = _sample_report()
-        tree = ConceptNode(label="Core", children=[
-            ConceptNode(label="Step 1"),
-            ConceptNode(label="Step 2"),
-        ])
         report.idea_decomposition = IdeaDecomposition(
             core_concept="Core.",
-            concept_tree=tree,
+            concept_tree="1. Core\n2. Step 1\n3. Step 2",
         )
         data = json.loads(gen.generate(report, fmt="json"))
         ct = data["idea_decomposition"]["concept_tree"]
         assert ct is not None
-        assert len(ct["children"]) == 2
+        assert "Step 1" in ct
+        assert "Step 2" in ct
 
     def test_json_concept_tree_null_when_absent(self):
         gen = ReportGenerator()
@@ -1335,10 +1319,9 @@ class TestConceptTreeInMarkdown:
     def test_markdown_contains_concept_tree_section(self):
         gen = ReportGenerator()
         report = _sample_report()
-        tree = ConceptNode(label="Problem", children=[ConceptNode(label="Sub A")])
         report.idea_decomposition = IdeaDecomposition(
             core_concept="Core.",
-            concept_tree=tree,
+            concept_tree="1. Problem\n2. Sub A",
         )
         out = gen.generate(report, fmt="markdown")
         assert "Concept Tree" in out
@@ -1347,13 +1330,9 @@ class TestConceptTreeInMarkdown:
     def test_markdown_contains_implementation_roadmap(self):
         gen = ReportGenerator()
         report = _sample_report()
-        tree = ConceptNode(label="Plan", children=[
-            ConceptNode(label="Step A"),
-            ConceptNode(label="Step B"),
-        ])
         report.idea_decomposition = IdeaDecomposition(
             core_concept="Core.",
-            concept_tree=tree,
+            concept_tree="1. Plan\n2. Step A\n3. Step B",
         )
         out = gen.generate(report, fmt="markdown")
         assert "### Concept Tree" in out
@@ -1362,10 +1341,9 @@ class TestConceptTreeInMarkdown:
     def test_markdown_ascii_tree_in_code_block(self):
         gen = ReportGenerator()
         report = _sample_report()
-        tree = ConceptNode(label="Problem", children=[ConceptNode(label="Sub A")])
         report.idea_decomposition = IdeaDecomposition(
             core_concept="Core.",
-            concept_tree=tree,
+            concept_tree="1. Problem\n2. Sub A",
         )
         out = gen.generate(report, fmt="markdown")
         assert "```" in out  # code block fence

@@ -1,11 +1,10 @@
 Isolating a paper's core intellectual contribution — separated from motivation,
 framing, and experimental details — is the foundation of rigorous novelty
-assessment.  A structured concept tree makes the precise claim comparable
-against the frontier and traces which components are already known versus
-genuinely new.
+assessment.  A minimal concept tree captures only the essential building blocks
+needed to compare the claim against the frontier.
 
 TASK: Decompose the submitted paper's central intellectual contribution into a
-core concept and a concept tree.
+core concept and a minimal concept tree.
 
 SUBMITTED PAPER:
 {paper_content}
@@ -16,6 +15,7 @@ Respond with exactly two fields.
 CORE_CONCEPT: One sentence naming the paper's central scientific claim or contribution.
 
 CONCEPT_TREE:
-An indented outline covering: (1) the core problem setup, (2) the proposed
-methodology, and (3) the key technical elements in its implementation.
-Use indentation to show hierarchy (sub-points indented under their parent).
+A flat, numbered list of 3–5 key components that together define the
+contribution.  Each item is one short phrase.  Focus on: the core problem
+being solved, the proposed approach or mechanism, and the primary technical
+novelty.  Do NOT use nested indentation or sub-bullets.

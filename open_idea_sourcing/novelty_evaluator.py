@@ -143,13 +143,12 @@ class IdeaDecomposition:
     core_concept:
         One-sentence description of the central contribution.
     concept_tree:
-        Hierarchical breakdown of the contribution.  Fully adaptive —
-        the LLM determines depth, breadth, and granularity based on
-        the paper's content and scientific significance.
+        Raw text listing the key components of the contribution (3–5 items).
+        Stored as a plain string; no tree data-structure parsing is applied.
     """
 
     core_concept: str
-    concept_tree: ConceptNode | None = None
+    concept_tree: str | None = None
 
 
 @dataclass
@@ -959,7 +958,7 @@ def _parse_decomposition_response(text: str) -> "IdeaDecomposition":
     """Extract an :class:`IdeaDecomposition` from an LLM response."""
     core_concept = _extract_field(text, "CORE_CONCEPT", default=text.strip())
     concept_tree_raw = _extract_field(text, "CONCEPT_TREE", default="")
-    concept_tree = _parse_concept_tree_text(concept_tree_raw) if concept_tree_raw.strip() else None
+    concept_tree = concept_tree_raw.strip() or None
     return IdeaDecomposition(
         core_concept=core_concept,
         concept_tree=concept_tree,
@@ -1102,9 +1101,7 @@ def _format_decomp_context(decomp: "IdeaDecomposition | None") -> str:
 
     parts: list[str] = [f"Core concept: {decomp.core_concept}"]
 
-    if decomp.concept_tree is not None:
-        tree_str = _concept_tree_to_text(decomp.concept_tree)
-        if tree_str:
-            parts.append("Concept tree:\n" + tree_str)
+    if decomp.concept_tree:
+        parts.append("Concept tree:\n" + decomp.concept_tree)
 
     return "\n\n".join(parts)

@@ -130,24 +130,6 @@ def _normalise_arxiv_url(url: str) -> str:
     return url
 
 
-def _count_tree_depth(node: "ConceptNode | None") -> int:
-    """Return the maximum depth of a ConceptNode tree."""
-    if not node:
-        return 0
-    children = node.children or []
-    if not children:
-        return 1
-    return 1 + max(_count_tree_depth(c) for c in children)
-
-
-def _count_tree_nodes(node: "ConceptNode | None") -> int:
-    """Return the total node count of a ConceptNode tree."""
-    if not node:
-        return 0
-    children = node.children or []
-    return 1 + sum(_count_tree_nodes(c) for c in children)
-
-
 def _extract_arxiv_id(source: str) -> str:
     """Return the arXiv paper ID from an arXiv URL, or an empty string.
 
@@ -761,17 +743,15 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         stage_runtimes["decomposition"] = decomp_duration
         ctx.idea_decomposition = idea_decomp
         ctx.raw_llm_responses.update(_decomp_raw)
-        # Print decomposition summary with core concept and tree depth.
-        _tree = idea_decomp.concept_tree
-        _depth = _count_tree_depth(_tree) if _tree else 0
-        _nodes = _count_tree_nodes(_tree) if _tree else 0
+        # Print decomposition summary with core concept and tree size.
         print(
             f"  Decomposed: core concept = {idea_decomp.core_concept!r}",
             file=sys.stderr,
         )
-        if _tree:
+        if _tree := idea_decomp.concept_tree:
+            _tree_lines = [ln for ln in _tree.splitlines() if ln.strip()]
             print(
-                f"  Concept tree: {_nodes} node(s), depth {_depth}.",
+                f"  Concept tree: {len(_tree_lines)} item(s).",
                 file=sys.stderr,
             )
 

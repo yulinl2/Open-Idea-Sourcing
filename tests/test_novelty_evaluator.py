@@ -487,14 +487,12 @@ class TestIdeaDecomposition:
         assert d.concept_tree is None
 
     def test_fields_stored(self):
-        from open_idea_sourcing.novelty_evaluator import ConceptNode
-        tree = ConceptNode(label="Root")
         d = IdeaDecomposition(
             core_concept="Core.",
-            concept_tree=tree,
+            concept_tree="1. Root concept\n2. Sub-component",
         )
         assert d.core_concept == "Core."
-        assert d.concept_tree is tree
+        assert d.concept_tree == "1. Root concept\n2. Sub-component"
 
 
 # ---------------------------------------------------------------------------
@@ -921,8 +919,8 @@ class TestParseConceptTreeText:
         text = (
             "CORE_CONCEPT: A new method.\n"
             "CONCEPT_TREE:\n"
-            "Problem\n"
-            "  Sub A\n"
+            "1. Problem\n"
+            "2. Sub A\n"
             "IMPLEMENTATION_STEPS:\n"
             "1. Step one\n"
             "2. Step two\n"
@@ -933,7 +931,8 @@ class TestParseConceptTreeText:
         )
         d = _parse_decomposition_response(text)
         assert d.concept_tree is not None
-        assert d.concept_tree.label == "Problem"
+        assert isinstance(d.concept_tree, str)
+        assert "Problem" in d.concept_tree
 
 
 # ---------------------------------------------------------------------------
@@ -962,23 +961,18 @@ class TestFormatDecompContext:
         assert "Core with details." in result
 
     def test_tree_preferred_over_sub_ideas(self):
-        tree = ConceptNode(label="Root", children=[ConceptNode(label="Child")])
         d = IdeaDecomposition(
             core_concept="Core.",
-            concept_tree=tree,
+            concept_tree="1. Root\n2. Child",
         )
         result = _format_decomp_context(d)
         assert "Root" in result
         assert "Child" in result
 
     def test_includes_implementation_steps(self):
-        tree = ConceptNode(label="Plan", children=[
-            ConceptNode(label="Step 1"),
-            ConceptNode(label="Step 2"),
-        ])
         d = IdeaDecomposition(
             core_concept="Core.",
-            concept_tree=tree,
+            concept_tree="1. Plan\n2. Step 1\n3. Step 2",
         )
         result = _format_decomp_context(d)
         assert "Step 1" in result

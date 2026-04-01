@@ -21,6 +21,21 @@ on:
         description: "Report format: text | markdown | json | pdf (default: markdown)"
         required: false
         default: "markdown"
+      enable_user_refs:
+        description: "Load the bundled user reference corpus (data/references.json). Set to false to skip."
+        type: boolean
+        required: false
+        default: true
+      enable_paper_cited_refs:
+        description: "Fetch the paper's own citation list from Semantic Scholar. Set to false to skip."
+        type: boolean
+        required: false
+        default: true
+      enable_s2_search:
+        description: "Run Semantic Scholar keyword search to retrieve related papers. Set to false to skip."
+        type: boolean
+        required: false
+        default: true
   workflow_run:
     workflows: ["CI"]
     branches: ["main"]
@@ -79,6 +94,9 @@ jobs:
           PAPERS_FILE: ${{ inputs.papers_file }}
           REFERENCES: ${{ inputs.references }}
           OUTPUT_FORMAT: ${{ inputs.output_format }}
+          ENABLE_USER_REFS: ${{ inputs.enable_user_refs }}
+          ENABLE_PAPER_CITED_REFS: ${{ inputs.enable_paper_cited_refs }}
+          ENABLE_S2_SEARCH: ${{ inputs.enable_s2_search }}
           GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
           GH_PAPERS_FILE: ${{ github.event.inputs.papers_file }}
           GH_REFERENCES: ${{ github.event.inputs.references }}
@@ -92,11 +110,26 @@ jobs:
 
           mkdir -p reports
 
-          # Build optional --references flag; omit when empty so review_paper.py
-          # falls back to its own default (data/references.json).
+          # Build optional flags from dispatch inputs.
+          # workflow_run-triggered runs always use the defaults (all sources enabled).
           REFS_FLAG=""
           if [ -n "$REFERENCES" ]; then
             REFS_FLAG="--references data/$REFERENCES"
+          fi
+
+          NO_USER_REFS_FLAG=""
+          if [ "${ENABLE_USER_REFS}" = "false" ]; then
+            NO_USER_REFS_FLAG="--no-user-refs"
+          fi
+
+          NO_PAPER_CITED_FLAG=""
+          if [ "${ENABLE_PAPER_CITED_REFS}" = "false" ]; then
+            NO_PAPER_CITED_FLAG="--no-paper-cited-refs"
+          fi
+
+          NO_S2_FLAG=""
+          if [ "${ENABLE_S2_SEARCH}" = "false" ]; then
+            NO_S2_FLAG="--no-online-search"
           fi
 
           # URL takes precedence over batch file; batch file is relative to data/
@@ -104,6 +137,9 @@ jobs:
             # shellcheck disable=SC2086
             python review_paper.py "$PAPER_URL" \
               $REFS_FLAG \
+              $NO_USER_REFS_FLAG \
+              $NO_PAPER_CITED_FLAG \
+              $NO_S2_FLAG \
               --format "${OUTPUT_FORMAT:-markdown}" \
               --reports-dir reports
           else
@@ -111,6 +147,9 @@ jobs:
             python review_paper.py \
               --papers-file "data/${PAPERS_FILE:-test_papers.ndjson}" \
               $REFS_FLAG \
+              $NO_USER_REFS_FLAG \
+              $NO_PAPER_CITED_FLAG \
+              $NO_S2_FLAG \
               --format "${OUTPUT_FORMAT:-markdown}" \
               --reports-dir reports
           fi
