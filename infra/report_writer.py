@@ -173,7 +173,7 @@ class ReportWriter:
             return "## Technical Contribution Decomposition\n\n_Not yet populated._"
         rows = ["| Component | Description |", "|-----------|-------------|"]
         for item in content.decomposition:
-            name = item.get("name", "") or item.get("unit", "")
+            name = item.get("name", "")
             desc = item.get("description", "")
             rows.append(f"| {name} | {desc} |")
         return "## Technical Contribution Decomposition\n\n" + "\n".join(rows)
