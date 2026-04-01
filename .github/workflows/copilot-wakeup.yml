@@ -1,9 +1,9 @@
 name: Auto-wake Copilot on CI timeout
 
-# Triggers whenever the "CI" workflow finishes.  If it timed out and
-# there is an open PR with the `copilot-wakeup` label associated with
-# the run's branch, post a wake-up comment so the Copilot agent picks
-# up where it left off.
+# Triggers whenever the "CI" or "Review paper" workflow finishes.  If it
+# timed out and there is an open PR with the `copilot-wakeup` label
+# associated with the run's branch, post a wake-up comment so the Copilot
+# agent picks up where it left off.
 #
 # Opt-in: add the label `copilot-wakeup` to any PR that should receive
 # automatic wake-ups on timeout.  Without this label the workflow does
@@ -13,7 +13,7 @@ name: Auto-wake Copilot on CI timeout
 # the last 30 minutes, preventing a burst of duplicate comments.
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI", "Review paper"]
     types: [completed]
 
 jobs:

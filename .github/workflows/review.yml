@@ -1,0 +1,146 @@
+name: Review paper
+
+# Manual trigger: provide a single URL or a batch file.
+# Automatic trigger: runs after CI passes on the main branch.
+on:
+  workflow_dispatch:
+    inputs:
+      paper_url:
+        description: "URL of the paper to review (e.g. https://arxiv.org/abs/2006.06138)"
+        required: false
+        default: ""
+      papers_file:
+        description: "NDJSON batch file name inside data/ listing papers to review (default: test_papers.ndjson) — used only when paper_url is empty"
+        required: false
+        default: "test_papers.ndjson"
+      references:
+        description: "JSON reference store filename inside data/ to compare against (default: references.json — bundled baseline corpus)"
+        required: false
+        default: "references.json"
+      output_format:
+        description: "Report format: text | markdown | json | pdf (default: markdown)"
+        required: false
+        default: "markdown"
+  workflow_run:
+    workflows: ["CI"]
+    branches: ["main"]
+    types: [completed]
+
+jobs:
+  review:
+    name: Review paper (manual trigger or main merge)
+    runs-on: ubuntu-latest
+    # For workflow_dispatch: always run.
+    # For workflow_run (push to main via CI): only run when CI succeeded.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Validate inputs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PAPER_URL: ${{ inputs.paper_url }}
+          PAPERS_FILE: ${{ inputs.papers_file }}
+          GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
+          GH_PAPERS_FILE: ${{ github.event.inputs.papers_file }}
+        run: |
+          # workflow_run-triggered runs always use the default batch file — no inputs to validate.
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            echo "workflow_run-triggered run — using default batch file (data/test_papers.ndjson)."
+            exit 0
+          fi
+          PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"
+          PAPERS_FILE="${PAPERS_FILE:-$GH_PAPERS_FILE}"
+          if [ -z "$PAPER_URL" ] && [ -z "$PAPERS_FILE" ]; then
+            echo "::error::Please provide paper_url or papers_file when triggering this workflow. Both are currently empty."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Review paper(s)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PAPER_URL: ${{ inputs.paper_url }}
+          PAPERS_FILE: ${{ inputs.papers_file }}
+          REFERENCES: ${{ inputs.references }}
+          OUTPUT_FORMAT: ${{ inputs.output_format }}
+          GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
+          GH_PAPERS_FILE: ${{ github.event.inputs.papers_file }}
+          GH_REFERENCES: ${{ github.event.inputs.references }}
+          GH_OUTPUT_FORMAT: ${{ github.event.inputs.output_format }}
+        run: |
+          # Fall back to github.event.inputs for re-run compatibility
+          PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"
+          PAPERS_FILE="${PAPERS_FILE:-$GH_PAPERS_FILE}"
+          REFERENCES="${REFERENCES:-$GH_REFERENCES}"
+          OUTPUT_FORMAT="${OUTPUT_FORMAT:-$GH_OUTPUT_FORMAT}"
+
+          mkdir -p reports
+
+          # Build optional --references flag; omit when empty so review_paper.py
+          # falls back to its own default (data/references.json).
+          REFS_FLAG=""
+          if [ -n "$REFERENCES" ]; then
+            REFS_FLAG="--references data/$REFERENCES"
+          fi
+
+          # URL takes precedence over batch file; batch file is relative to data/
+          if [ -n "$PAPER_URL" ]; then
+            # shellcheck disable=SC2086
+            python review_paper.py "$PAPER_URL" \
+              $REFS_FLAG \
+              --format "${OUTPUT_FORMAT:-markdown}" \
+              --reports-dir reports
+          else
+            # shellcheck disable=SC2086
+            python review_paper.py \
+              --papers-file "data/${PAPERS_FILE:-test_papers.ndjson}" \
+              $REFS_FLAG \
+              --format "${OUTPUT_FORMAT:-markdown}" \
+              --reports-dir reports
+          fi
+
+      - name: Upload reports as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: src-ideas-reports
+          path: reports/
+
+      - name: Publish reports to reports branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Set up a worktree pointing at the reports branch (create orphan if absent)
+          if git ls-remote --exit-code --heads origin reports > /dev/null 2>&1; then
+            git fetch origin reports
+            git worktree add /tmp/reports-branch origin/reports
+          else
+            git worktree add --orphan -b reports /tmp/reports-branch
+          fi
+
+          cp reports/* "/tmp/reports-branch/"
+
+          cd /tmp/reports-branch
+          git add .
+          if git diff --cached --quiet; then
+            echo "No new reports to commit."
+          else
+            git commit -m "reports: run #${{ github.run_number }}"
+            git push origin HEAD:reports
+          fi
