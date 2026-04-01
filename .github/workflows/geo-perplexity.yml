@@ -1,0 +1,73 @@
+name: Geo-Perplexity Analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      paper_url:
+        description: "arXiv URL or paper identifier"
+        required: false
+        default: ""
+      papers_file:
+        description: "Path to NDJSON batch file (relative to repo root)"
+        required: false
+        default: "data/test_papers.ndjson"
+      models:
+        description: "Space-separated model names"
+        required: false
+        default: "gpt-5.4 gpt-4o"
+  push:
+    branches:
+      - geo-perplexity
+
+jobs:
+  analyze:
+    name: Run perplexity analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run analysis
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          MODELS="${{ inputs.models || 'gpt-5.4 gpt-4o' }}"
+
+          if [ -n "${{ inputs.paper_url }}" ]; then
+            python run_analysis.py "${{ inputs.paper_url }}" --models $MODELS
+          else
+            PAPERS_FILE="${{ inputs.papers_file || 'data/test_papers.ndjson' }}"
+            python run_analysis.py --papers-file "$PAPERS_FILE" --models $MODELS
+          fi
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: perplexity-reports
+          path: reports/
+          if-no-files-found: warn
+
+      - name: Commit reports to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status reports/ --porcelain)" ]; then
+            git add reports/
+            git commit -m "geo-perplexity: publish analysis reports [skip ci]"
+            git push
+          else
+            echo "No new reports to commit"
+          fi
