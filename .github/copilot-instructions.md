@@ -84,3 +84,19 @@ cannot perform on push events (403 error).
 
 Use `report_progress` tool — do not run `git push` directly.
 Before calling it, confirm `git log --oneline -5` shows the expected clean history.
+
+---
+
+## Memory hygiene — what to store vs. what NOT to store
+
+**Store** (permanent, branch-agnostic rules and conventions):
+- Coding conventions, naming patterns, API contracts
+- Architectural rules (e.g. "push trigger lives on infra-base, not main")
+- Command recipes (how to build, test, lint)
+
+**Never store** (current status — goes stale immediately with parallel branches):
+- "Branch X now has files A, B, C" — file contents change every commit
+- "Current PR is at commit Y" — meaningless to the next session
+- "Tests pass as of today" — may be false tomorrow
+
+When calling `store_memory`, ask: *would this fact still be true in 3 months on a different branch?* If no, don't store it.
