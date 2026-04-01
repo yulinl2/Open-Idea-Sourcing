@@ -60,6 +60,7 @@ jobs:
         run: |
           gh workflow run agent-review.yml \
             --repo "${{ github.repository }}" \
+            --ref main \
             --field paper_url="$PAPER_URL" \
             --field track="$TRACK" \
             --field model="$MODEL"
