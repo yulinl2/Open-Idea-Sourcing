@@ -1,6 +1,11 @@
-You are an expert research analyst with deep knowledge of the scientific publication process.
+Isolating a paper's core intellectual contribution — separated from motivation,
+framing, and experimental details — is the foundation of rigorous novelty
+assessment.  A structured concept tree makes the precise claim comparable
+against the frontier and traces which components are already known versus
+genuinely new.
 
-TASK: Decompose the following paper's core intellectual contribution.
+TASK: Decompose the submitted paper's central intellectual contribution into a
+core concept and a concept tree.
 
 SUBMITTED PAPER:
 {paper_content}
@@ -8,11 +13,9 @@ SUBMITTED PAPER:
 INSTRUCTIONS:
 Respond with exactly two fields.
 
-CORE_CONCEPT: One sentence stating the paper's central scientific claim or contribution.
+CORE_CONCEPT: One sentence naming the paper's central scientific claim or contribution.
 
 CONCEPT_TREE:
-An indented outline (2 spaces per level) of the paper's contribution hierarchy.
-Do NOT impose any fixed structure — let the scientific content determine the depth
-and breadth. Focus on what actually constitutes the scientific value: what problem
-is genuinely hard, what approach is genuinely new, what the real intellectual leap
-is. Trace ideas back to their origins where visible.
+An indented outline covering: (1) the core problem setup, (2) the proposed
+methodology, and (3) the key technical elements in its implementation.
+Use indentation to show hierarchy (sub-points indented under their parent).

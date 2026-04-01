@@ -363,6 +363,54 @@ class TestOnlineReferenceSearchSearch:
             papers = searcher.search("Any Title")
         assert papers == []
 
+    def test_last_query_counts_populated_after_search(self):
+        """last_query_counts must map each query to the number of raw API hits."""
+        body1 = self._make_api_response(["p1", "p2"])
+        body2 = self._make_api_response(["p3"])
+        responses = [_make_mock_response(body1), _make_mock_response(body2)]
+
+        def fake_urlopen(req, timeout=None):
+            return responses.pop(0)
+
+        searcher = OnlineReferenceSearch(max_results=10)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            searcher.search("t", queries=["query A", "query B"])
+
+        counts = searcher.last_query_counts
+        assert counts["query A"] == 2
+        assert counts["query B"] == 1
+
+    def test_last_query_counts_includes_fallback_query(self):
+        """Fallback abstract query should appear in last_query_counts."""
+        resp1 = self._make_api_response(["p1"])           # sparse primary
+        resp2 = self._make_api_response(["p2", "p3"])     # fallback
+
+        responses = [_make_mock_response(resp1), _make_mock_response(resp2)]
+
+        def fake_urlopen(req, timeout=None):
+            return responses.pop(0)
+
+        searcher = OnlineReferenceSearch(max_results=10)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            searcher.search("t", abstract="neural network attention mechanism")
+
+        counts = searcher.last_query_counts
+        assert len(counts) == 2  # primary + fallback
+        assert sum(counts.values()) == 3
+
+    def test_last_query_counts_cleared_on_new_search(self):
+        """last_query_counts must be reset at the start of each search call."""
+        body = self._make_api_response(["p1"])
+
+        searcher = OnlineReferenceSearch(max_results=5)
+        with patch("urllib.request.urlopen", return_value=_make_mock_response(body)):
+            searcher.search("first", queries=["q1", "q2", "q3"])
+        assert len(searcher.last_query_counts) == 3
+
+        with patch("urllib.request.urlopen", return_value=_make_mock_response(body)):
+            searcher.search("second", queries=["only-q"])
+        assert list(searcher.last_query_counts.keys()) == ["only-q"]
+
 
 # ---------------------------------------------------------------------------
 # OnlineReferenceSearch._fetch_references
@@ -948,7 +996,98 @@ class TestTemporalFilter:
         assert len(papers) == 1
         assert papers[0].id == "new1"
 
-    def test_since_year_arg_is_parseable(self):
+    def test_max_year_set_on_init(self):
+        searcher = OnlineReferenceSearch(max_year=2023)
+        assert searcher._max_year == 2023
+
+    def test_no_max_year_by_default(self):
+        searcher = OnlineReferenceSearch()
+        assert searcher._max_year is None
+
+    def test_query_includes_max_year_in_range(self):
+        """When both min_year and max_year are set, the year= range reflects both."""
+        urls_called = []
+        def fake_urlopen(req, timeout=None):
+            urls_called.append(req.full_url)
+            raise Exception("stop here")
+
+        searcher = OnlineReferenceSearch(min_year=2015, max_year=2023)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            searcher._query("attention mechanism")
+        assert any("year=2015-2023" in u for u in urls_called)
+
+    def test_query_includes_max_year_only(self):
+        """When only max_year is set, the year= param uses open lower bound."""
+        urls_called = []
+        def fake_urlopen(req, timeout=None):
+            urls_called.append(req.full_url)
+            raise Exception("stop here")
+
+        searcher = OnlineReferenceSearch(max_year=2022)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            searcher._query("diffusion models")
+        assert any("year=-2022" in u for u in urls_called)
+
+    def test_fetch_references_filters_by_max_year(self):
+        """Papers newer than max_year are dropped from _fetch_references."""
+        mock_data = {
+            "data": [
+                {
+                    "citedPaper": {
+                        "paperId": "past1",
+                        "title": "Past Paper",
+                        "abstract": "",
+                        "year": 2020,
+                        "authors": [],
+                        "externalIds": {},
+                        "url": "",
+                    }
+                },
+                {
+                    "citedPaper": {
+                        "paperId": "future1",
+                        "title": "Future Paper",
+                        "abstract": "",
+                        "year": 2025,
+                        "authors": [],
+                        "externalIds": {},
+                        "url": "",
+                    }
+                },
+            ]
+        }
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(mock_data).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            searcher = OnlineReferenceSearch(max_year=2023)
+            papers = searcher._fetch_references("arXiv:2023.12345")
+
+        assert len(papers) == 1
+        assert papers[0].id == "past1"
+
+    def test_lookup_paper_year_via_arxiv_id(self):
+        """lookup_paper_year returns the year from the S2 paper endpoint."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({"paperId": "abc", "year": 2022}).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            searcher = OnlineReferenceSearch()
+            year = searcher.lookup_paper_year(arxiv_id="2206.12345")
+        assert year == 2022
+
+    def test_lookup_paper_year_returns_none_on_failure(self):
+        """lookup_paper_year returns None when all lookups fail."""
+        with patch("urllib.request.urlopen", side_effect=Exception("network error")):
+            searcher = OnlineReferenceSearch()
+            year = searcher.lookup_paper_year(arxiv_id="2206.12345", title="My Paper")
+        assert year is None
+
+
         from review_paper import _parse_args
         args = _parse_args(["paper.txt", "--format", "text", "--since-year", "2020"])
         assert args.since_year == 2020

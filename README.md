@@ -90,7 +90,7 @@ python review_paper.py --papers-file data/test_papers.ndjson --format markdown
 | `--references FILE` | `data/references.json` | Additional JSON reference corpus (merged with bundled) |
 | `--no-online-search` | off | Skip Semantic Scholar lookup (offline / debugging) |
 | `--top-k N` | `5` | Number of similar papers to surface |
-| `--model NAME` | `gpt-4o` | OpenAI model (or `OPENAI_MODEL` env var) |
+| `--model NAME` | `gpt-5.4` | OpenAI model (or `OPENAI_MODEL` env var) |
 | `--reports-dir DIR` | `reports` | Output directory for auto-named report files |
 | `--output FILE` | — | Write to an exact path instead of `--reports-dir` |
 | `--papers-file FILE` | — | NDJSON batch file (mutually exclusive with positional arg) |

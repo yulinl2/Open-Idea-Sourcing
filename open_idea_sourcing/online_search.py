@@ -195,6 +195,16 @@ class OnlineReferenceSearch:
         HTTP request timeout in seconds.  Requests that exceed this
         duration are silently abandoned and an empty result set is
         returned.
+    min_year:
+        Earliest publication year to include (inclusive).  Papers older
+        than this year are filtered out both via the API ``year`` parameter
+        and client-side.
+    max_year:
+        Latest publication year to include (inclusive).  Papers published
+        after this year are filtered out, which prevents works that are
+        contemporaneous with or newer than the submitted paper from being
+        included in the prior-art pool.  Pass the submitted paper's own
+        publication year to enforce this cutoff automatically.
     """
 
     def __init__(
@@ -202,11 +212,14 @@ class OnlineReferenceSearch:
         max_results: int = _DEFAULT_LIMIT,
         timeout: int = _DEFAULT_TIMEOUT,
         min_year: int | None = None,
+        max_year: int | None = None,
     ) -> None:
         self._max_results = max_results
         self._timeout = timeout
         self._min_year = min_year
+        self._max_year = max_year
         self._last_errors: list[str] = []
+        self._last_query_counts: dict[str, int] = {}
 
     @property
     def last_errors(self) -> list[str]:
@@ -218,6 +231,18 @@ class OnlineReferenceSearch:
         surface rate-limit or network problems in the pipeline job log.
         """
         return list(self._last_errors)
+
+    @property
+    def last_query_counts(self) -> dict[str, int]:
+        """Per-query raw hit counts from the most recent :meth:`search` call.
+
+        Maps each query string to the number of papers returned by Semantic
+        Scholar for that query *before* deduplication across queries.  Useful
+        for pipeline audit — a count of zero indicates the query was too
+        specific or returned no results.  Cleared at the start of every
+        :meth:`search` call.
+        """
+        return dict(self._last_query_counts)
 
     # ------------------------------------------------------------------
     # Public API
@@ -306,19 +331,24 @@ class OnlineReferenceSearch:
         """
         results: dict[str, ReferencePaper] = {}
         self._last_errors = []
+        self._last_query_counts = {}
 
         # Phase 2: conceptual keyword search (breadth).
         # Use LLM-generated queries when available; fall back to the raw title.
         search_queries = queries if queries else ([title] if title else [])
         for q in search_queries:
-            for paper in self._query(q):
+            hits = self._query(q)
+            self._last_query_counts[q] = len(hits)
+            for paper in hits:
                 results.setdefault(paper.id, paper)
 
         # Phase 3: abstract fallback when keyword search is sparse.
         if len(results) < max(1, self._max_results // 2) and abstract:
             fallback_query = _extract_query_from_abstract(abstract)
             if fallback_query:
-                for paper in self._query(fallback_query):
+                hits = self._query(fallback_query)
+                self._last_query_counts[fallback_query] = len(hits)
+                for paper in hits:
                     results.setdefault(paper.id, paper)
 
         return list(results.values())[: self._max_results]
@@ -443,6 +473,57 @@ class OnlineReferenceSearch:
             return None
         return items[0].get("paperId") or None
 
+    def lookup_paper_year(
+        self,
+        arxiv_id: str = "",
+        title: str = "",
+    ) -> int | None:
+        """Look up the publication year of the submitted paper from Semantic Scholar.
+
+        Used to establish an upper temporal bound so that papers published
+        after the submission date are excluded from the prior-art pool.
+        Tries the arXiv ID first (most reliable); falls back to a title
+        search when no arXiv ID is available.
+
+        Parameters
+        ----------
+        arxiv_id:
+            arXiv identifier (e.g. ``"2006.06138"``).
+        title:
+            Paper title, used as a fallback when *arxiv_id* is empty.
+
+        Returns
+        -------
+        int | None
+            Publication year, or *None* if the lookup fails.
+        """
+        if arxiv_id:
+            paper_id_encoded = urllib.parse.quote(f"arXiv:{arxiv_id}", safe=":")
+            url = f"{_SEMANTIC_SCHOLAR_PAPER_URL}/{paper_id_encoded}?fields=year"
+            raw = self._http_get(url, label="paper-year-lookup")
+            if raw is not None:
+                try:
+                    data: dict[str, Any] = json.loads(raw)
+                    year_raw = data.get("year")
+                    if isinstance(year_raw, int):
+                        return year_raw
+                except json.JSONDecodeError:
+                    pass
+        if title:
+            s2_id = self._lookup_paper_id_by_title(title)
+            if s2_id:
+                url = f"{_SEMANTIC_SCHOLAR_PAPER_URL}/{s2_id}?fields=year"
+                raw = self._http_get(url, label="paper-year-lookup-title")
+                if raw is not None:
+                    try:
+                        data = json.loads(raw)
+                        year_raw = data.get("year")
+                        if isinstance(year_raw, int):
+                            return year_raw
+                    except json.JSONDecodeError:
+                        pass
+        return None
+
     def _fetch_references(self, semantic_paper_id: str) -> list[ReferencePaper]:
         """Return references of a paper using Semantic Scholar's references endpoint.
 
@@ -482,6 +563,11 @@ class OnlineReferenceSearch:
                 p for p in papers
                 if p.year is None or p.year >= self._min_year
             ]
+        if self._max_year is not None:
+            papers = [
+                p for p in papers
+                if p.year is None or p.year <= self._max_year
+            ]
         return papers
 
     def _query(self, query: str) -> list[ReferencePaper]:
@@ -491,8 +577,10 @@ class OnlineReferenceSearch:
             "fields": _FIELDS,
             "limit": self._max_results,
         }
-        if self._min_year is not None:
-            query_params["year"] = f"{self._min_year}-"
+        if self._min_year is not None or self._max_year is not None:
+            min_part = str(self._min_year) if self._min_year is not None else ""
+            max_part = str(self._max_year) if self._max_year is not None else ""
+            query_params["year"] = f"{min_part}-{max_part}"
         params = urllib.parse.urlencode(query_params)
         url = f"{_SEMANTIC_SCHOLAR_SEARCH_URL}?{params}"
         raw = self._http_get(url, label=f"query('{query[:40]}')")

@@ -14,7 +14,7 @@ Environment variables
 OPENAI_API_KEY
     Required when using the default OpenAI backend.
 OPENAI_MODEL
-    OpenAI model name (default: gpt-4o).
+    OpenAI model name (default: gpt-5.4).
 
 Examples
 --------
@@ -271,8 +271,8 @@ def _build_llm(model: str):
 
     client = openai.OpenAI(api_key=api_key)
 
-    # Reasoning models (o1-*, o3-*, o4-*) do not accept a temperature parameter.
-    _is_reasoning = model.startswith(("o1-", "o3-", "o4-"))
+    # Reasoning models (o1*, o3*, o4*) do not accept a temperature parameter.
+    _is_reasoning = model.startswith(("o1", "o3", "o4"))
 
     def call_llm(prompt: str) -> str:
         try:
@@ -412,8 +412,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        default=os.environ.get("OPENAI_MODEL", "gpt-4o"),
-        help="OpenAI model name (default: gpt-4o or OPENAI_MODEL env var).",
+        default=os.environ.get("OPENAI_MODEL", "gpt-5.4"),
+        help="OpenAI model name (default: gpt-5.4 or OPENAI_MODEL env var).",
     )
     parser.add_argument(
         "--top-k",
@@ -495,7 +495,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "OpenAI model name to use for the idea decomposition step "
             "(Stage 2). When not set, the main --model is used. "
             "Useful for routing the expensive decomposition pass to a "
-            "reasoning model (e.g. o3-mini) while keeping a cheaper "
+            "reasoning model (e.g. o3) while keeping a cheaper "
             "model for the analysis passes. "
             "(default: OPENAI_DECOMPOSITION_MODEL env var or empty)"
         ),
@@ -786,6 +786,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         cited_papers: list = []
         search_queries: list[str] = []
         online_searcher: OnlineReferenceSearch | None = None
+        _submitted_year: int | None = None
         arxiv_id = _extract_arxiv_id(paper_source)
         if not args.no_online_search:
             print(
@@ -818,6 +819,26 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 max_results=args.top_k * 2,
                 min_year=args.since_year,
             )
+
+            # Resolve the submitted paper's publication year to cap the temporal
+            # filter: exclude any paper newer than the submitted paper itself.
+            _submitted_year = online_searcher.lookup_paper_year(
+                arxiv_id=arxiv_id,
+                title=paper.title,
+            )
+            if _submitted_year is not None:
+                online_searcher._max_year = _submitted_year
+                print(
+                    f"  Temporal filter: excluding papers published after"
+                    f" {_submitted_year} (submitted paper's year).",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "  Temporal filter: could not resolve submitted paper year;"
+                    " no upper year bound applied.",
+                    file=sys.stderr,
+                )
 
             # Phase 1 — paper's own citation list (depth signal).
             # Runs separately from keyword search so each group gets its own
@@ -854,6 +875,14 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 f"  Found {online_papers_count} keyword-matched paper(s) online.",
                 file=sys.stderr,
             )
+            # Per-query hit counts for pipeline audit.
+            query_counts = online_searcher.last_query_counts
+            if query_counts:
+                for q, cnt in query_counts.items():
+                    print(
+                        f"    {cnt:3d}  {q!r}",
+                        file=sys.stderr,
+                    )
 
         # --- Similarity search ---
         query = paper.key_content()
@@ -917,7 +946,11 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
 
         # --- Stage 3e: Look up domain refs via Semantic Scholar ---
         if not getattr(args, 'no_online_search', False) and domain_refs:
-            _domain_searcher = OnlineReferenceSearch(max_results=10, min_year=getattr(args, 'since_year', None))
+            _domain_searcher = OnlineReferenceSearch(
+                max_results=10,
+                min_year=getattr(args, 'since_year', None),
+                max_year=_submitted_year,
+            )
             domain_papers = _domain_searcher.lookup_domain_refs(domain_refs)
             for dp in domain_papers:
                 store.add(dp, source="domain")
