@@ -377,19 +377,49 @@ different approach. Do not delete failed experiments — they are data.
 
 ## 6. Human workflow
 
-### Triggering a run (all tracks)
+### How agent CI runs in parallel with the baseline track
 
-Runs are triggered via GitHub Actions, same as the programmatic pipeline.
+The baseline track (`ci.yml` → `review_paper.py`) and the agent tracks are
+**separate GitHub Actions workflows** that run independently:
 
-1. Go to **Actions → [track name] → Run workflow**
-2. Fill in `paper_url` (arXiv abstract URL or direct PDF)
-3. Select `model` (default: as configured per track)
-4. Click **Run workflow**
+| Workflow | File | Entry point | Triggered by |
+|----------|------|-------------|--------------|
+| Baseline | `.github/workflows/ci.yml` | `review_paper.py` | All branches + manual |
+| Agent track | `.github/workflows/agent-review.yml` | `agent.py` (per track) | `agent-*` branches + manual |
+
+The two workflows never share a job or depend on each other. You can trigger
+them simultaneously for the same paper without any interference.
+
+**CI job separation:**
+
+```
+Push to main / feature branch
+    └─► ci.yml → test → review_paper.py → reports/[paper_id]/
+
+Manual dispatch on agent-review.yml
+    └─► agent-review.yml → test-infra → agent.py (agent-<track> branch)
+                                      → reports/agent-<track>/<paper_id>/
+```
+
+Reports from each workflow land under separate namespaces in the `reports`
+branch, so they are easy to compare side by side.
+
+### Triggering an agent review (all tracks)
+
+1. Go to **Actions → Agent Track Review → Run workflow**
+2. Fill in `paper_url` (arXiv abstract URL, e.g. `https://arxiv.org/abs/2006.06138`)
+3. Select `track`: `e2e` | `linear` | `reconstruct`
+4. Optionally set `model` (default: `gpt-4o`)
+5. Click **Run workflow**
 
 The CI job will:
-- Run `agent.py` with the provided paper
-- Upload `report.md` as a CI artifact
-- Push `report.md` to the `reports` branch under `reports/[track]/[paper_id]/report.md`
+- Check out the `agent-<track>` branch and run `agent.py`
+- Upload `report.md` as a CI artifact named `agent-<track>-report-<paper_id>`
+- Push `report.md` to the `reports` branch under `agent-<track>/<paper_id>/report.md`
+
+**Push-triggered runs** (pushes to `agent-e2e`, `agent-linear`, `agent-reconstruct`):
+- Run only the `test-infra` job (no API key needed)
+- Gate on infra smoke tests before any review job is queued
 
 ### Reading a report
 
@@ -411,10 +441,14 @@ Required sections (see §7 of `PROJECT_INSTRUCTIONS_AGENT.md`):
 
 To compare `agent-e2e` vs `agent-linear` vs `agent-reconstruct` on the same paper:
 
-1. Find the three `report.md` files under `reports/[track]/[paper_id]/`
+1. Find the three `report.md` files under `reports/agent-<track>/<paper_id>/` on the `reports` branch
 2. Compare `final_verdict` and `confidence` in YAML front matter
 3. Compare `derivation_map` sections for agreement and disagreement
 4. Compare `residual_novelty` for depth and specificity
+
+To compare agent track results against the baseline programmatic pipeline:
+- Baseline reports: `reports/<paper_id>/` (written by `ci.yml`)
+- Agent reports: `reports/agent-<track>/<paper_id>/` (written by `agent-review.yml`)
 
 The `impl_id` field in every front matter pinpoints the exact frozen snapshot
 that produced the result, enabling exact replay.
