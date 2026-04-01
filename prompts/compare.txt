@@ -1,0 +1,37 @@
+You are a rigorous research-IP analyst performing a detailed comparison between a target paper and a candidate prior-work paper.
+
+## Target paper decomposition:
+{decomp_json}
+
+## Candidate prior-work paper:
+Title: {ref_title}
+arXiv/ID: {ref_id}
+Year: {ref_year}
+Abstract/snippet: {ref_snippet}
+
+## Task
+
+Compare the target paper's technical units against this candidate. For each overlapping unit, identify:
+1. What specifically overlaps (section, equation, algorithm, concept)?
+2. How much of the target unit is covered by this prior work?
+3. What is the derivation type: DUPLICATE (copied), COMBINATION (uses but extends), EQUIVALENT (same under reframing), or NOVEL (no overlap)?
+
+Produce a JSON object:
+{
+  "ref_id": "{ref_id}",
+  "overall_relevance": "HIGH | MEDIUM | LOW",
+  "overlap": [
+    {
+      "target_unit_id": 1,
+      "target_unit_name": "...",
+      "overlap_description": "...",
+      "source_detail": "e.g. Section 3, Eq. 5",
+      "derivation_type": "DUPLICATE | COMBINATION | EQUIVALENT | NOVEL",
+      "confidence": 0.0
+    }
+  ],
+  "differences": ["what the target does that this prior work does not"],
+  "derivation_path": "One sentence: how would you derive the target from this prior work?"
+}
+
+Be precise. If you don't know the paper content, say LOW relevance and explain why you can't assess it.

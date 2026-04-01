@@ -1,0 +1,46 @@
+You are a research-IP judge. Based on the duplication, combination, and equivalence assessments, produce a final synthesis.
+
+## Input
+
+Decomposition:
+{decomp_json}
+
+Duplication assessment:
+{dup_json}
+
+Combination assessment:
+{combo_json}
+
+Equivalence assessment:
+{equiv_json}
+
+## Task
+
+Produce a JSON object with the final synthesis:
+{
+  "verdict": "NOVEL | COMBINATION | EQUIVALENT | DUPLICATE",
+  "confidence": 0.0,
+  "primary_reason": "One sentence explaining the verdict.",
+  "derivation_map": [
+    {
+      "component": "technical unit name",
+      "source_paper": "paper_id or title",
+      "source_detail": "section, equation, or concept in source",
+      "derivation_type": "DUPLICATE | COMBINATION | EQUIVALENT | NOVEL",
+      "confidence": 0.0
+    }
+  ],
+  "cited_evidence": ["paper_id_1", "paper_id_2"],
+  "residual_novelty": "What is genuinely new, if anything. One paragraph.",
+  "uncertainties": ["uncertainty 1", "uncertainty 2"]
+}
+
+## Verdict precedence
+
+Apply the most severe verdict that is warranted:
+1. DUPLICATE — if any core mechanism is reproduced without credit
+2. EQUIVALENT — if the whole approach is equivalent to prior work
+3. COMBINATION — if all components have clear sources but no single work covers everything
+4. NOVEL — only if at least one core mechanism is genuinely new and irreducible
+
+Confidence: account for gaps in retrieval. Low retrieval quality → lower confidence.
