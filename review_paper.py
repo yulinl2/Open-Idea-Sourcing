@@ -786,6 +786,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         cited_papers: list = []
         search_queries: list[str] = []
         online_searcher: OnlineReferenceSearch | None = None
+        _submitted_year: int | None = None
         arxiv_id = _extract_arxiv_id(paper_source)
         if not args.no_online_search:
             print(
@@ -818,6 +819,26 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 max_results=args.top_k * 2,
                 min_year=args.since_year,
             )
+
+            # Resolve the submitted paper's publication year to cap the temporal
+            # filter: exclude any paper newer than the submitted paper itself.
+            _submitted_year = online_searcher.lookup_paper_year(
+                arxiv_id=arxiv_id,
+                title=paper.title,
+            )
+            if _submitted_year is not None:
+                online_searcher._max_year = _submitted_year
+                print(
+                    f"  Temporal filter: excluding papers published after"
+                    f" {_submitted_year} (submitted paper's year).",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "  Temporal filter: could not resolve submitted paper year;"
+                    " no upper year bound applied.",
+                    file=sys.stderr,
+                )
 
             # Phase 1 — paper's own citation list (depth signal).
             # Runs separately from keyword search so each group gets its own
@@ -917,7 +938,11 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
 
         # --- Stage 3e: Look up domain refs via Semantic Scholar ---
         if not getattr(args, 'no_online_search', False) and domain_refs:
-            _domain_searcher = OnlineReferenceSearch(max_results=10, min_year=getattr(args, 'since_year', None))
+            _domain_searcher = OnlineReferenceSearch(
+                max_results=10,
+                min_year=getattr(args, 'since_year', None),
+                max_year=_submitted_year,
+            )
             domain_papers = _domain_searcher.lookup_domain_refs(domain_refs)
             for dp in domain_papers:
                 store.add(dp, source="domain")

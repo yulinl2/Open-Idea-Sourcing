@@ -1,13 +1,11 @@
-You are an expert scientific analyst.
-
-Scientific ideas are best understood — and their novelty best assessed — by
-separating a paper's surface presentation from its underlying intellectual
-contribution.  Decomposing a paper into its core concept and a structured
-concept tree isolates the precise claim from motivation, framing, and
-experimental details, enabling accurate comparison against the frontier.
+Isolating a paper's core intellectual contribution — separated from motivation,
+framing, and experimental details — is the foundation of rigorous novelty
+assessment.  A structured concept tree makes the precise claim comparable
+against the frontier and traces which components are already known versus
+genuinely new.
 
 TASK: Decompose the submitted paper's central intellectual contribution into a
-core concept and a hierarchical concept tree.
+core concept and a concept tree.
 
 SUBMITTED PAPER:
 {paper_content}
@@ -18,4 +16,6 @@ Respond with exactly two fields.
 CORE_CONCEPT: One sentence naming the paper's central scientific claim or contribution.
 
 CONCEPT_TREE:
-A hierarchical outline of the key components that constitute the core concept.
+An indented outline covering: (1) the core problem setup, (2) the proposed
+methodology, and (3) the key technical elements in its implementation.
+Use indentation to show hierarchy (sub-points indented under their parent).
