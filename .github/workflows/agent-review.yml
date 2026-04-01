@@ -4,7 +4,13 @@ name: Agent review
 #
 # Trigger matrix:
 #   • Manual (workflow_dispatch)  — review any paper on any agent track
-#   • Push to agent-* branches    — run fast infra tests only (no API key needed)
+#   • Push to infra-base / agent-* branches — run fast infra tests (no API key needed)
+#
+# NOTE: The push trigger intentionally lives here (infra-base / agent-* branches)
+# and NOT on main.  Having push: branches: [agent-*] in main's copy causes GitHub
+# to create phantom failure check-runs on every copilot/* PR branch push (the
+# pushed branch never matches agent-*, so 0 jobs run and the check fails).
+# Main's copy carries workflow_dispatch only.
 #
 # This workflow is branch-local by design: each agent-* branch carries its own
 # agent.py and this workflow discovers it automatically via the TRACK variable.
@@ -13,6 +19,7 @@ name: Agent review
 on:
   push:
     branches:
+      - "infra-base"
       - "agent-e2e"
       - "agent-linear"
       - "agent-reconstruct"
