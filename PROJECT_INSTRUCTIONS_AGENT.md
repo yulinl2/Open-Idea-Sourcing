@@ -151,6 +151,8 @@ This is necessary for later comparison across runs, branches, and frozen snapsho
 
 The agent track should use a programmable agentic runtime, not naive plain chat completion as the main long-term substrate. The current repo implementation was closer to a hand-built pipeline wrapped around simple completion-style calls; the agent track should move toward a run-oriented surface where one paper review is treated as a first-class task/run with auditable metadata and tool usage.
 
+**Maximally agentic.** Do not implement custom search functions for what the model can do natively. Use the model's built-in `web_search` tool (e.g., via the OpenAI Responses API) as the primary literature discovery mechanism — let the agent decide what to search, in what order, and when it has enough evidence. Custom `infra/search_tools.py` (Semantic Scholar, arXiv) is a last-resort fallback for structured metadata, not a substitute for the model's native capabilities.
+
 However, do **not** let framework complexity dominate readability. The runtime is a support layer, not the product. The product is the derivation audit.
 
 ## 10. What the agent must do

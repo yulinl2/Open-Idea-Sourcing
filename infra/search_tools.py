@@ -1,6 +1,13 @@
 """
 infra/search_tools.py
 
+LAST-RESORT FALLBACK — use only when the model's native web_search tool is
+unavailable or when structured S2 metadata (canonical paper IDs, citation
+counts, author lists) is specifically needed.
+
+For general literature discovery, prefer the model's built-in web_search tool
+and let the agent decide its own search strategy.
+
 Thin clients for Semantic Scholar and arXiv.
 
 These are pure I/O functions — no LLM calls, no agent logic.

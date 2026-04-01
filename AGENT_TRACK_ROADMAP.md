@@ -49,8 +49,8 @@ not methodology.
 |--------|------|
 | `infra/run_context.py` | `RunContext` dataclass — holds `paper_id`, `model`, `impl_id`, `track`, timestamps, git hash, tool list, `response_id`. Serialises to/from YAML front matter. |
 | `infra/report_writer.py` | Writes the canonical `report.md` from a filled `RunContext` + structured sections. Enforces the required front-matter schema. |
-| `infra/tool_registry.py` | Thin registry mapping tool names to callable wrappers; records which tools were invoked per run. |
-| `infra/search_tools.py` | Semantic Scholar thin client + arXiv thin client. No LLM logic; pure I/O. |
+| `infra/tool_registry.py` | Thin registry mapping Python-function tool names to callables; records invocations per run. Native model tools (e.g. `web_search`) bypass this and are captured via `response_id`. |
+| `infra/search_tools.py` | **Last-resort fallback only.** Semantic Scholar + arXiv thin clients for when the model's native web search is unavailable or when structured S2 metadata (citation counts, canonical paper IDs) is specifically needed. |
 | `infra/pdf_utils.py` | PDF-to-text extraction. No LLM logic. |
 | `infra/README.md` | One-page description of every module and the cherry-pick contract. |
 
@@ -102,6 +102,14 @@ lower-bound comparison point for the other tracks.
 - One `report.md` output; no intermediate checkpoint files
 - Implementation identity declared at top: `AGENT_IMPL_ID = "e2e_v1_0_0"`
 
+### Philosophy: maximally agentic
+
+Do **not** implement custom search functions for what the model can do natively.
+Use the model's built-in `web_search` tool as the primary retrieval mechanism — let
+the agent decide what to search for, in what order, and when it has enough evidence.
+`infra/search_tools.py` (S2, arXiv) is available as a last resort only (e.g., when
+structured citation metadata is needed).
+
 ### Methodology
 
 ```
@@ -109,31 +117,34 @@ lower-bound comparison point for the other tracks.
     │
     ▼
 [Agent loop]
-    The agent is given the paper text and a tool set.
-    It autonomously decides:
-      - which searches to run (S2 keyword, arXiv citation, domain concept)
-      - how many comparison rounds to perform
-      - when it has enough evidence to produce a verdict
-    No external orchestrator imposes stage order.
+    The agent reads the paper text and autonomously:
+      - searches the web for related prior work (native web_search tool)
+      - follows leads as it sees fit (no externally imposed search strategy)
+      - decides how many comparison rounds to perform
+      - decides when it has enough evidence to produce a verdict
+    No external orchestrator imposes stage order or search order.
     │
     ▼
 [Output]  report.md
     Contains: derivation audit, derivation map, residual novelty verdict
 ```
 
-### Tool set (cherry-picked from infra-base)
+### Tool set
 
-- `search_semantic_scholar(query)` — keyword + citation search
-- `search_arxiv(query)` — arXiv abstract search
-- `fetch_paper_text(url_or_path)` — PDF/HTML ingestion
-- `record_tool_call(name, args, result)` — audit trail
+| Tool | Source | Purpose |
+|------|--------|---------|
+| `web_search` | Native model tool | Primary literature search — let the agent decide queries |
+| `fetch_paper_text` | `infra/pdf_utils.py` | PDF/HTML ingestion; model can't read PDFs natively |
+| `search_semantic_scholar` | `infra/search_tools.py` | **Fallback only** — structured S2 metadata when needed |
+
+The agent should rely on `web_search` for discovery; do not pre-build rigid search pipelines.
 
 ### Build sequence
 
 ```
 Step 1  cherry-pick infra/ from infra-base
-Step 2  agent.py v1 — basic tool-using loop, 3-5 search calls, single verdict
-Step 3  report.md template — YAML front matter + required sections
+Step 2  agent.py v1 — paper ingestion + native web_search tool loop; single verdict
+Step 3  prompts/system.txt — agent system prompt (judgment standard, report schema)
 Step 4  Freeze: agent_e2e_v1_0_0.py (adjacent snapshot)
 Step 5  agent.py v2 — richer derivation map, uncertainty quantification
 Step 6  Git tag: agent-e2e-v1.0.0
@@ -207,8 +218,9 @@ Stage 3  Retrieve
          Input:  stage_2_decomp.json
          Output: checkpoints/stage_3_refs.json
                  {candidates[]: {paper_id, title, year, source, snippet}}
-         Sources: S2 keyword, S2 citation list, arXiv, domain concept lookup
-         Rule:   each source independently toggleable; dedup by paper_id
+         Primary: native web_search tool — let the agent form its own queries
+         Fallback: infra/search_tools.py (S2/arXiv) for structured metadata
+         Rule:   agent decides search strategy; dedup candidates by paper_id
 
 Stage 4  Compare
          Input:  stage_2_decomp.json + stage_3_refs.json

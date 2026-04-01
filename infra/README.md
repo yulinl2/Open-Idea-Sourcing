@@ -13,9 +13,9 @@ to pick up improvements without merging track-specific logic.
 |--------|----------------|---------|
 | `run_context.py` | `RunContext` | Run metadata container; serialises to YAML front matter |
 | `report_writer.py` | `ReportWriter`, `ReportContent`, `DerivationEntry`, `PriorWorkEntry` | Renders canonical `report.md` |
-| `tool_registry.py` | `ToolRegistry` | Records tool invocations per run |
-| `search_tools.py` | `search_semantic_scholar`, `fetch_s2_citations`, `fetch_s2_paper`, `search_arxiv` | S2 + arXiv thin clients |
-| `pdf_utils.py` | `extract_text_from_pdf` | PDF-to-text extraction |
+| `tool_registry.py` | `ToolRegistry` | Records Python-function tool invocations per run (native model tools such as `web_search` bypass this and are captured via `response_id`) |
+| `search_tools.py` | `search_semantic_scholar`, `fetch_s2_citations`, `fetch_s2_paper`, `search_arxiv` | **Last-resort fallback.** S2 + arXiv thin clients for structured metadata when the model's native web search is unavailable or insufficient. Do not use as the primary search mechanism. |
+| `pdf_utils.py` | `extract_text_from_pdf` | PDF-to-text extraction (models cannot read PDFs natively) |
 
 ---
 
