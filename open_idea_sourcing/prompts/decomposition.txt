@@ -15,7 +15,8 @@ Respond with exactly two fields.
 CORE_CONCEPT: One sentence naming the paper's central scientific claim or contribution.
 
 CONCEPT_TREE:
-A flat, numbered list of 3–5 key components that together define the
-contribution.  Each item is one short phrase.  Focus on: the core problem
-being solved, the proposed approach or mechanism, and the primary technical
-novelty.  Do NOT use nested indentation or sub-bullets.
+A shallow indented outline with 3–5 top-level items covering: (1) the core
+problem being solved, (2) the proposed approach or mechanism, and (3) the
+primary technical novelty.  Each top-level item may have at most 2 sub-items
+that clarify a key detail.  Use 2-space indentation for sub-items.  Keep every
+item to one short phrase.  Depth must not exceed 2 levels.

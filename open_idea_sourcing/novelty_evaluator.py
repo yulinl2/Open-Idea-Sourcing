@@ -143,13 +143,18 @@ class IdeaDecomposition:
     core_concept:
         One-sentence description of the central contribution.
     concept_tree:
-        Hierarchical breakdown of the contribution.  Fully adaptive —
-        the LLM determines depth, breadth, and granularity based on
-        the paper's content and scientific significance.
+        Hierarchical breakdown of the contribution parsed into a
+        :class:`ConceptNode` tree.  ``None`` when the LLM response
+        contained no indented structure.
+    concept_tree_raw:
+        Raw LLM text for the CONCEPT_TREE field, preserved verbatim
+        regardless of whether tree parsing succeeded.  Useful for
+        re-parsing with a different strategy or for plain-text display.
     """
 
     core_concept: str
     concept_tree: ConceptNode | None = None
+    concept_tree_raw: str | None = None
 
 
 @dataclass
@@ -956,13 +961,20 @@ def _parse_numbered_list(text: str) -> list[str]:
 
 
 def _parse_decomposition_response(text: str) -> "IdeaDecomposition":
-    """Extract an :class:`IdeaDecomposition` from an LLM response."""
+    """Extract an :class:`IdeaDecomposition` from an LLM response.
+
+    Both ``concept_tree`` (parsed :class:`ConceptNode` structure) and
+    ``concept_tree_raw`` (verbatim LLM text) are populated so that either
+    representation is available without re-prompting.
+    """
     core_concept = _extract_field(text, "CORE_CONCEPT", default=text.strip())
     concept_tree_raw = _extract_field(text, "CONCEPT_TREE", default="")
-    concept_tree = _parse_concept_tree_text(concept_tree_raw) if concept_tree_raw.strip() else None
+    raw_stripped = concept_tree_raw.strip() or None
+    concept_tree = _parse_concept_tree_text(concept_tree_raw) if raw_stripped else None
     return IdeaDecomposition(
         core_concept=core_concept,
         concept_tree=concept_tree,
+        concept_tree_raw=raw_stripped,
     )
 
 

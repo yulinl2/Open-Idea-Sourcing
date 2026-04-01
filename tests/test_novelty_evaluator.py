@@ -485,14 +485,27 @@ class TestIdeaDecomposition:
     def test_default_lists_empty(self):
         d = IdeaDecomposition(core_concept="A new method.")
         assert d.concept_tree is None
+        assert d.concept_tree_raw is None
 
     def test_fields_stored(self):
+        from open_idea_sourcing.novelty_evaluator import ConceptNode
+        tree = ConceptNode(label="Root")
+        raw = "Root\n  Sub-component"
         d = IdeaDecomposition(
             core_concept="Core.",
-            concept_tree="1. Root concept\n2. Sub-component",
+            concept_tree=tree,
+            concept_tree_raw=raw,
         )
         assert d.core_concept == "Core."
-        assert d.concept_tree == "1. Root concept\n2. Sub-component"
+        assert d.concept_tree is tree
+        assert d.concept_tree_raw == raw
+
+    def test_raw_without_tree(self):
+        """concept_tree_raw can be set even when tree parsing returned None."""
+        raw = "flat text"
+        d = IdeaDecomposition(core_concept="Core.", concept_tree=None, concept_tree_raw=raw)
+        assert d.concept_tree is None
+        assert d.concept_tree_raw == raw
 
 
 # ---------------------------------------------------------------------------

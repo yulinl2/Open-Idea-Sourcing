@@ -710,6 +710,7 @@ class ReportGenerator:
                     if d.concept_tree is not None
                     else None
                 ),
+                "concept_tree_raw": d.concept_tree_raw,
             }
         if r.domain_references:
             data["domain_references"] = [
