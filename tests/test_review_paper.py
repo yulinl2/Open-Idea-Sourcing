@@ -1338,3 +1338,10 @@ class TestParseBoolEnv:
         args = _parse_args(["paper.txt"])
         assert args.no_paper_cited_refs is False
 
+    def test_llm_parser_env_false_string(self, monkeypatch):
+        """Regression test: LLM_PARSER='false' (from GitHub Actions) must not raise."""
+        from review_paper import _parse_args
+        monkeypatch.setenv("LLM_PARSER", "false")
+        args = _parse_args(["paper.txt"])
+        assert args.llm_parser is False
+
