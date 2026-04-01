@@ -270,10 +270,12 @@ class ReportGenerator:
             d = r.idea_decomposition
             lines += ["IDEA DECOMPOSITION", "-" * 70]
             lines.append(f"  Core concept: {d.core_concept}")
-            if d.concept_tree:
-                lines.append("  Concept tree:")
-                for ln in d.concept_tree.splitlines():
-                    lines.append(f"    {ln}")
+            if d.concept_tree is not None:
+                tree_str = _render_concept_tree_ascii(d.concept_tree)
+                if tree_str:
+                    lines.append("  Concept tree:")
+                    for ln in tree_str.splitlines():
+                        lines.append(f"    {ln}")
             lines.append("")
 
         lines += [
@@ -509,16 +511,18 @@ class ReportGenerator:
                 f"**Core concept:** {d.core_concept}",
                 "",
             ]
-            # Concept tree (plain text listing of key components)
-            if d.concept_tree:
-                lines += [
-                    "### Concept Tree",
-                    "",
-                    "```",
-                    d.concept_tree,
-                    "```",
-                    "",
-                ]
+            # Concept tree (replaces Mermaid mindmap when available)
+            if d.concept_tree is not None:
+                tree_str = _render_concept_tree_ascii(d.concept_tree)
+                if tree_str:
+                    lines += [
+                        "### Concept Tree",
+                        "",
+                        "```",
+                        tree_str,
+                        "```",
+                        "",
+                    ]
 
         lines += [
             f"**Overall verdict:** {ov} **{r.overall_verdict}** "
@@ -701,7 +705,11 @@ class ReportGenerator:
             d = r.idea_decomposition
             data["idea_decomposition"] = {
                 "core_concept": d.core_concept,
-                "concept_tree": d.concept_tree,
+                "concept_tree": (
+                    _concept_node_to_dict(d.concept_tree)
+                    if d.concept_tree is not None
+                    else None
+                ),
             }
         if r.domain_references:
             data["domain_references"] = [
