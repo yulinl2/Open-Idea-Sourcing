@@ -77,8 +77,10 @@ jobs:
           while IFS= read -r file; do
             filename=$(basename "$file")
 
-            # Skip files that are sync-related (this workflow itself)
-            if [ "$filename" = "sync-agent-workflows.yml" ]; then
+            # Skip files that are sync-related (this workflow itself) or that
+            # legitimately differ between branches (agent-review.yml has push
+            # triggers on infra-base/agent-* but workflow_dispatch-only on main).
+            if [ "$filename" = "sync-agent-workflows.yml" ] || [ "$filename" = "agent-review.yml" ]; then
               continue
             fi
 

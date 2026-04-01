@@ -53,6 +53,29 @@ def back_to_main() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Shared content written to every orphan branch
+# ---------------------------------------------------------------------------
+
+# Comprehensive .gitignore for orphan agent branches.
+# Must stay in sync with the template in AGENT_INSTRUCTIONS.md §8.
+ORPHAN_GITIGNORE = textwrap.dedent("""\
+    __pycache__/
+    *.pyc
+    *.pyo
+    .env
+    .env.local
+    checkpoints/
+    reports/
+    .pytest_cache/
+    *.egg-info/
+    dist/
+    build/
+    .venv/
+    venv/
+""")
+
+
+# ---------------------------------------------------------------------------
 # Branch content definitions
 # ---------------------------------------------------------------------------
 
@@ -270,6 +293,7 @@ def setup_infra_base(skip_existing: bool) -> None:
         ".github/workflows/agent-review.yml",
     )
     Path("README.md").write_text(INFRA_BASE_README)
+    Path(".gitignore").write_text(ORPHAN_GITIGNORE)
     commit_and_push(branch, "infra-base: shared execution shell, charter, and roadmap (bootstrap)",
                     force=not skip_existing)
     print(f"Created '{branch}'")
@@ -291,6 +315,7 @@ def setup_agent_branch(
     checkout_from_main("infra/", ".github/workflows/agent-review.yml")
     Path("README.md").write_text(readme)
     Path("agent.py").write_text(agent_py)
+    Path(".gitignore").write_text(ORPHAN_GITIGNORE)
     commit_and_push(branch, commit_msg, force=not skip_existing)
     print(f"Created '{branch}'")
     back_to_main()
@@ -304,6 +329,7 @@ def setup_agent_reports(skip_existing: bool) -> None:
     print(f"\n=== Creating '{branch}' ===")
     switch_to_orphan(branch)
     Path("README.md").write_text(AGENT_REPORTS_README)
+    Path(".gitignore").write_text(ORPHAN_GITIGNORE)
     for track in ("agent-e2e", "agent-linear", "agent-reconstruct"):
         Path(track).mkdir(exist_ok=True)
         Path(track, ".gitkeep").touch()

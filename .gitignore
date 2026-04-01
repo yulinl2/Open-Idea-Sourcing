@@ -1,6 +1,14 @@
 checkpoints/
 __pycache__/
 *.pyc
+*.pyo
 .env
+.env.local
 .venv/
 venv/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+reports/
+=*

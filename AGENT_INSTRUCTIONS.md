@@ -1,0 +1,136 @@
+# Agent Instructions
+
+Rules for AI coding agents working in this repository. These exist because the
+same mistakes have recurred across multiple PR sessions and are expensive to
+undo. Read this before touching any file.
+
+---
+
+## 1. Branch hygiene — the single most important rule
+
+**Every feature branch that targets `main` MUST be rooted in `main`.**
+
+At the very start of any session, verify and fix your branch base:
+
+```bash
+# Confirm you are standing on a commit reachable from origin/main
+git merge-base --is-ancestor origin/main HEAD \
+  || git reset --hard origin/main   # reset if not reachable
+```
+
+Concretely:
+- If the sandbox gives you a branch whose history contains infra-base, agent-e2e,
+  agent-linear, agent-reconstruct, or agent-reports commits, **reset to origin/main
+  immediately** before making any changes.
+- Never use `git merge --allow-unrelated-histories` as a workaround to paper over
+  an orphan branch accidentally mixed into a main-track PR. It pollutes the history
+  and creates PRs that cannot be cleanly reviewed or merged.
+
+---
+
+## 2. Orphan branches are isolated — do not mix them with main
+
+This repo has two categories of branches that must stay completely separate:
+
+| Category | Branches | Purpose |
+|---|---|---|
+| **Main-track** | `main`, `copilot/*` PRs | Product code, CI workflows |
+| **Orphan agent-track** | `infra-base`, `agent-e2e`, `agent-linear`, `agent-reconstruct`, `agent-reports` | Agent execution shells, reports accumulation |
+
+Rules:
+- Never base a PR on an orphan branch unless you intend to merge *into* that orphan branch.
+- Never cherry-pick from infra-base into main or vice-versa unless the change is explicitly about keeping the two in sync.
+- When working on a `copilot/*` PR branch, confirm the PR's base is `main`:
+  ```bash
+  gh pr view --json baseRefName   # must print "main"
+  ```
+
+---
+
+## 3. `.venv` and other generated artifacts — never commit them
+
+The `copilot-setup-steps.yml` workflow creates a `.venv/` directory during
+sandbox initialisation. This directory must never be committed.
+
+Rules:
+- **Never run `git add .`** (adds everything, including `.venv`, `__pycache__`,
+  `*.pyc`, temp files, etc.).  
+  Instead, stage files explicitly:
+  ```bash
+  git add path/to/specific/file.py
+  git add path/to/another/file.py
+  ```
+- **Always run `git status` before committing** to confirm no unintended files are
+  staged.
+- **Never use unquoted shell redirects** for version specifiers in pip:
+  ```bash
+  # WRONG — >=6.0 is a shell redirect; creates a file named =6.0
+  pip install pyyaml>=6.0
+  # CORRECT — quote the specifier
+  pip install "pyyaml>=6.0"
+  ```
+
+The `.gitignore` on main already excludes `.venv/`, `venv/`, `__pycache__/`,
+`*.pyc`, `.env`, and `checkpoints/`. Orphan branches carry their own `.gitignore`
+(maintained by `scripts/bootstrap_agent_branches.py`); do not remove entries
+from it.
+
+---
+
+## 4. Git commit signing
+
+The sandbox may have GPG signing configured. Always disable it when committing:
+
+```bash
+git -c commit.gpgsign=false commit -m "your message"
+```
+
+---
+
+## 5. Pushing changes
+
+You cannot `git push` directly — the remote rejects it with 403.  
+Use `report_progress` tool to commit and push to the PR branch.
+
+Before calling `report_progress`, confirm that:
+1. `git status` shows only intentional staged/modified files.
+2. `git log --oneline -5` shows the expected linear history rooted in `origin/main`.
+
+---
+
+## 6. PR creation and base branch
+
+- Always set PR base to `main` (the default).
+- If a PR was accidentally created targeting an orphan branch, close it and
+  create a new one — do not attempt to rebase across unrelated histories.
+- Use `gh pr view --json baseRefName,headRefName` to verify before pushing.
+
+---
+
+## 7. Workflow file discipline
+
+- The stable filename for agent-track fan-out is
+  `.github/workflows/agent-track-workflows.yml` — edit in-place, never rename
+  or duplicate it.
+- When running `gh workflow run`, always pass `--ref main` to avoid a GraphQL
+  lookup for the default branch (which `GITHUB_TOKEN` cannot perform on push
+  events).
+- Stale workflow versions are retired by renaming to `*.yml.bak` (not `.yml`),
+  keeping them out of GitHub Actions while preserving local history.
+
+---
+
+## 8. Orphan branch `.gitignore` maintenance
+
+All orphan branches must have a comprehensive `.gitignore`. The template is
+maintained in `scripts/bootstrap_agent_branches.py` (`ORPHAN_GITIGNORE`
+constant). When re-bootstrapping branches (`--no-skip-existing`), the new
+`.gitignore` is written automatically.
+
+To manually propagate a `.gitignore` fix to all existing orphan branches:
+
+```bash
+python3 scripts/fix_orphan_gitignore.py
+```
+
+(See that script for details.)
