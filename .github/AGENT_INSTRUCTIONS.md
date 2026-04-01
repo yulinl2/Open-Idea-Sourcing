@@ -135,11 +135,11 @@ as guarded jobs inside `agent-track-workflows.yml`.  **Never add a new standalon
             • Add the op entry to the file-header comment block.
             • If the op needs extra inputs (e.g., branch list), add them under
               workflow_dispatch.inputs and register them in
-              scripts/retire_maintenance_op.py → OP_EXCLUSIVE_INPUTS.
+              .github/scripts/retire_maintenance_op.py → OP_EXCLUSIVE_INPUTS.
             • Add a final "Self-archive" step at the end of the job:
                 - name: Self-archive this operation
                   if: success()
-                  run: python3 scripts/retire_maintenance_op.py --op <op-name>
+                  run: python3 .github/scripts/retire_maintenance_op.py --op <op-name>
 
 2. DISPATCH Trigger once from the Actions UI:
                Actions → Agent track workflows → Run workflow → operation=<op>
@@ -161,7 +161,7 @@ safe.
 ### Registering future exclusive inputs
 
 When your new op needs custom inputs (like `branches`), add them to the
-`OP_EXCLUSIVE_INPUTS` dict in `scripts/retire_maintenance_op.py`:
+`OP_EXCLUSIVE_INPUTS` dict in `.github/scripts/retire_maintenance_op.py`:
 
 ```python
 OP_EXCLUSIVE_INPUTS: dict[str, list[str]] = {
@@ -176,9 +176,9 @@ on retire.  Set to `None` if there is no associated script:
 
 ```python
 OP_SCRIPTS: dict[str, str | None] = {
-    "patch-agent-review": "scripts/fix_orphan_agent_review.py",
-    "fix-gitignore": "scripts/fix_orphan_gitignore.py",
-    "my-new-op": "scripts/my_new_op.py",   # ← add here, or None
+    "patch-agent-review": ".github/scripts/fix_orphan_agent_review.py",
+    "fix-gitignore": ".github/scripts/fix_orphan_gitignore.py",
+    "my-new-op": ".github/scripts/my_new_op.py",   # ← add here, or None
 }
 ```
 
@@ -193,7 +193,7 @@ constant). When re-bootstrapping branches (`--no-skip-existing`), the new
 To manually propagate a `.gitignore` fix to all existing orphan branches:
 
 ```bash
-python3 scripts/fix_orphan_gitignore.py
+python3 .github/scripts/fix_orphan_gitignore.py
 ```
 
 (See that script for details.)

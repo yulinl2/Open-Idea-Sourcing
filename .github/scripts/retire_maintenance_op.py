@@ -44,8 +44,8 @@ OP_EXCLUSIVE_INPUTS: dict[str, list[str]] = {
 # script is deleted too so it doesn't linger as dead code on main.
 # Set to None if the op has no associated script to delete.
 OP_SCRIPTS: dict[str, str | None] = {
-    "patch-agent-review": "scripts/fix_orphan_agent_review.py",
-    "fix-gitignore": "scripts/fix_orphan_gitignore.py",
+    "patch-agent-review": ".github/scripts/fix_orphan_agent_review.py",
+    "fix-gitignore": ".github/scripts/fix_orphan_gitignore.py",
 }
 
 

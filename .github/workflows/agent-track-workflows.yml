@@ -112,11 +112,11 @@ jobs:
           python-version: "3.12.12"
 
       - name: Run fix script
-        run: python3 scripts/fix_orphan_gitignore.py
+        run: python3 .github/scripts/fix_orphan_gitignore.py
 
       - name: Self-archive this operation
         if: success()
-        run: python3 scripts/retire_maintenance_op.py --op fix-gitignore
+        run: python3 .github/scripts/retire_maintenance_op.py --op fix-gitignore
 
   # ------------------------------------------------------------------
   # Maintenance: patch the correct agent-review.yml onto infra-base
@@ -167,7 +167,7 @@ jobs:
       - name: Run patch script
         if: github.event.inputs.dry_run != 'true'
         run: |
-          python3 scripts/fix_orphan_agent_review.py \
+          python3 .github/scripts/fix_orphan_agent_review.py \
             --branches ${{ github.event.inputs.branches }}
 
       - name: Summary
@@ -183,4 +183,4 @@ jobs:
 
       - name: Self-archive this operation
         if: success() && github.event.inputs.dry_run != 'true'
-        run: python3 scripts/retire_maintenance_op.py --op patch-agent-review
+        run: python3 .github/scripts/retire_maintenance_op.py --op patch-agent-review
