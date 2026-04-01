@@ -216,7 +216,7 @@ EOF
             git fetch origin agent-reports
             git worktree add /tmp/agent-reports-branch origin/agent-reports
           else
-            git worktree add -b agent-reports /tmp/agent-reports-branch
+            git worktree add --detach /tmp/agent-reports-branch
             cd /tmp/agent-reports-branch
             git checkout --orphan agent-reports
             git rm -rf . > /dev/null 2>&1 || true
