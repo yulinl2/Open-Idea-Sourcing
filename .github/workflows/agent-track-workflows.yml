@@ -1,0 +1,66 @@
+name: Agent track workflows
+
+# Stable public entry-point for all agent-branch development.
+# Filename: agent-track-workflows.yml  (keep this name fixed; edit content in-place).
+# Stale versions are retired by renaming to a descriptive *.yml.bak name so local
+# dev history stays clear, e.g. agent-track-workflows.v1-fan-out-3tracks.yml.bak
+#
+# Current behaviour: fans out to all three agent tracks by triggering
+# agent-review.yml once per track in parallel.  Each dispatched run checks out
+# the appropriate agent-<track> branch, runs the agent, and publishes its
+# report to the agent-reports branch.
+#
+# Trigger matrix:
+#   • Manual (workflow_dispatch) — supply a paper URL and model
+#   • Push to main               — auto-fire with the default paper/model so
+#                                  every merge to main produces fresh reports
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "reports/**"
+      - "*.md"
+
+  workflow_dispatch:
+    inputs:
+      paper_url:
+        description: "URL of the paper to review (arXiv abstract or PDF)"
+        required: false
+        default: "https://arxiv.org/abs/2006.06138"
+      model:
+        description: "LLM model identifier (e.g. gpt-4o, gpt-4o-mini)"
+        required: false
+        default: "gpt-4o"
+
+jobs:
+  # ------------------------------------------------------------------
+  # Fan-out: dispatch agent-review.yml for every track in parallel.
+  # matrix.track drives 3 parallel runners from one job definition,
+  # so future edits only need to touch a single place.
+  # github.event.inputs.* is used (not inputs.*) so the expression
+  # evaluates safely on both workflow_dispatch and push events.
+  # ------------------------------------------------------------------
+  dispatch-tracks:
+    name: Dispatch agent-review (${{ matrix.track }})
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    strategy:
+      matrix:
+        track: [e2e, linear, reconstruct]
+    steps:
+      - name: Trigger agent-review for ${{ matrix.track }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PAPER_URL: ${{ github.event.inputs.paper_url || 'https://arxiv.org/abs/2006.06138' }}
+          MODEL: ${{ github.event.inputs.model || 'gpt-4o' }}
+          TRACK: ${{ matrix.track }}
+        run: |
+          gh workflow run agent-review.yml \
+            --repo "${{ github.repository }}" \
+            --field paper_url="$PAPER_URL" \
+            --field track="$TRACK" \
+            --field model="$MODEL"
+          echo "Dispatched agent-review for track=$TRACK"
