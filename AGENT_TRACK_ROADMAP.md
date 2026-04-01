@@ -305,17 +305,22 @@ This reads `checkpoints/stage_3_refs.json` as the input and re-runs stages 4–R
 
 ### Scientific purpose
 
-This track tests a different question from the other two: **can an agent independently
-reconstruct the methodology of a paper if it is given only the problem statement and an
-allowed reference set — without seeing the paper's own solution?**
+This track operationalizes novelty as **reconstruction distance**: how much effort
+(measured by mismatch between student's reconstruction and the actual paper) does it
+take to recover a paper's methodology from its problem statement and prior work alone?
 
-If the student can reconstruct a methodology that closely matches the paper's, the paper
-is likely derivative (the methodology was derivable from the given references). If the
-student arrives at something genuinely different, the paper may contain novel
-contribution.
+- A close reconstruction (verdict `MATCHED`) → the paper is largely derivable; the
+  contribution was already in the prior-work hull.
+- A large divergence (verdict `DIVERGED`) → the paper required a genuinely new leap;
+  that leap is the irreducible novel contribution.
 
-This is the **partial key stage**: the teacher withholds the solution key while giving
-just enough context to define the problem space.
+This is analogous to a **Wasserstein-like distance** between a paper and its prior-work
+hull, measured not by embedding similarity but by reconstruction difficulty. The student's
+effort and mismatch *is* the distance metric.
+
+The `agent-e2e` and `agent-linear` tracks retrieve and compare; this track
+**removes the paper from the picture entirely** and tests whether the methodology can
+be re-derived independently. The comparison verdict directly quantifies novelty.
 
 ### Design principles
 
@@ -356,11 +361,13 @@ just enough context to define the problem space.
 [Comparison pass]
     Compare student's methodology against the actual paper's approach.
     Note: components matched, components diverged, components missed.
+    Quantify: reconstruction distance (MATCHED = ~0, DIVERGED = ~1)
     │
     ▼
 [Output]  report.md
     Contains: hint used, student methodology, comparison table,
-              reconstruction verdict (MATCHED / PARTIAL / DIVERGED)
+              reconstruction verdict (MATCHED / PARTIAL / DIVERGED),
+              reconstruction distance score and evidence
 ```
 
 ### Tool set

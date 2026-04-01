@@ -53,9 +53,12 @@ End-to-end autonomous review baseline.
 Checkpointed linear workflow baseline. The exact number of stages is not sacred; the point is explicit ordered checkpoints.
 
 ### `agent-reconstruct`
-Freer reconstruction / branching / debate playground. This is the real discovery track.
-
-The baseline tracks exist for clean comparison. The reconstruction track exists for freer scientific exploration.
+The real discovery track. Novelty is operationalized as **reconstruction distance**: how
+much effort (and how many mismatches) does it take to reconstruct a paper's methodology
+from its problem statement and prior work alone? A close reconstruction implies the
+contribution is largely derivable; a large divergence implies genuine novelty. This is
+analogous to a Wasserstein-like distance between the paper and its prior-work hull —
+measured through reconstruction rather than embedding similarity.
 
 ## 4. Branch philosophy
 
