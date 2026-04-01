@@ -1,8 +1,13 @@
-name: Dispatch all agent reviews
+name: Agent track workflows
 
-# Fans out to all three agent tracks by triggering agent-review.yml once per
-# track.  Each dispatched run checks out the appropriate agent-<track> branch,
-# runs the agent, and publishes its report to the agent-reports branch.
+# Stable public entry-point for all agent-branch development.
+# Filename: agent-track-workflows.yml  (keep this name fixed; edit content in-place).
+# Stale versions are retired by renaming to *.yml.bak (hidden from GitHub Actions).
+#
+# Current behaviour: fans out to all three agent tracks by triggering
+# agent-review.yml once per track in parallel.  Each dispatched run checks out
+# the appropriate agent-<track> branch, runs the agent, and publishes its
+# report to the agent-reports branch.
 #
 # Trigger matrix:
 #   • Manual (workflow_dispatch) — supply a paper URL and model
