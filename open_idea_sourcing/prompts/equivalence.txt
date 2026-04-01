@@ -21,10 +21,6 @@ PRIOR ANALYSIS — Combination Check:
 {prior_combination}
 
 INSTRUCTIONS:
-- Base your evaluation ONLY on the reference papers listed above (REF-1,
-  REF-2, etc.).  Do NOT claim equivalence with methods or papers not
-  explicitly included in the reference list, even if you recognise them
-  from your training data.
 - Consider the prior analyses above as accumulated context. Build on the
   evidence already established; do not repeat their conclusions verbatim.
 - Respond with a structured analysis.

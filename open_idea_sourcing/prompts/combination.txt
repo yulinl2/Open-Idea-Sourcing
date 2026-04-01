@@ -18,9 +18,6 @@ PRIOR ANALYSIS — Duplication Check:
 {prior_duplication}
 
 INSTRUCTIONS:
-- Base your evaluation ONLY on the reference papers listed above (REF-1,
-  REF-2, etc.).  Do NOT attribute components to papers outside the reference
-  list, even if you recognise them from your training data.
 - Consider the prior duplication analysis above as context. Build on it;
   do not repeat its conclusions verbatim.
 - Respond with a structured analysis.

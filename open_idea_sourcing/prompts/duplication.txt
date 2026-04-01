@@ -15,9 +15,6 @@ REFERENCE PAPERS (most similar by text):
 {reference_papers}
 
 INSTRUCTIONS:
-- Base your evaluation ONLY on the reference papers listed above (REF-1,
-  REF-2, etc.). Do NOT claim duplication with any paper that is not
-  explicitly included in the reference list above.
 - Respond with a structured analysis.
 - Start with VERDICT: <HIGH|MEDIUM|LOW> (LOW = paper is NOT a duplicate
   of any listed reference).
