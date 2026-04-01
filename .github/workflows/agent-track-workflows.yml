@@ -26,6 +26,7 @@ on:
     paths-ignore:
       - "reports/**"
       - "*.md"
+      - ".github/workflows/**"
 
   workflow_dispatch:
     inputs:
@@ -113,6 +114,10 @@ jobs:
       - name: Run fix script
         run: python3 scripts/fix_orphan_gitignore.py
 
+      - name: Self-archive this operation
+        if: success()
+        run: python3 scripts/retire_maintenance_op.py --op fix-gitignore
+
   # ------------------------------------------------------------------
   # Maintenance: patch the correct agent-review.yml onto infra-base
   # and agent-* branches (adds push trigger, shell placeholder fix).
@@ -175,3 +180,7 @@ jobs:
             printf 'agent-review.yml updated on each branch that was outdated.\n' \
               >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Self-archive this operation
+        if: success() && github.event.inputs.dry_run != 'true'
+        run: python3 scripts/retire_maintenance_op.py --op patch-agent-review

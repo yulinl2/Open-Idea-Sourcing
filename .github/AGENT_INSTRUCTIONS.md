@@ -120,7 +120,59 @@ Before calling `report_progress`, confirm that:
 
 ---
 
-## 8. Orphan branch `.gitignore` maintenance
+## 9. Maintenance operations — lifecycle convention
+
+One-shot maintenance operations (e.g., fix a config on all orphan branches) live
+as guarded jobs inside `agent-track-workflows.yml`.  **Never add a new standalone
+`.yml` workflow file** — always inline into the existing unified entry-point.
+
+### Lifecycle: ADD → DISPATCH → AUTO-RETIRE
+
+```
+1. ADD      Add a guarded job to agent-track-workflows.yml:
+               if: github.event.inputs.operation == '<op-name>'
+            • Add the op name to the `operation` input description.
+            • Add the op entry to the file-header comment block.
+            • If the op needs extra inputs (e.g., branch list), add them under
+              workflow_dispatch.inputs and register them in
+              scripts/retire_maintenance_op.py → OP_EXCLUSIVE_INPUTS.
+            • Add a final "Self-archive" step at the end of the job:
+                - name: Self-archive this operation
+                  if: success()
+                  run: python3 scripts/retire_maintenance_op.py --op <op-name>
+
+2. DISPATCH Trigger once from the Actions UI:
+               Actions → Agent track workflows → Run workflow → operation=<op>
+
+3. AUTO-RETIRE On success the Self-archive step runs retire_maintenance_op.py,
+            which strips the op from agent-track-workflows.yml and pushes the
+            change to main.  The op disappears from the Run-workflow dropdown
+            automatically — no follow-up PR needed.
+```
+
+### Why `.github/workflows/**` is in the push trigger's `paths-ignore`
+
+The push trigger's `paths-ignore` includes `.github/workflows/**` so that when
+`retire_maintenance_op.py` pushes the cleaned-up workflow YAML to main, it does
+not trigger another fan-out review run.  Code changes (the things that should
+trigger reviews) do not live under `.github/workflows/`, so this exclusion is
+safe.
+
+### Registering future exclusive inputs
+
+When your new op needs custom inputs (like `branches`), add them to the
+`OP_EXCLUSIVE_INPUTS` dict in `scripts/retire_maintenance_op.py`:
+
+```python
+OP_EXCLUSIVE_INPUTS: dict[str, list[str]] = {
+    "patch-agent-review": ["branches", "dry_run"],
+    "fix-gitignore": [],
+    "my-new-op": ["my-extra-input"],   # ← add here
+}
+```
+
+The retire script uses this dict to know which `workflow_dispatch` input blocks
+to remove when the op is retired.
 
 All orphan branches must have a comprehensive `.gitignore`. The template is
 maintained in `scripts/bootstrap_agent_branches.py` (`ORPHAN_GITIGNORE`
