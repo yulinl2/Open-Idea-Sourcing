@@ -21,6 +21,21 @@ on:
         description: "Report format: text | markdown | json | pdf (default: markdown)"
         required: false
         default: "markdown"
+      no_online_search:
+        description: "Disable Semantic Scholar keyword search (true/false, default: false)"
+        required: false
+        type: boolean
+        default: false
+      no_paper_cited_refs:
+        description: "Skip fetching references cited by the paper from Semantic Scholar (true/false, default: false)"
+        required: false
+        type: boolean
+        default: false
+      no_user_refs:
+        description: "Skip loading the bundled user reference corpus data/references.json (true/false, default: false)"
+        required: false
+        type: boolean
+        default: false
   workflow_run:
     workflows: ["CI"]
     branches: ["main"]
@@ -79,16 +94,25 @@ jobs:
           PAPERS_FILE: ${{ inputs.papers_file }}
           REFERENCES: ${{ inputs.references }}
           OUTPUT_FORMAT: ${{ inputs.output_format }}
+          NO_ONLINE_SEARCH: ${{ inputs.no_online_search }}
+          NO_PAPER_CITED_REFS: ${{ inputs.no_paper_cited_refs }}
+          NO_USER_REFS: ${{ inputs.no_user_refs }}
           GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
           GH_PAPERS_FILE: ${{ github.event.inputs.papers_file }}
           GH_REFERENCES: ${{ github.event.inputs.references }}
           GH_OUTPUT_FORMAT: ${{ github.event.inputs.output_format }}
+          GH_NO_ONLINE_SEARCH: ${{ github.event.inputs.no_online_search }}
+          GH_NO_PAPER_CITED_REFS: ${{ github.event.inputs.no_paper_cited_refs }}
+          GH_NO_USER_REFS: ${{ github.event.inputs.no_user_refs }}
         run: |
           # Fall back to github.event.inputs for re-run compatibility
           PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"
           PAPERS_FILE="${PAPERS_FILE:-$GH_PAPERS_FILE}"
           REFERENCES="${REFERENCES:-$GH_REFERENCES}"
           OUTPUT_FORMAT="${OUTPUT_FORMAT:-$GH_OUTPUT_FORMAT}"
+          NO_ONLINE_SEARCH="${NO_ONLINE_SEARCH:-${GH_NO_ONLINE_SEARCH:-false}}"
+          NO_PAPER_CITED_REFS="${NO_PAPER_CITED_REFS:-${GH_NO_PAPER_CITED_REFS:-false}}"
+          NO_USER_REFS="${NO_USER_REFS:-${GH_NO_USER_REFS:-false}}"
 
           mkdir -p reports
 
@@ -99,11 +123,18 @@ jobs:
             REFS_FLAG="--references data/$REFERENCES"
           fi
 
+          # Build source-toggle flags from boolean inputs.
+          SOURCE_FLAGS=""
+          if [ "$NO_ONLINE_SEARCH" = "true" ]; then SOURCE_FLAGS="$SOURCE_FLAGS --no-online-search"; fi
+          if [ "$NO_PAPER_CITED_REFS" = "true" ]; then SOURCE_FLAGS="$SOURCE_FLAGS --no-paper-cited-refs"; fi
+          if [ "$NO_USER_REFS" = "true" ]; then SOURCE_FLAGS="$SOURCE_FLAGS --no-user-refs"; fi
+
           # URL takes precedence over batch file; batch file is relative to data/
           if [ -n "$PAPER_URL" ]; then
             # shellcheck disable=SC2086
             python review_paper.py "$PAPER_URL" \
               $REFS_FLAG \
+              $SOURCE_FLAGS \
               --format "${OUTPUT_FORMAT:-markdown}" \
               --reports-dir reports
           else
@@ -111,6 +142,7 @@ jobs:
             python review_paper.py \
               --papers-file "data/${PAPERS_FILE:-test_papers.ndjson}" \
               $REFS_FLAG \
+              $SOURCE_FLAGS \
               --format "${OUTPUT_FORMAT:-markdown}" \
               --reports-dir reports
           fi

@@ -351,6 +351,39 @@ def _load_config(path: str | None) -> dict:
         return {}
 
 
+def _parse_bool_env(name: str, default: bool = False) -> bool:
+    """Return a boolean from an environment variable.
+
+    Accepts both numeric (``"0"``/``"1"``) and word (``"false"``/``"true"``)
+    representations so the function works regardless of whether the caller
+    is a shell script that exports ``0``/``1`` or a GitHub Actions workflow
+    that serialises boolean inputs as ``"false"``/``"true"``.
+
+    Parameters
+    ----------
+    name:
+        Name of the environment variable to read.
+    default:
+        Value returned when the variable is unset or contains an
+        unrecognised string (anything other than ``"0"``, ``"1"``,
+        ``"true"``, ``"false"``, ``"yes"``, ``"no"``, ``"on"``,
+        ``"off"`` — all case-insensitive).
+
+    Returns
+    -------
+    bool
+        ``True`` for truthy values (``"1"``, ``"true"``, ``"yes"``, ``"on"``);
+        ``False`` for falsy values (``"0"``, ``"false"``, ``"no"``, ``"off"``);
+        *default* otherwise.
+    """
+    val = os.environ.get(name, "").strip().lower()
+    if val in ("1", "true", "yes", "on"):
+        return True
+    if val in ("0", "false", "no", "off"):
+        return False
+    return default
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="review_paper",
@@ -449,7 +482,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-user-refs",
         action="store_true",
-        default=bool(int(os.environ.get("NO_USER_REFS", "0"))),
+        default=_parse_bool_env("NO_USER_REFS"),
         help=(
             "Skip loading the user reference corpus (data/references.json). "
             "Useful for ablation studies that isolate online retrieval only. "
@@ -459,7 +492,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-paper-cited-refs",
         action="store_true",
-        default=bool(int(os.environ.get("NO_PAPER_CITED_REFS", "0"))),
+        default=_parse_bool_env("NO_PAPER_CITED_REFS"),
         help=(
             "Skip retrieving the paper's own citation list from Semantic Scholar. "
             "Useful for ablation studies that test keyword-search-only retrieval. "
@@ -527,7 +560,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--llm-parser",
         action="store_true",
-        default=bool(int(os.environ.get("LLM_PARSER", "0"))),
+        default=_parse_bool_env("LLM_PARSER"),
         help=(
             "Use the LLM-based paper parser for Stage 1 (more accurate title, "
             "abstract, and section extraction). Falls back to the regex parser "
