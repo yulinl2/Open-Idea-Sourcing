@@ -1,205 +1,169 @@
 # PROJECT_INSTRUCTIONS_AGENT.md
 
-This document defines the **agent track** development goal for Open-Idea-Sourcing. It is meant to guide coding agents, review agents, and future human maintenance. The purpose of the agent track is **not** to imitate the old programmatic pipeline. Its purpose is to directly pursue the real scientific target: an automated **research-IP judge** that can tell whether a paper is genuinely novel or largely derivable from prior work, identify the likely source ingredients, and isolate the true residual contribution.
+Charter for the **agent track** of Open-Idea-Sourcing. This document guides coding agents, review agents, and human maintainers. Read it before touching any agent-track branch.
+
+---
 
 ## 1. Mission
 
-Given a target paper and access to searchable literature/tools, the system should determine whether the paper's contribution is:
-- largely duplicated from known work,
-- mainly a recombination of known ingredients,
-- methodologically equivalent to prior work under reframing,
-- or genuinely novel in some technically meaningful component.
+Build an automated **research-IP judge**: given a target paper and access to searchable literature, determine whether its contribution is genuinely novel or largely derivable from prior work, identify the likely source ingredients, and isolate the true irreducible residual.
 
-The output should not be a generic related-work summary. It should be a **derivation audit**:
+The output is not a related-work summary. It is a **derivation audit**:
 - what came from where,
 - what was merely assembled,
-- what is equivalent in substance,
-- and what appears to be the irreducible new residual.
+- what is equivalent in substance under reframing,
+- and what, if anything, is the irreducible new residual.
 
-## 2. Core judgment standard
+---
 
-Judge **technical substance**, not wording novelty.
+## 2. Judgment standard
 
-Do not over-reward:
-- new terminology,
-- new framing,
-- section length,
-- citation omission,
+Judge **technical substance**, not surface novelty.
+
+Do not reward:
+- new terminology or framing alone,
+- longer sections or more citations,
 - low textual similarity,
-- or a new application domain by itself.
+- a new application domain by itself.
 
-Instead, judge:
+Judge:
 - what problem is actually being solved,
-- what mechanism actually does the work,
+- what mechanism does the core work,
 - which assumptions are load-bearing,
-- where the real bottleneck is,
-- what implementation/proof/algorithmic device creates the leap,
-- and whether these pieces are already reconstructible from prior work.
+- what specific algorithmic, proof, or implementation device creates the leap,
+- and whether that device is already reconstructible from prior work.
+
+---
 
 ## 3. Track split
 
-The agent family is split into three branch-local tracks:
+Three independent, branch-local tracks — three separate worlds, not one shared ontology:
 
-- `agent-e2e`
-- `agent-linear`
-- `agent-reconstruct`
+| Track | Branch | Character |
+|-------|--------|-----------|
+| `agent-e2e` | `agent-e2e` | End-to-end autonomous baseline: hand the agent a paper and let it drive its own tool loop with no externally imposed stage ordering. |
+| `agent-linear` | `agent-linear` | Staged, auditable baseline: explicit ordered checkpoints, each serialised so any stage can be re-run independently. |
+| `agent-reconstruct` | `agent-reconstruct` | Reconstruction track: teacher extracts a problem hint; student tries to reconstruct the methodology from the hint and an allowed reference set alone — no access to the paper's solution. The intuition is that reconstruction difficulty is a signal of genuine novelty. v1 produces a qualitative verdict (`MATCHED / PARTIAL / DIVERGED`). |
 
-These are **three separate worlds**, not one crowded ontology.
+> **Long-term scientific aspiration (not a v1 goal):** The reconstruction-difficulty signal could eventually be formalised as a distance metric between a paper and its prior-work hull — analogous to a Wasserstein distance measured through reconstruction effort rather than embedding similarity. How to formulate and compute this rigorously is an open research question. v1 does not attempt it.
 
-### `agent-e2e`
-End-to-end autonomous review baseline.
+---
 
-### `agent-linear`
-Checkpointed linear workflow baseline. The exact number of stages is not sacred; the point is explicit ordered checkpoints.
+## 4. Branch and infra philosophy
 
-### `agent-reconstruct`
-The real discovery track. The key intuition: if an agent can independently reconstruct a
-paper's methodology from nothing but the problem statement and prior work, the paper is
-likely derivative. If the reconstruction diverges significantly, the paper likely contains
-genuine novel contribution.
+- One orphan `infra-base` branch holds the shared execution shell (`infra/`). It is infrastructure, not methodology.
+- Three clean track branches hold the actual methodologies. Track branches cherry-pick from `infra-base`; they never merge into each other or back into `main`.
+- Each track branch is a self-contained world. Do not prematurely canonise speculative roles or future abstractions in shared modules.
 
-*(Long-term vision, not a v1 formulation: this track aspires to operationalize novelty as
-a Wasserstein-like distance between the paper and its prior-work hull — measured through
-reconstruction difficulty rather than embedding similarity. v1 produces a qualitative
-verdict only; the quantitative distance metric is future work.)*
+---
 
-## 4. Branch philosophy
+## 5. Versioning
 
-Do **not** mix all speculative roles and future abstractions into one global module zoo.
+- The active implementation always keeps the canonical filename: `agent.py`.
+- Frozen snapshots sit beside it: `agent_e2e_v1_0_0.py`.
+- Every `agent.py` declares `AGENT_IMPL_ID = "e2e_v1_0_0"` at the top; this identifier is echoed in every `report.md` front matter.
+- Milestones are marked by adjacent frozen copies and Git tags (`agent-e2e-v1.0.0`).
+- No directory reorganisation is needed to preserve a snapshot.
 
-Preferred structure:
-- one small `infra-base` branch for truly shared execution shell only,
-- three clean track branches for the actual methodologies,
-- cherry-pick infra improvements into tracks only when needed.
+---
 
-Each track branch should contain only its own current worldview. If a role may disappear later, do **not** prematurely canonize it in a shared top-level taxonomy.
+## 6. Audit-first output
 
-## 5. Versioning philosophy
+Optimise for **audit elegance**, not framework elegance.
 
-Do **not** create large version-folder forests on day 1.
+- GitHub-first, phone-friendly.
+- Minimum hidden state. Everything important is visible in files.
+- One canonical `report.md` per run. No separate sidecar databases.
+- The repo behaves like a lab notebook.
 
-Preferred rule:
-- the active implementation keeps the canonical filename, e.g. `agent.py`
-- frozen snapshots sit beside it in the same folder, e.g. `agent_e2e_v1_0_0.py`
-- the active script declares a visible implementation identifier, e.g.
-  `AGENT_IMPL_ID = "e2e_v1_0_0"`
-- that identifier must be automatically logged into run audit outputs
+### `report.md` required structure
 
-Milestones should be preserved by:
-- adjacent frozen copies for local human-readable history
-- Git tags when a meaningful milestone is reached
+Every run must produce one `report.md` with:
 
-No extra rewiring should be required just to preserve an implementation snapshot.
+| Section | Purpose |
+|---------|---------|
+| YAML front matter | Run metadata (see §7) |
+| Table of contents | Clickable navigation |
+| Executive summary | One-paragraph verdict summary |
+| Final verdict | `NOVEL / COMBINATION / EQUIVALENT / DUPLICATE` with confidence |
+| Technical contribution decomposition | Break the paper's contribution into units |
+| Strongest prior-work evidence | Top 3–5 references with derivation notes |
+| Derivation map | Table: component → likely source paper → derivation type |
+| Residual novelty | What is genuinely new, if anything |
+| Uncertainties | What was not found, what could not be verified |
+| Audit appendix | Tool calls, search queries, timestamps |
 
-## 6. Human-readability principle
+---
 
-Optimize for **audit elegance**, not framework elegance.
+## 7. Required run metadata
 
-This means:
-- GitHub-first
-- phone-friendly
-- minimum hidden state
-- deterministic file layout
-- everything important visible in files
-- no requirement that humans read Python just to understand a run
+Every `report.md` YAML front matter must include:
 
-The repo should behave like a lab notebook, not a black box.
+```
+track, impl_id, paper_id, paper_source, model, tool_list,
+start_time, finish_time, git_commit,
+final_verdict, confidence, main_cited_evidence
+```
 
-## 7. Canonical run artifact
+Optionally: `response_id` when the SDK returns a run/response ID.
 
-A normal run should produce **one canonical Markdown report**.
+This enables later comparison across runs, branches, and frozen snapshots from the file alone.
 
-Default:
-- `report.md`
+---
 
-Optional:
-- `response.json` only when raw payload retention is genuinely useful
-- attachments only when bulky debug materials are needed
+## 8. Tool philosophy: maximally agentic
 
-The report must be structured enough that later housekeeping can reconstruct the key run state from it.
+Use the model's **native `web_search` tool** as the primary literature discovery mechanism. Let the agent decide what to search, in what order, and when it has enough evidence. Do not build custom retrieval pipelines for what the model can do natively.
 
-### `report.md` must contain:
-- YAML front matter with run metadata
-- clickable table of contents
-- executive summary
-- final verdict
-- technical contribution decomposition
-- strongest prior-work evidence
-- derivation map
-- residual novelty
-- uncertainties
-- audit appendix
-- embedded machine-readable JSON blocks where useful
+`infra/search_tools.py` (Semantic Scholar, arXiv) exists as a **last-resort fallback only** — for when structured citation metadata (canonical IDs, citation counts) is genuinely needed and native search is insufficient.
 
-Principle:
-- keep the **data model rich**
-- keep the **file model minimal**
+The one deliberate exception: the `agent-reconstruct` student agent has **no search tools by design** — its task is reconstruction from the provided reference set alone, not open retrieval.
 
-## 8. Required metadata in every run report
+The runtime is a support layer. The product is the derivation audit.
 
-At minimum, each report must preserve:
-- `track`
-- `impl_id`
-- `paper_id`
-- `paper source`
-- `model`
-- `tool list`
-- `response_id` if available
-- start / finish timestamps
-- Git commit hash if available
-- final verdict
-- confidence
-- main cited evidence
+---
 
-This is necessary for later comparison across runs, branches, and frozen snapshots.
+## 9. What the agent must produce
 
-## 9. Tool/runtime philosophy
+For each target paper:
 
-The agent track should use a programmable agentic runtime, not naive plain chat completion as the main long-term substrate. The current repo implementation was closer to a hand-built pipeline wrapped around simple completion-style calls; the agent track should move toward a run-oriented surface where one paper review is treated as a first-class task/run with auditable metadata and tool usage.
-
-**Maximally agentic.** Do not implement custom search functions for what the model can do natively. Use the model's built-in `web_search` tool (e.g., via the OpenAI Responses API) as the primary literature discovery mechanism — let the agent decide what to search, in what order, and when it has enough evidence. Custom `infra/search_tools.py` (Semantic Scholar, arXiv) is a last-resort fallback for structured metadata, not a substitute for the model's native capabilities.
-
-However, do **not** let framework complexity dominate readability. The runtime is a support layer, not the product. The product is the derivation audit.
-
-## 10. What the agent must do
-
-For each target paper, the agent must:
-
-1. Identify the paper's actual technical contribution.
-2. Break that contribution into meaningful technical units.
+1. Identify the actual technical contribution.
+2. Decompose it into meaningful technical units.
 3. Search broadly for plausible prior-work sources.
-4. Compare the target against the strongest candidate sources.
-5. Build a derivation map from target components to likely source papers.
-6. Judge duplication / recombination / equivalence / novelty.
-7. Identify the residual genuine contribution.
-8. Be explicit about uncertainty when retrieval or evidence is weak.
+4. Compare the target against the strongest candidates.
+5. Build a derivation map: component → likely source.
+6. Judge: duplication / recombination / equivalence / novelty.
+7. Isolate the residual genuine contribution.
+8. Explicitly flag uncertainty where retrieval or evidence is weak.
 
-## 11. Anti-goals
+---
 
-Do **not** optimize for:
+## 10. Anti-goals
+
+Do **not** build:
 - a crowded global role taxonomy,
-- premature folderized version trees,
-- software-engineering ornament,
-- hidden framework state,
-- report archaeology across many disconnected sidecar files,
-- or a giant main branch mixing incompatible partial designs.
+- premature version-folder forests,
+- framework ornament that hides what the agent actually did,
+- or a monolithic main branch mixing incompatible partial designs.
 
 Do **not** confuse:
 - surface novelty with real novelty,
 - low textual overlap with conceptual originality,
 - or implementation busyness with scientific contribution.
 
-## 12. Immediate success criteria
+---
 
-The current agent track is successful if:
+## 11. Success criteria
 
-- each branch (`agent-e2e`, `agent-linear`, `agent-reconstruct`) remains clean and self-explanatory,
-- frozen copies are easy to compare beside the active implementation,
-- every run can be audited mainly from one `report.md`,
-- implementation identity is always logged,
-- and a domain expert can read the report and say:
-  "Yes, this is the real derivation story I wanted to know."
+The agent track is working if:
 
-## 13. One-sentence charter
+- each track branch is clean, self-explanatory, and independently runnable,
+- every run can be fully audited from one `report.md`,
+- implementation identity is always logged and cross-run comparison is trivial,
+- and a domain expert reads the report and says: *"Yes, this is the derivation story I wanted to know."*
 
-Build a GitHub-first, audit-readable, branch-local **agentic research-IP judge** whose baseline tracks are cleanly comparable, whose reconstruction track can evolve aggressively, and whose implementation history stays visible through adjacent frozen snapshots rather than hidden framework state.
+---
+
+## 12. One-sentence charter
+
+Build a GitHub-first, audit-readable, branch-isolated **agentic research-IP judge** whose baseline tracks are cleanly comparable, whose reconstruction track can evolve toward a rigorous novelty signal, and whose implementation history stays visible through adjacent frozen snapshots rather than hidden framework state.
