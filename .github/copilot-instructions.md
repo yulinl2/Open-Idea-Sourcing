@@ -1,7 +1,7 @@
 # Copilot Coding Agent Instructions
 
 These rules apply to every Copilot coding agent session in this repository.
-See `AGENT_INSTRUCTIONS.md` for the full rationale behind each rule.
+See `.github/AGENT_INSTRUCTIONS.md` for the full rationale behind each rule.
 
 ---
 

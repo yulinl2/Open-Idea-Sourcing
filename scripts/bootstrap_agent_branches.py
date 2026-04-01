@@ -57,7 +57,7 @@ def back_to_main() -> None:
 # ---------------------------------------------------------------------------
 
 # Comprehensive .gitignore for orphan agent branches.
-# Must stay in sync with the template in AGENT_INSTRUCTIONS.md §8.
+# Must stay in sync with the template in .github/AGENT_INSTRUCTIONS.md §8.
 ORPHAN_GITIGNORE = textwrap.dedent("""\
     __pycache__/
     *.pyc
