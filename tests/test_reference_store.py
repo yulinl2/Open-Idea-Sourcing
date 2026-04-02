@@ -214,3 +214,131 @@ class TestReferenceStoreSourceTracking:
         assert store.get_source("b1") == "user"
         assert store.get_source("u1") == "user"
         assert store.get_source("o1") == "online"
+
+
+# ---------------------------------------------------------------------------
+# Title-based deduplication tests
+# ---------------------------------------------------------------------------
+
+
+class TestTitleBasedDedup:
+    """ReferenceStore must reject papers whose titles match an existing entry."""
+
+    def test_exact_duplicate_title_different_id_rejected(self):
+        """Adding a paper with the same title under a different ID is a no-op."""
+        store = ReferenceStore()
+        title = "Model-Robust Counterfactual Prediction Method"
+        p1 = ReferencePaper(id="id1", title=title, abstract="")
+        p2 = ReferencePaper(id="id2", title=title, abstract="")
+        store.add(p1)
+        store.add(p2)
+        assert len(store) == 1
+        assert store.get("id1") is not None
+        assert store.get("id2") is None
+
+    def test_case_insensitive_title_dedup(self):
+        """Title comparison is case-insensitive."""
+        store = ReferenceStore()
+        p1 = ReferencePaper(id="id1", title="Model-Robust Counterfactual Prediction Method", abstract="")
+        p2 = ReferencePaper(id="id2", title="MODEL-ROBUST COUNTERFACTUAL PREDICTION METHOD", abstract="")
+        store.add(p1)
+        store.add(p2)
+        assert len(store) == 1
+
+    def test_garbled_prefix_title_dedup(self):
+        """A garbled PDF-extraction prefix is detected via suffix containment.
+
+        S2 sometimes returns a paper under two IDs: one with a clean title and
+        one with a garbled header prepended (e.g. journal/date artefacts).
+        The clean title should be kept; the garbled duplicate should be rejected.
+        """
+        from open_idea_sourcing.reference_store import _MIN_TITLE_SUFFIX_LEN
+        clean_title = "Model-Robust Counterfactual Prediction Method for Long Papers"
+        garbled_title = "ST ] 2 8 M ay 2 01 8 1 " + clean_title
+        # Verify the clean title is long enough to trigger the check
+        from open_idea_sourcing.reference_store import _alphanum_title_key
+        assert len(_alphanum_title_key(clean_title)) >= _MIN_TITLE_SUFFIX_LEN
+
+        store = ReferenceStore()
+        p1 = ReferencePaper(id="clean", title=clean_title, abstract="")
+        p2 = ReferencePaper(id="garbled", title=garbled_title, abstract="")
+
+        # Add the clean title first; the garbled duplicate must be rejected.
+        store.add(p1)
+        store.add(p2)
+        assert len(store) == 1
+        assert store.get("clean") is not None
+        assert store.get("garbled") is None
+
+    def test_garbled_added_first_clean_rejected(self):
+        """The first-added entry wins regardless of which title looks cleaner."""
+        clean_title = "Model-Robust Counterfactual Prediction Method for Long Papers"
+        garbled_title = "ST ] 2 8 M ay 2 01 8 1 " + clean_title
+
+        store = ReferenceStore()
+        p_garbled = ReferencePaper(id="garbled", title=garbled_title, abstract="")
+        p_clean = ReferencePaper(id="clean", title=clean_title, abstract="")
+        store.add(p_garbled)
+        store.add(p_clean)
+        assert len(store) == 1
+        assert store.get("garbled") is not None
+        assert store.get("clean") is None
+
+    def test_distinct_titles_both_added(self):
+        """Two papers with genuinely different titles are both kept."""
+        store = ReferenceStore()
+        p1 = ReferencePaper(id="a", title="Conformal Prediction Under Covariate Shift", abstract="")
+        p2 = ReferencePaper(id="b", title="Distribution-Free Causal Inference via Counterfactual Prediction", abstract="")
+        store.add(p1)
+        store.add(p2)
+        assert len(store) == 2
+
+    def test_short_title_not_deduplicated_as_suffix(self):
+        """Short titles below the suffix threshold are not collapsed."""
+        from open_idea_sourcing.reference_store import _MIN_TITLE_SUFFIX_LEN, _alphanum_title_key
+        short_title = "GPT-4"
+        longer_title = "A Survey of Approaches Including GPT-4"
+        # The short title must be below the threshold
+        assert len(_alphanum_title_key(short_title)) < _MIN_TITLE_SUFFIX_LEN
+
+        store = ReferenceStore()
+        store.add(ReferencePaper(id="s", title=short_title, abstract=""))
+        store.add(ReferencePaper(id="l", title=longer_title, abstract=""))
+        # Both must be kept because the short title is below the dedup threshold
+        assert len(store) == 2
+
+    def test_same_id_readded_is_updated(self):
+        """Re-adding the same paper ID always updates the record (no dedup block)."""
+        store = ReferenceStore()
+        title = "Model-Robust Counterfactual Prediction Method"
+        p1 = ReferencePaper(id="id1", title=title, abstract="original")
+        p2 = ReferencePaper(id="id1", title=title, abstract="updated")
+        store.add(p1)
+        store.add(p2)
+        assert len(store) == 1
+        assert store.get("id1").abstract == "updated"
+
+    def test_remove_clears_title_index(self):
+        """After removing a paper, its title slot is freed for a new entry."""
+        title = "Model-Robust Counterfactual Prediction Method"
+        store = ReferenceStore()
+        p1 = ReferencePaper(id="id1", title=title, abstract="")
+        p2 = ReferencePaper(id="id2", title=title, abstract="")
+        store.add(p1)
+        store.remove("id1")
+        # Now the title slot is free; adding a different ID with the same title succeeds.
+        store.add(p2)
+        assert len(store) == 1
+        assert store.get("id2") is not None
+
+    def test_title_dedup_source_priority_preserved(self):
+        """When a title-duplicate is rejected, the canonical entry's source is
+        updated if the new entry's source has higher priority."""
+        title = "Model-Robust Counterfactual Prediction Method"
+        store = ReferenceStore()
+        p_online = ReferencePaper(id="id_online", title=title, abstract="")
+        p_user = ReferencePaper(id="id_user", title=title, abstract="")
+        store.add(p_online, source="online")
+        store.add(p_user, source="user")  # higher priority; should upgrade the canonical
+        assert len(store) == 1
+        assert store.get_source("id_online") == "user"

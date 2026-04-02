@@ -27,6 +27,21 @@ on:
           - text
           - json
           - pdf
+      online_search:
+        description: "Enable Semantic Scholar keyword search (default: true)"
+        required: false
+        type: boolean
+        default: true
+      paper_cited_refs:
+        description: "Fetch references cited by the paper from Semantic Scholar (default: true)"
+        required: false
+        type: boolean
+        default: true
+      user_refs:
+        description: "Load the bundled user reference corpus data/references.json (default: true)"
+        required: false
+        type: boolean
+        default: true
   workflow_run:
     workflows: ["CI"]
     branches: ["main"]
@@ -85,16 +100,28 @@ jobs:
           PAPERS_FILE: ${{ inputs.papers_file }}
           REFERENCES: ${{ inputs.references }}
           OUTPUT_FORMAT: ${{ inputs.output_format }}
+          ONLINE_SEARCH: ${{ inputs.online_search }}
+          PAPER_CITED_REFS: ${{ inputs.paper_cited_refs }}
+          USER_REFS: ${{ inputs.user_refs }}
           GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
           GH_PAPERS_FILE: ${{ github.event.inputs.papers_file }}
           GH_REFERENCES: ${{ github.event.inputs.references }}
           GH_OUTPUT_FORMAT: ${{ github.event.inputs.output_format }}
+          GH_ONLINE_SEARCH: ${{ github.event.inputs.online_search }}
+          GH_PAPER_CITED_REFS: ${{ github.event.inputs.paper_cited_refs }}
+          GH_USER_REFS: ${{ github.event.inputs.user_refs }}
         run: |
           # Fall back to github.event.inputs for re-run compatibility
           PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"
           PAPERS_FILE="${PAPERS_FILE:-$GH_PAPERS_FILE}"
           REFERENCES="${REFERENCES:-$GH_REFERENCES}"
           OUTPUT_FORMAT="${OUTPUT_FORMAT:-$GH_OUTPUT_FORMAT}"
+          ONLINE_SEARCH="${ONLINE_SEARCH:-${GH_ONLINE_SEARCH:-true}}"
+          PAPER_CITED_REFS="${PAPER_CITED_REFS:-${GH_PAPER_CITED_REFS:-true}}"
+          USER_REFS="${USER_REFS:-${GH_USER_REFS:-true}}"
+
+          # Export as env vars so review_paper.py can read them via _parse_bool_env.
+          export ONLINE_SEARCH PAPER_CITED_REFS USER_REFS
 
           mkdir -p reports
 

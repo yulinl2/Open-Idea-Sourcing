@@ -351,6 +351,39 @@ def _load_config(path: str | None) -> dict:
         return {}
 
 
+def _parse_bool_env(name: str, default: bool = False) -> bool:
+    """Return a boolean from an environment variable.
+
+    Accepts both numeric (``"0"``/``"1"``) and word (``"false"``/``"true"``)
+    representations so the function works regardless of whether the caller
+    is a shell script that exports ``0``/``1`` or a GitHub Actions workflow
+    that serialises boolean inputs as ``"false"``/``"true"``.
+
+    Parameters
+    ----------
+    name:
+        Name of the environment variable to read.
+    default:
+        Value returned when the variable is unset or contains an
+        unrecognised string (anything other than ``"0"``, ``"1"``,
+        ``"true"``, ``"false"``, ``"yes"``, ``"no"``, ``"on"``,
+        ``"off"`` — all case-insensitive).
+
+    Returns
+    -------
+    bool
+        ``True`` for truthy values (``"1"``, ``"true"``, ``"yes"``, ``"on"``);
+        ``False`` for falsy values (``"0"``, ``"false"``, ``"no"``, ``"off"``);
+        *default* otherwise.
+    """
+    val = os.environ.get(name, "").strip().lower()
+    if val in ("1", "true", "yes", "on"):
+        return True
+    if val in ("0", "false", "no", "off"):
+        return False
+    return default
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="review_paper",
@@ -438,32 +471,32 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-online-search",
         action="store_true",
-        default=False,
+        default=not _parse_bool_env("ONLINE_SEARCH", default=True),
         help=(
             "Disable automatic online reference search via the Semantic "
             "Scholar API (enabled by default).  Use this flag when working "
             "offline or when you want to rely solely on a local --references "
-            "file."
+            "file.  Controlled by ONLINE_SEARCH=false env var."
         ),
     )
     parser.add_argument(
         "--no-user-refs",
         action="store_true",
-        default=bool(int(os.environ.get("NO_USER_REFS", "0"))),
+        default=not _parse_bool_env("USER_REFS", default=True),
         help=(
             "Skip loading the user reference corpus (data/references.json). "
             "Useful for ablation studies that isolate online retrieval only. "
-            "Controlled by NO_USER_REFS=1 env var."
+            "Controlled by USER_REFS=false env var."
         ),
     )
     parser.add_argument(
         "--no-paper-cited-refs",
         action="store_true",
-        default=bool(int(os.environ.get("NO_PAPER_CITED_REFS", "0"))),
+        default=not _parse_bool_env("PAPER_CITED_REFS", default=True),
         help=(
             "Skip retrieving the paper's own citation list from Semantic Scholar. "
             "Useful for ablation studies that test keyword-search-only retrieval. "
-            "Controlled by NO_PAPER_CITED_REFS=1 env var."
+            "Controlled by PAPER_CITED_REFS=false env var."
         ),
     )
     parser.add_argument(
@@ -527,7 +560,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--llm-parser",
         action="store_true",
-        default=bool(int(os.environ.get("LLM_PARSER", "0"))),
+        default=_parse_bool_env("LLM_PARSER"),
         help=(
             "Use the LLM-based paper parser for Stage 1 (more accurate title, "
             "abstract, and section extraction). Falls back to the regex parser "
@@ -788,33 +821,16 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
         online_searcher: OnlineReferenceSearch | None = None
         _submitted_year: int | None = None
         arxiv_id = _extract_arxiv_id(paper_source)
-        if not args.no_online_search:
+        # Initialise the S2 client whenever at least one S2-backed source is
+        # enabled.  Paper-cited refs and keyword search are independent: disabling
+        # one should not disable the other.
+        need_s2 = not args.no_online_search or not args.no_paper_cited_refs
+        if need_s2:
             print(
-                "Generating conceptual search queries ...",
+                "Connecting to Semantic Scholar ...",
                 file=sys.stderr,
             )
             t0 = time.monotonic()
-            search_queries = generate_search_queries(
-                paper.key_content(), llm, decomposition=idea_decomp
-            )
-            if search_queries:
-                print(
-                    f"  Generated {len(search_queries)} quer"
-                    f"{'y' if len(search_queries) == 1 else 'ies'}: "
-                    + ", ".join(f'"{q}"' for q in search_queries),
-                    file=sys.stderr,
-                )
-            else:
-                print(
-                    "  Query generation failed or returned no queries; "
-                    "falling back to title-based search.",
-                    file=sys.stderr,
-                )
-
-            print(
-                "Searching for related papers online (Semantic Scholar) ...",
-                file=sys.stderr,
-            )
             online_searcher = OnlineReferenceSearch(
                 max_results=args.top_k * 2,
                 min_year=args.since_year,
@@ -841,9 +857,8 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 )
 
             # Phase 1 — paper's own citation list (depth signal).
-            # Runs separately from keyword search so each group gets its own
+            # Runs independently of keyword search so each group gets its own
             # provenance tag ("paper-cited" vs "online").
-            cited_papers: list = []
             if not args.no_paper_cited_refs:
                 cited_papers = online_searcher.fetch_citations(
                     title=paper.title,
@@ -858,7 +873,36 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             else:
                 print("  Skipping paper-cited refs (--no-paper-cited-refs).", file=sys.stderr)
 
+        if not args.no_online_search:
+            print(
+                "Generating conceptual search queries ...",
+                file=sys.stderr,
+            )
+            search_queries = generate_search_queries(
+                paper.key_content(), llm, decomposition=idea_decomp
+            )
+            if search_queries:
+                print(
+                    f"  Generated {len(search_queries)} quer"
+                    f"{'y' if len(search_queries) == 1 else 'ies'}: "
+                    + ", ".join(f'"{q}"' for q in search_queries),
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "  Query generation failed or returned no queries; "
+                    "falling back to title-based search.",
+                    file=sys.stderr,
+                )
+
+            print(
+                "Searching for related papers online (Semantic Scholar) ...",
+                file=sys.stderr,
+            )
             # Phase 2 + 3 — keyword / conceptual search (breadth).
+            # online_searcher is guaranteed non-None here: if no_online_search is
+            # False then need_s2 is True, so the if need_s2: block already ran.
+            assert online_searcher is not None
             online_papers = online_searcher.search(
                 paper.title,
                 paper.abstract,
@@ -867,8 +911,6 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
             for ref_paper in online_papers:
                 store.add(ref_paper, source="online")
             online_papers_count = len(online_papers)
-            online_duration = round(time.monotonic() - t0, 2)
-            stage_runtimes["online_search"] = online_duration
             ctx.online_papers = online_papers
             ctx.search_queries = search_queries
             print(
@@ -883,6 +925,10 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                         f"    {cnt:3d}  {q!r}",
                         file=sys.stderr,
                     )
+
+        if need_s2:
+            online_duration = round(time.monotonic() - t0, 2)
+            stage_runtimes["online_search"] = online_duration
 
         # --- Similarity search ---
         query = paper.key_content()
@@ -1029,7 +1075,7 @@ def _review_one(paper_source: str, args: argparse.Namespace) -> int:
                 ),
             ),
         ]
-        if not args.no_online_search and not args.no_paper_cited_refs:
+        if not args.no_paper_cited_refs:
             _cited_source = f"arXiv:{arxiv_id}" if arxiv_id else f'title="{paper.title[:40]}"'
             early_jobs.append(
                 PipelineJob(
