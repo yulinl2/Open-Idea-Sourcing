@@ -116,6 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      workflows: write
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -138,6 +139,7 @@ jobs:
 
       - name: Self-archive this operation
         if: success()
+        continue-on-error: true
         run: python3 .github/scripts/retire_maintenance_op.py --op fix-gitignore
 
   # ------------------------------------------------------------------
@@ -151,6 +153,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      workflows: write
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -208,6 +211,7 @@ jobs:
 
       - name: Self-archive this operation
         if: success() && inputs.dry_run == false
+        continue-on-error: true
         run: python3 .github/scripts/retire_maintenance_op.py --op patch-agent-review
 
   # ------------------------------------------------------------------
