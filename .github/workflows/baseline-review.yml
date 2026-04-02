@@ -33,10 +33,10 @@ on:
         type: boolean
         default: false
       paper_cited_refs:
-        description: "Fetch references cited by the paper from Semantic Scholar (default: true)"
+        description: "Fetch references cited by the paper from Semantic Scholar (default: false)"
         required: false
         type: boolean
-        default: true
+        default: false
       user_refs:
         description: "Load the bundled user reference corpus data/references.json (default: true)"
         required: false
@@ -116,8 +116,8 @@ jobs:
           PAPERS_FILE="${PAPERS_FILE:-$GH_PAPERS_FILE}"
           REFERENCES="${REFERENCES:-$GH_REFERENCES}"
           OUTPUT_FORMAT="${OUTPUT_FORMAT:-$GH_OUTPUT_FORMAT}"
-          ONLINE_SEARCH="${ONLINE_SEARCH:-${GH_ONLINE_SEARCH:-true}}"
-          PAPER_CITED_REFS="${PAPER_CITED_REFS:-${GH_PAPER_CITED_REFS:-true}}"
+          ONLINE_SEARCH="${ONLINE_SEARCH:-${GH_ONLINE_SEARCH:-false}}"
+          PAPER_CITED_REFS="${PAPER_CITED_REFS:-${GH_PAPER_CITED_REFS:-false}}"
           USER_REFS="${USER_REFS:-${GH_USER_REFS:-true}}"
 
           # Export as env vars so review_paper.py can read them via _parse_bool_env.
