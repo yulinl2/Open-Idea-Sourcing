@@ -116,6 +116,17 @@ housekeeping-reports target_branch=agent-reports
 The dispatcher always uses `--ref main` on workflow dispatch commands to avoid
 the recurring default-branch lookup failure.
 
+PR comment formatting tip:
+- To avoid broken markdown from escaped newlines, post PR comments with:
+  `scripts/post_pr_comment.sh <pr-number> --repo owner/repo --body-file /path/to/comment.md`
+- You can also pipe stdin:
+  `cat /path/to/comment.md | scripts/post_pr_comment.sh <pr-number> --repo owner/repo`
+- To fix an already-posted comment in place:
+  `scripts/post_pr_comment.sh --edit-comment-id <comment-id> --repo owner/repo --body-file /path/to/comment.md`
+- By default the helper formats agent-posted comments with a visible badge:
+  `> 🤖 Copilot via VS Code`
+- To post without the badge, add `--as-user` (or `--plain`).
+
 Important for one-off sync operation:
 - `sync-agent-review-workflow` updates `.github/workflows/agent-review.yml` on orphan branches.
 - GitHub's default `GITHUB_TOKEN` often cannot push workflow-file changes.
