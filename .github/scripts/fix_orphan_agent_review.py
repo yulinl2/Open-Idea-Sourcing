@@ -1,21 +1,69 @@
+#!/usr/bin/env python3
+"""
+.github/scripts/fix_orphan_agent_review.py
+
+One-shot script to write the correct agent-review.yml on infra-base (and
+optionally each agent-track branch).
+
+The canonical content for infra-base / agent branches is main's agent-review.yml
+plus a push trigger for infra-base and each agent-* branch.  The push trigger
+must NOT live on main's copy (it causes phantom failure check-runs on every
+copilot/* PR push).
+
+Run this after merging the main cleanup PR so that:
+1. infra-base gets the shell-based placeholder fix (from PR #78) and the
+   infra-base push trigger that was inadvertently left out.
+2. agent-* branches optionally get the same update.
+
+Usage:
+    python3 .github/scripts/fix_orphan_agent_review.py [--branches infra-base agent-e2e ...]
+
+The script uses git worktrees so it never abandons the current branch.
+Each worktree is cleaned up on exit whether the run succeeds or fails.
+"""
+import argparse
+import contextlib
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Content of agent-review.yml for infra-base / agent-* branches.
+#
+# Identical to main's version except:
+#   • Header comment updated to describe push trigger intent
+#   • Push trigger section added for infra-base + all agent-* branches
+#
+# (Keep this in sync with .github/workflows/agent-review.yml on main.)
+# ---------------------------------------------------------------------------
+
+INFRA_AGENT_REVIEW_YML = """\
 name: Agent review
 
 # Parallel agent-track CI — runs independently of the baseline ci.yml pipeline.
 #
-# Trigger: Manual (workflow_dispatch) only on main — this keeps the "Run workflow"
-# button visible in the Actions UI and lets agent-track-workflows.yml dispatch it
-# via `gh workflow run agent-review.yml --ref main`.
+# Trigger matrix:
+#   • Manual (workflow_dispatch)  — review any paper on any agent track
+#   • Push to infra-base / agent-* branches — run fast infra tests (no API key needed)
 #
-# Push-triggered infra tests (push to agent-* branches) live in the copy of this
-# file on infra-base and each agent-* branch, not on main.  Keeping push triggers
-# off the main-branch copy prevents phantom failure check-runs on every copilot/*
-# PR branch push.
+# NOTE: The push trigger intentionally lives here (infra-base / agent-* branches)
+# and NOT on main.  Having push: branches: [agent-*] in main's copy causes GitHub
+# to create phantom failure check-runs on every copilot/* PR branch push (the
+# pushed branch never matches agent-*, so 0 jobs run and the check fails).
+# Main's copy carries workflow_dispatch only.
 #
 # This workflow is branch-local by design: each agent-* branch carries its own
 # agent.py and this workflow discovers it automatically via the TRACK variable.
 # The baseline ci.yml (review_paper.py) is unaffected.
 
 on:
+  push:
+    branches:
+      - "infra-base"
+      - "agent-e2e"
+      - "agent-linear"
+      - "agent-reconstruct"
   workflow_dispatch:
     inputs:
       paper_url:
@@ -46,11 +94,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          # infra/ and tests/ live on infra-base (the orphan branch that owns the
-          # shared execution shell). Checking out infra-base here means infra/ does
-          # not need to be duplicated on main.
-          ref: infra-base
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -123,7 +166,7 @@ jobs:
         run: |
           # Extract a filesystem-safe paper ID from the URL.
           # arXiv: https://arxiv.org/abs/2006.06138 → 2006.06138
-          PAPER_ID=$(python -c "import re, os; url = os.environ['PAPER_URL']; m = re.search(r'arxiv\.org/(?:abs|pdf)/([0-9]+\.[0-9]+)', url); print(m.group(1) if m else url.rstrip('/').split('/')[-1].replace('.pdf', '')[:50])")
+          PAPER_ID=$(python -c "import re, os; url = os.environ['PAPER_URL']; m = re.search(r'arxiv\\.org/(?:abs|pdf)/([0-9]+\\.[0-9]+)', url); print(m.group(1) if m else url.rstrip('/').split('/')[-1].replace('.pdf', '')[:50])")
           echo "PAPER_ID=$PAPER_ID" >> "$GITHUB_OUTPUT"
           echo "Derived paper ID: $PAPER_ID"
 
@@ -140,9 +183,9 @@ jobs:
 
           if [ -f agent.py ]; then
             # Run the track's agent.py if it exists.
-            python agent.py \
-              --paper-url "$PAPER_URL" \
-              --model "${MODEL:-gpt-4o}" \
+            python agent.py \\
+              --paper-url "$PAPER_URL" \\
+              --model "${MODEL:-gpt-4o}" \\
               --output reports/report.md
           else
             # agent.py not yet on this branch — emit a placeholder report
@@ -154,29 +197,29 @@ jobs:
             SHA="${GITHUB_SHA:0:8}"
             {
               echo '---'
-              printf 'track: %s\n'        "$TRACK"
+              printf 'track: %s\\n'        "$TRACK"
               echo  'impl_id: placeholder'
-              printf 'paper_id: %s\n'     "$PAPER_ID"
-              printf 'paper_source: %s\n' "$PAPER_URL"
-              printf 'model: %s\n'        "${MODEL:-gpt-4o}"
+              printf 'paper_id: %s\\n'     "$PAPER_ID"
+              printf 'paper_source: %s\\n' "$PAPER_URL"
+              printf 'model: %s\\n'        "${MODEL:-gpt-4o}"
               echo  'tool_list: []'
-              printf 'start_time: %s\n'   "$NOW"
-              printf 'finish_time: %s\n'  "$NOW"
-              printf 'git_commit: %s\n'   "$SHA"
+              printf 'start_time: %s\\n'   "$NOW"
+              printf 'finish_time: %s\\n'  "$NOW"
+              printf 'git_commit: %s\\n'   "$SHA"
               echo  'final_verdict: PENDING'
               echo  'confidence: 0.00'
               echo  'main_cited_evidence: []'
               echo  '---'
               echo  ''
-              printf '# Derivation Audit: %s\n' "$PAPER_ID"
+              printf '# Derivation Audit: %s\\n' "$PAPER_ID"
               echo  ''
-              printf '> **Note:** `agent.py` has not yet been implemented on the `agent-%s`\n' "$TRACK"
+              printf '> **Note:** `agent.py` has not yet been implemented on the `agent-%s`\\n' "$TRACK"
               echo  '> branch. This placeholder report was generated by the CI workflow.'
               echo  '> See `docs/AGENT_TRACK_ROADMAP.md` for the build sequence.'
               echo  ''
               echo  '## Status'
               echo  ''
-              printf 'The `agent-%s` branch is queued for implementation.\n' "$TRACK"
+              printf 'The `agent-%s` branch is queued for implementation.\\n' "$TRACK"
               echo  'See [AGENT_TRACK_ROADMAP.md](../docs/AGENT_TRACK_ROADMAP.md) for the roadmap.'
             } > reports/report.md
           fi
@@ -204,9 +247,7 @@ jobs:
             git fetch origin agent-reports
             git worktree add /tmp/agent-reports-branch origin/agent-reports
           else
-            git worktree add --detach /tmp/agent-reports-branch HEAD
-            git -C /tmp/agent-reports-branch checkout --orphan agent-reports
-            git -C /tmp/agent-reports-branch rm -rf --quiet -- . 2>/dev/null || true
+            git worktree add --orphan -b agent-reports /tmp/agent-reports-branch
           fi
 
           mkdir -p "/tmp/agent-reports-branch/${TARGET_DIR}"
@@ -217,6 +258,95 @@ jobs:
           if git diff --cached --quiet; then
             echo "No new reports to commit."
           else
-            git commit -m "agent report: ${TRACK}/${PAPER_ID} (run #${RUN_NUMBER})"
+            git -c commit.gpgsign=false commit -m "agent report: ${TRACK}/${PAPER_ID} (run #${RUN_NUMBER})"
             git push origin HEAD:agent-reports
           fi
+"""
+
+ORPHAN_BRANCHES = [
+    "infra-base",
+    "agent-e2e",
+    "agent-linear",
+    "agent-reconstruct",
+]
+
+
+def run(cmd: list[str], cwd: str | None = None, check: bool = True) -> subprocess.CompletedProcess:
+    print(f"  $ {' '.join(cmd)}", flush=True)
+    return subprocess.run(cmd, check=check, cwd=cwd)
+
+
+def branch_exists_remote(branch: str) -> bool:
+    result = subprocess.run(
+        ["git", "ls-remote", "--exit-code", "--heads", "origin", branch],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+@contextlib.contextmanager
+def worktree(branch: str):
+    """Context manager: adds a detached worktree for *branch*, cleans up on exit."""
+    with tempfile.TemporaryDirectory(prefix=f"wt-{branch.replace('/', '-')}-") as tmpdir:
+        run(["git", "worktree", "add", "--detach", tmpdir, f"origin/{branch}"])
+        try:
+            run(["git", "checkout", "-B", branch], cwd=tmpdir)
+            yield Path(tmpdir)
+        finally:
+            run(["git", "worktree", "remove", "--force", tmpdir], check=False)
+
+
+def fix_branch(branch: str) -> bool:
+    if not branch_exists_remote(branch):
+        print(f"  Branch '{branch}' not found on origin — skipping.")
+        return False
+
+    print(f"\n=== Fixing agent-review.yml on '{branch}' ===")
+    with worktree(branch) as wt_path:
+        dest = wt_path / ".github" / "workflows" / "agent-review.yml"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+
+        current = dest.read_text() if dest.exists() else ""
+        if current == INFRA_AGENT_REVIEW_YML:
+            print(f"  agent-review.yml already up to date — nothing to do.")
+            return False
+
+        dest.write_text(INFRA_AGENT_REVIEW_YML)
+        run(["git", "add", ".github/workflows/agent-review.yml"], cwd=str(wt_path))
+        run(
+            ["git", "-c", "commit.gpgsign=false", "commit", "-m",
+             f"{branch}: update agent-review.yml — shell placeholder, infra-base push trigger"],
+            cwd=str(wt_path),
+        )
+        run(["git", "push", "origin", f"HEAD:refs/heads/{branch}"], cwd=str(wt_path))
+        print(f"  Updated '{branch}'.")
+        return True
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Apply the correct agent-review.yml to orphan agent branches.",
+    )
+    parser.add_argument(
+        "--branches",
+        nargs="+",
+        default=ORPHAN_BRANCHES,
+        metavar="BRANCH",
+        help=f"Branches to update (default: {' '.join(ORPHAN_BRANCHES)})",
+    )
+    args = parser.parse_args()
+
+    updated = []
+    for branch in args.branches:
+        if fix_branch(branch):
+            updated.append(branch)
+
+    print("\nDone.")
+    if updated:
+        print(f"Updated branches: {', '.join(updated)}")
+    else:
+        print("All branches were already up to date.")
+
+
+if __name__ == "__main__":
+    main()
