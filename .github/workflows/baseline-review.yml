@@ -1,7 +1,6 @@
 name: Baseline review
 
-# Manual trigger: provide a single URL or a batch file.
-# Automatic trigger: runs after CI passes on the main branch.
+# Manual trigger only: provide a single URL or a batch file.
 on:
   workflow_dispatch:
     inputs:
@@ -33,46 +32,31 @@ on:
         type: boolean
         default: false
       paper_cited_refs:
-        description: "Fetch references cited by the paper from Semantic Scholar (default: false)"
+        description: "Fetch references cited by the paper from Semantic Scholar (default: true)"
         required: false
         type: boolean
-        default: false
+        default: true
       user_refs:
         description: "Load the bundled user reference corpus data/references.json (default: true)"
         required: false
         type: boolean
         default: true
-  workflow_run:
-    workflows: ["CI"]
-    branches: ["main"]
-    types: [completed]
 
 jobs:
   review:
-    name: Review paper (manual trigger or main merge)
+    name: Review paper
     runs-on: ubuntu-latest
-    # For workflow_dispatch: always run.
-    # For workflow_run (push to main via CI): only run when CI succeeded.
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     permissions:
       contents: write
 
     steps:
       - name: Validate inputs
         env:
-          EVENT_NAME: ${{ github.event_name }}
           PAPER_URL: ${{ inputs.paper_url }}
           PAPERS_FILE: ${{ inputs.papers_file }}
           GH_PAPER_URL: ${{ github.event.inputs.paper_url }}
           GH_PAPERS_FILE: ${{ github.event.inputs.papers_file }}
         run: |
-          # workflow_run-triggered runs always use the default batch file — no inputs to validate.
-          if [ "$EVENT_NAME" = "workflow_run" ]; then
-            echo "workflow_run-triggered run — using default batch file (data/test_papers.ndjson)."
-            exit 0
-          fi
           PAPER_URL="${PAPER_URL:-$GH_PAPER_URL}"
           PAPERS_FILE="${PAPERS_FILE:-$GH_PAPERS_FILE}"
           if [ -z "$PAPER_URL" ] && [ -z "$PAPERS_FILE" ]; then
@@ -117,7 +101,7 @@ jobs:
           REFERENCES="${REFERENCES:-$GH_REFERENCES}"
           OUTPUT_FORMAT="${OUTPUT_FORMAT:-$GH_OUTPUT_FORMAT}"
           ONLINE_SEARCH="${ONLINE_SEARCH:-${GH_ONLINE_SEARCH:-false}}"
-          PAPER_CITED_REFS="${PAPER_CITED_REFS:-${GH_PAPER_CITED_REFS:-false}}"
+          PAPER_CITED_REFS="${PAPER_CITED_REFS:-${GH_PAPER_CITED_REFS:-true}}"
           USER_REFS="${USER_REFS:-${GH_USER_REFS:-true}}"
 
           # Export as env vars so review_paper.py can read them via _parse_bool_env.
