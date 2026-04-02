@@ -91,13 +91,24 @@ dispatching the agent-track workflow from chat:
 - Agent: `.github/agents/agent-track-dispatcher.agent.md`
 - Prompt: `.github/prompts/run-agent-track-workflow.prompt.md`
 
-In VS Code chat, type `/Run Agent Track Workflow` and pass a short argument such as:
+In VS Code chat, use:
+
+```text
+/ci-review paper_url=https://arxiv.org/abs/2006.06138 model=gpt-5.4
+/ci-one-off fix-gitignore
+/ci-one-off sync-agent-review-workflow branches='infra-base agent-e2e' dry_run=true
+/ci-one-off housekeeping-reports target_branch=agent-reports
+```
+
+`/ci-review` is the recurring review path. `/ci-one-off` is the stable entrypoint
+for non-recurring maintenance and patch operations.
+
+The one-off command accepts arguments such as:
 
 ```text
 fix-gitignore
 sync-agent-review-workflow dry_run=true
 housekeeping-reports target_branch=agent-reports
-review paper_url=https://arxiv.org/abs/2006.06138 model=gpt-5.4
 ```
 
 The dispatcher always uses `gh workflow run agent-track-workflows.yml --ref main`

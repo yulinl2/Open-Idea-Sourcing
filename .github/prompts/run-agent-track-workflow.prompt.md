@@ -1,8 +1,8 @@
 ---
-name: Run Agent Track Workflow
-description: "Dispatch agent-track-workflows.yml from chat in one step. Use for review, fix-gitignore, sync-agent-review-workflow, or housekeeping-reports."
+name: ci-one-off
+description: "Dispatch agent-track-workflows.yml for one-off maintenance or patch operations. Use for fix-gitignore, sync-agent-review-workflow, housekeeping-reports, or any non-recurring dispatch."
 agent: "Agent Track Dispatcher"
-argument-hint: "Operation and optional fields, for example: fix-gitignore"
+argument-hint: "Operation and optional fields, for example: fix-gitignore or sync-agent-review-workflow dry_run=true"
 ---
 Dispatch `.github/workflows/agent-track-workflows.yml` for this repository.
 
@@ -14,3 +14,8 @@ Rules:
 - For `sync-agent-review-workflow`, accept optional `branches='...'` and `dry_run=true|false`.
 - For `housekeeping-reports`, accept optional `target_branch=...`.
 - If the request does not clearly specify an operation, ask a single short clarifying question.
+
+Examples:
+- `/ci-one-off fix-gitignore`
+- `/ci-one-off sync-agent-review-workflow branches='infra-base agent-e2e' dry_run=true`
+- `/ci-one-off housekeeping-reports target_branch=agent-reports`
