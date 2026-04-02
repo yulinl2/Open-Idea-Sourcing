@@ -167,7 +167,10 @@ jobs:
             git worktree add --orphan -b reports /tmp/reports-branch
           fi
 
-          cp reports/* "/tmp/reports-branch/"
+          # Copy each report into <paper-slug>/v<code-version>/ so reports
+          # are organised by paper and package version from the start,
+          # preventing flat-file accumulation at the branch root.
+          python3 .github/scripts/publish_reports.py reports /tmp/reports-branch
 
           cd /tmp/reports-branch
           git add .

@@ -14,6 +14,10 @@ name: Agent track workflows
 #   patch-agent-review    — patches infra-base and agent-* branches with the
 #                           correct agent-review.yml that has the push trigger
 #                           (one-shot maintenance; idempotent).
+#   housekeeping-reports  — moves flat .md report files at the root of a
+#                           target branch into <paper-slug>/v<code-version>/
+#                           subdirectories (recurring; rerun whenever flat
+#                           files accumulate).
 #
 # Trigger matrix:
 #   • Manual (workflow_dispatch) — supply operation, paper URL, and model
@@ -31,7 +35,7 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: "Operation to run (review fans out to all tracks; maintenance ops are one-shot)"
+        description: "Operation to run (review: fans out to all tracks; fix-gitignore/patch-agent-review: one-shot maintenance; housekeeping-reports: recurring cleanup)"
         required: false
         default: "review"
         type: choice
@@ -39,6 +43,7 @@ on:
           - review
           - fix-gitignore
           - patch-agent-review
+          - housekeeping-reports
       paper_url:
         description: "Paper URL (arXiv abstract or PDF) — used when operation=review"
         required: false
@@ -56,6 +61,17 @@ on:
         required: false
         default: false
         type: boolean
+      target_branch:
+        description: "Branch to reorganize — used when operation=housekeeping-reports"
+        required: false
+        default: "agent-reports"
+        type: choice
+        options:
+          - agent-reports
+          - agent-e2e
+          - agent-linear
+          - agent-reconstruct
+          - reports
 
 jobs:
   # ------------------------------------------------------------------
@@ -193,3 +209,47 @@ jobs:
       - name: Self-archive this operation
         if: success() && inputs.dry_run == false
         run: python3 .github/scripts/retire_maintenance_op.py --op patch-agent-review
+
+  # ------------------------------------------------------------------
+  # Baseline reports housekeeping: reorganize flat .md report files on
+  # a target branch into <paper-slug>/v<code-version>/ subdirectories.
+  # This is a recurring operation — it does NOT auto-retire; rerun
+  # whenever flat files accumulate (e.g. after CI writes to branch root).
+  # Trigger manually with operation=housekeeping-reports.
+  # ------------------------------------------------------------------
+  housekeeping-reports:
+    name: Reorganize flat reports into versioned subdirs
+    if: github.event.inputs.operation == 'housekeeping-reports'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config commit.gpgsign false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.12"
+
+      - name: Reorganize flat reports
+        env:
+          TARGET_BRANCH: ${{ github.event.inputs.target_branch || 'agent-reports' }}
+        run: |
+          python3 .github/scripts/reorganize_reports.py --branch "$TARGET_BRANCH"
+
+      - name: Summary
+        if: always()
+        env:
+          TARGET_BRANCH: ${{ github.event.inputs.target_branch || 'agent-reports' }}
+        run: |
+          printf '### Housekeeping complete\n\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'Branch: `%s`\n' "$TARGET_BRANCH" >> "$GITHUB_STEP_SUMMARY"
