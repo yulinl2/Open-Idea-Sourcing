@@ -115,7 +115,7 @@ def _reorganize_in_worktree(branch: str, *, dry_run: bool) -> int:
         dest_file = dest_dir / src.name
 
         if dest_file.exists():
-            print(f"  SKIP {src.name}: already exists at {dest_dir.relative_to(WORKTREE_PATH)}/")
+            print(f"  SKIP {src.name}: already exists at {dest_file.relative_to(WORKTREE_PATH)}")
             skipped += 1
             continue
 
