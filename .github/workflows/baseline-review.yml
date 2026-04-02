@@ -28,10 +28,10 @@ on:
           - json
           - pdf
       online_search:
-        description: "Enable Semantic Scholar keyword search (default: true)"
+        description: "Enable Semantic Scholar keyword search (default: false)"
         required: false
         type: boolean
-        default: true
+        default: false
       paper_cited_refs:
         description: "Fetch references cited by the paper from Semantic Scholar (default: true)"
         required: false
@@ -116,7 +116,7 @@ jobs:
           PAPERS_FILE="${PAPERS_FILE:-$GH_PAPERS_FILE}"
           REFERENCES="${REFERENCES:-$GH_REFERENCES}"
           OUTPUT_FORMAT="${OUTPUT_FORMAT:-$GH_OUTPUT_FORMAT}"
-          ONLINE_SEARCH="${ONLINE_SEARCH:-${GH_ONLINE_SEARCH:-true}}"
+          ONLINE_SEARCH="${ONLINE_SEARCH:-${GH_ONLINE_SEARCH:-false}}"
           PAPER_CITED_REFS="${PAPER_CITED_REFS:-${GH_PAPER_CITED_REFS:-true}}"
           USER_REFS="${USER_REFS:-${GH_USER_REFS:-true}}"
 
