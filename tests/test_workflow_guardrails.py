@@ -16,6 +16,11 @@ WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 WORKFLOW_FILES = sorted(WORKFLOWS_DIR.glob("*.yml"))
 
 
+def _workflow_on(data: dict) -> dict:
+    # PyYAML may coerce the literal key 'on' to boolean True.
+    return data.get("on") or data.get(True, {})
+
+
 def _iter_permission_mappings(node):
     """Yield every mapping value found under a 'permissions' key."""
     if isinstance(node, dict):
@@ -102,6 +107,20 @@ def test_fix_gitignore_workflow_has_explicit_missing_token_notice():
     )
 
 
+def test_agent_track_workflow_is_maintenance_only():
+    workflow_file = WORKFLOWS_DIR / "agent-track-workflows.yml"
+    data = yaml.safe_load(workflow_file.read_text(encoding="utf-8"))
+
+    workflow_on = _workflow_on(data)
+
+    assert "push" not in workflow_on, (
+        "agent-track-workflows should be manual maintenance-only"
+    )
+
+    options = workflow_on["workflow_dispatch"]["inputs"]["operation"]["options"]
+    assert "review" not in options, "review should dispatch via agent-review.yml, not maintenance workflow"
+
+
 def test_agent_review_has_strict_prechecks_without_placeholder_fallback():
     workflow_file = WORKFLOWS_DIR / "agent-review.yml"
     data = yaml.safe_load(workflow_file.read_text(encoding="utf-8"))
@@ -124,3 +143,18 @@ def test_agent_review_has_strict_prechecks_without_placeholder_fallback():
     assert validate_track_steps, (
         "agent-review workflow must fail fast if agent.py is missing on track branch"
     )
+
+
+def test_agent_review_supports_track_all_option():
+    workflow_file = WORKFLOWS_DIR / "agent-review.yml"
+    data = yaml.safe_load(workflow_file.read_text(encoding="utf-8"))
+
+    workflow_on = _workflow_on(data)
+    track_input = workflow_on["workflow_dispatch"]["inputs"]["track"]
+    assert "all" in track_input["options"], "agent-review track input must include all"
+
+    resolve_job = data["jobs"].get("resolve-track-matrix", {})
+    assert resolve_job, "agent-review must resolve matrix for all-track fan-out"
+
+    agent_job = data["jobs"].get("agent-review", {})
+    assert "strategy" in agent_job, "agent-review must use a matrix strategy"

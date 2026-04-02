@@ -23,11 +23,12 @@ on:
         required: true
         default: "https://arxiv.org/abs/2006.06138"
       track:
-        description: "Agent track to use"
+        description: "Agent track to use (choose all to fan out)"
         required: true
-        default: "e2e"
+        default: "all"
         type: choice
         options:
+          - all
           - e2e
           - linear
           - reconstruct
@@ -42,12 +43,30 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  resolve-track-matrix:
+    name: Resolve track matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - name: Resolve matrix from input
+        id: resolve
+        env:
+          TRACK_INPUT: ${{ inputs.track }}
+        run: |
+          if [ "$TRACK_INPUT" = "all" ]; then
+            echo 'matrix={"track":["e2e","linear","reconstruct"]}' >> "$GITHUB_OUTPUT"
+          else
+            printf 'matrix={"track":["%s"]}\n' "$TRACK_INPUT" >> "$GITHUB_OUTPUT"
+          fi
+
   # ------------------------------------------------------------------
-  # Job 1: Run infra unit tests (no API key needed; runs on every push)
+  # Job 1: Run infra unit tests (no API key needed)
   # ------------------------------------------------------------------
   test-infra:
     name: Infra tests
     runs-on: ubuntu-latest
+    needs: resolve-track-matrix
 
     steps:
       - uses: actions/checkout@v4
@@ -87,19 +106,21 @@ jobs:
   # Job 2: Run agent review (manual trigger only — requires OPENAI_API_KEY)
   # ------------------------------------------------------------------
   agent-review:
-    name: "Agent review (${{ inputs.track || github.ref_name }})"
+    name: "Agent review (${{ matrix.track }})"
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
-    needs: test-infra
+    needs: [resolve-track-matrix, test-infra]
     permissions:
       contents: write
+    strategy:
+      matrix: ${{ fromJson(needs.resolve-track-matrix.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v4
         with:
           # Check out the agent-<track> branch so agent.py is present.
           # Falls back to the current ref if the track branch doesn't exist yet.
-          ref: "agent-${{ inputs.track }}"
+          ref: "agent-${{ matrix.track }}"
         continue-on-error: true
 
       - name: Fallback checkout (track branch not yet created)
@@ -150,7 +171,7 @@ jobs:
       - name: Validate track implementation exists
         run: |
           if [ ! -f agent.py ]; then
-            echo "::error::agent.py is missing on branch agent-${{ inputs.track }}."
+            echo "::error::agent.py is missing on branch agent-${{ matrix.track }}."
             echo "::error::No placeholder reports are emitted in strict mode. Add agent.py to that track branch first."
             exit 1
           fi
@@ -160,7 +181,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PAPER_URL: ${{ inputs.paper_url }}
-          TRACK: ${{ inputs.track }}
+          TRACK: ${{ matrix.track }}
           MODEL: ${{ inputs.model }}
           PAPER_ID: ${{ steps.paper.outputs.PAPER_ID }}
         run: |
@@ -178,12 +199,12 @@ jobs:
       - name: Upload report as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: "agent-${{ inputs.track }}-report-${{ steps.paper.outputs.PAPER_ID }}"
+          name: "agent-${{ matrix.track }}-report-${{ steps.paper.outputs.PAPER_ID }}"
           path: reports/report.md
 
       - name: Publish report to agent-reports branch
         env:
-          TRACK: ${{ inputs.track }}
+          TRACK: ${{ matrix.track }}
           PAPER_ID: ${{ steps.paper.outputs.PAPER_ID }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |

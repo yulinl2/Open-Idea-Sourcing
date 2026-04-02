@@ -94,14 +94,16 @@ dispatching the agent-track workflow from chat:
 In VS Code chat, use:
 
 ```text
-/ci-review paper_url=https://arxiv.org/abs/2006.06138 model=gpt-5.4
+/ci-review track=all paper_url=https://arxiv.org/abs/2006.06138 model=gpt-5.4
 /ci-one-off fix-gitignore
 /ci-one-off sync-agent-review-workflow branches='infra-base agent-e2e' dry_run=true
 /ci-one-off housekeeping-reports target_branch=agent-reports
 ```
 
-`/ci-review` is the recurring review path. `/ci-one-off` is the stable entrypoint
-for non-recurring maintenance and patch operations.
+`/ci-review` dispatches `agent-review.yml` directly and supports
+`track=all|e2e|linear|reconstruct`.
+
+`/ci-one-off` dispatches `agent-track-workflows.yml` and is maintenance-only.
 
 The one-off command accepts arguments such as:
 
@@ -111,8 +113,8 @@ sync-agent-review-workflow dry_run=true
 housekeeping-reports target_branch=agent-reports
 ```
 
-The dispatcher always uses `gh workflow run agent-track-workflows.yml --ref main`
-to avoid the recurring default-branch lookup failure.
+The dispatcher always uses `--ref main` on workflow dispatch commands to avoid
+the recurring default-branch lookup failure.
 
 Important for one-off sync operation:
 - `sync-agent-review-workflow` updates `.github/workflows/agent-review.yml` on orphan branches.
