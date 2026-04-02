@@ -71,9 +71,15 @@ on:
         required: true
         default: "https://arxiv.org/abs/2006.06138"
       track:
-        description: "Agent track to use: e2e | linear | reconstruct"
+        description: "Agent track to use (choose all to fan out)"
         required: true
-        default: "e2e"
+        default: "all"
+        type: choice
+        options:
+          - all
+          - e2e
+          - linear
+          - reconstruct
       model:
         description: "LLM model identifier (e.g. gpt-4o, gpt-4o-mini)"
         required: false
@@ -85,15 +91,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  resolve-track-matrix:
+    name: Resolve track matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - name: Resolve matrix from input
+        id: resolve
+        env:
+          TRACK_INPUT: ${{ inputs.track }}
+        run: |
+          if [ "$TRACK_INPUT" = "all" ]; then
+            echo 'matrix={"track":["e2e","linear","reconstruct"]}' >> "$GITHUB_OUTPUT"
+          else
+            printf 'matrix={"track":["%s"]}\\n' "$TRACK_INPUT" >> "$GITHUB_OUTPUT"
+          fi
+
   # ------------------------------------------------------------------
-  # Job 1: Run infra unit tests (no API key needed; runs on every push)
+  # Job 1: Run infra unit tests (no API key needed)
   # ------------------------------------------------------------------
   test-infra:
     name: Infra tests
     runs-on: ubuntu-latest
+    needs: resolve-track-matrix
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # infra/ and tests/ live on infra-base (the orphan branch that owns the
+          # shared execution shell). Checking out infra-base here means infra/ does
+          # not need to be duplicated on main.
+          ref: infra-base
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -125,24 +154,27 @@ jobs:
   # Job 2: Run agent review (manual trigger only — requires OPENAI_API_KEY)
   # ------------------------------------------------------------------
   agent-review:
-    name: "Agent review (${{ inputs.track || github.ref_name }})"
+    name: "Agent review (${{ matrix.track }})"
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
-    needs: test-infra
+    needs: [resolve-track-matrix, test-infra]
     permissions:
       contents: write
+    strategy:
+      matrix: ${{ fromJson(needs.resolve-track-matrix.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v4
+        id: checkout-track
         with:
           # Check out the agent-<track> branch so agent.py is present.
           # Falls back to the current ref if the track branch doesn't exist yet.
-          ref: "agent-${{ inputs.track }}"
+          ref: "agent-${{ matrix.track }}"
         continue-on-error: true
 
       - name: Fallback checkout (track branch not yet created)
         uses: actions/checkout@v4
-        if: ${{ failure() }}
+        if: ${{ steps.checkout-track.outcome == 'failure' }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -170,74 +202,64 @@ jobs:
           echo "PAPER_ID=$PAPER_ID" >> "$GITHUB_OUTPUT"
           echo "Derived paper ID: $PAPER_ID"
 
+      - name: Validate OPENAI_API_KEY
+        id: keycheck
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::OPENAI_API_KEY is missing. Configure repository secret OPENAI_API_KEY and retry."
+            exit 1
+          fi
+          if printf '%s' "$OPENAI_API_KEY" | grep -Eq '^\\*+$|^sk-\\*+$|^\\$\\{\\{.*\\}\\}$'; then
+            echo "::error::OPENAI_API_KEY appears to be a placeholder/masked literal (for example ***). Use a real API key value."
+            exit 1
+          fi
+          echo "OPENAI_API_KEY format check passed."
+
+      - name: Validate track implementation exists
+        run: |
+          if [ ! -f agent.py ]; then
+            echo "::error::agent.py is missing on branch agent-${{ matrix.track }}."
+            echo "::error::No placeholder reports are emitted in strict mode. Add agent.py to that track branch first."
+            exit 1
+          fi
+
       - name: Run agent review
         id: run-agent
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PAPER_URL: ${{ inputs.paper_url }}
-          TRACK: ${{ inputs.track }}
+          TRACK: ${{ matrix.track }}
           MODEL: ${{ inputs.model }}
           PAPER_ID: ${{ steps.paper.outputs.PAPER_ID }}
         run: |
           mkdir -p reports
+          python agent.py \\
+            --paper-url "$PAPER_URL" \\
+            --model "${MODEL:-gpt-4o}" \\
+            --output reports/report.md
 
-          if [ -f agent.py ]; then
-            # Run the track's agent.py if it exists.
-            python agent.py \\
-              --paper-url "$PAPER_URL" \\
-              --model "${MODEL:-gpt-4o}" \\
-              --output reports/report.md
-          else
-            # agent.py not yet on this branch — emit a placeholder report
-            # so the artifact upload and agent-reports-branch publish still work.
-            # Shell-only implementation keeps all content at YAML block-scalar
-            # indentation (column ≥ 10), avoiding the YAML parse error that
-            # occurs when Python inline code starts at column 0.
-            NOW=$(python3 -c "import datetime; print(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'))")
-            SHA="${GITHUB_SHA:0:8}"
-            {
-              echo '---'
-              printf 'track: %s\\n'        "$TRACK"
-              echo  'impl_id: placeholder'
-              printf 'paper_id: %s\\n'     "$PAPER_ID"
-              printf 'paper_source: %s\\n' "$PAPER_URL"
-              printf 'model: %s\\n'        "${MODEL:-gpt-4o}"
-              echo  'tool_list: []'
-              printf 'start_time: %s\\n'   "$NOW"
-              printf 'finish_time: %s\\n'  "$NOW"
-              printf 'git_commit: %s\\n'   "$SHA"
-              echo  'final_verdict: PENDING'
-              echo  'confidence: 0.00'
-              echo  'main_cited_evidence: []'
-              echo  '---'
-              echo  ''
-              printf '# Derivation Audit: %s\\n' "$PAPER_ID"
-              echo  ''
-              printf '> **Note:** `agent.py` has not yet been implemented on the `agent-%s`\\n' "$TRACK"
-              echo  '> branch. This placeholder report was generated by the CI workflow.'
-              echo  '> See `docs/AGENT_TRACK_ROADMAP.md` for the build sequence.'
-              echo  ''
-              echo  '## Status'
-              echo  ''
-              printf 'The `agent-%s` branch is queued for implementation.\\n' "$TRACK"
-              echo  'See [AGENT_TRACK_ROADMAP.md](../docs/AGENT_TRACK_ROADMAP.md) for the roadmap.'
-            } > reports/report.md
+          if [ ! -s reports/report.md ]; then
+            echo "::error::agent.py completed but reports/report.md is missing or empty."
+            exit 1
           fi
 
       - name: Upload report as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: "agent-${{ inputs.track }}-report-${{ steps.paper.outputs.PAPER_ID }}"
+          name: "agent-${{ matrix.track }}-report-${{ steps.paper.outputs.PAPER_ID }}"
           path: reports/report.md
 
       - name: Publish report to agent-reports branch
         env:
-          TRACK: ${{ inputs.track }}
+          TRACK: ${{ matrix.track }}
           PAPER_ID: ${{ steps.paper.outputs.PAPER_ID }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config commit.gpgsign false
 
           # Publish under agent-<track>/<paper_id>/report.md inside the
           # agent-reports orphan branch (namespaced away from baseline reports/).
@@ -247,7 +269,9 @@ jobs:
             git fetch origin agent-reports
             git worktree add /tmp/agent-reports-branch origin/agent-reports
           else
-            git worktree add --orphan -b agent-reports /tmp/agent-reports-branch
+            git worktree add --detach /tmp/agent-reports-branch HEAD
+            git -C /tmp/agent-reports-branch checkout --orphan agent-reports
+            git -C /tmp/agent-reports-branch rm -rf --quiet -- . 2>/dev/null || true
           fi
 
           mkdir -p "/tmp/agent-reports-branch/${TARGET_DIR}"
@@ -258,7 +282,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No new reports to commit."
           else
-            git -c commit.gpgsign=false commit -m "agent report: ${TRACK}/${PAPER_ID} (run #${RUN_NUMBER})"
+            git commit -m "agent report: ${TRACK}/${PAPER_ID} (run #${RUN_NUMBER})"
             git push origin HEAD:agent-reports
           fi
 """
