@@ -3,9 +3,9 @@
 Retire a completed one-shot maintenance operation from agent-track-workflows.yml.
 
 Usage:
-    python3 scripts/retire_maintenance_op.py --op fix-gitignore
-    python3 scripts/retire_maintenance_op.py --op patch-agent-review
-    python3 scripts/retire_maintenance_op.py --op my-new-op --no-push  # dry-run
+    python3 .github/scripts/retire_maintenance_op.py --op fix-gitignore
+    python3 .github/scripts/retire_maintenance_op.py --op patch-agent-review
+    python3 .github/scripts/retire_maintenance_op.py --op my-new-op --no-push  # dry-run
 
 What it does:
     1. Removes the operation name from the 'operation' input description.

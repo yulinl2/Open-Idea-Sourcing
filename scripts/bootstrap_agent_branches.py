@@ -61,7 +61,7 @@ def back_to_main() -> None:
 # ---------------------------------------------------------------------------
 
 # Comprehensive .gitignore for orphan agent branches.
-# Must stay in sync with the template in .github/AGENT_INSTRUCTIONS.md §8.
+# Must stay in sync with the template/guidance in .github/AGENT_INSTRUCTIONS.md
 ORPHAN_GITIGNORE = textwrap.dedent("""\
     __pycache__/
     *.pyc
@@ -290,8 +290,19 @@ def setup_infra_base(skip_existing: bool) -> None:
         return
     print(f"\n=== Creating '{branch}' ===")
     switch_to_orphan(branch)
+    # infra/ lives on infra-base only (not on main). When recreating, source it
+    # from the existing remote. When bootstrapping from scratch, infra/ must be
+    # committed to origin/infra-base first via a manual push before this script
+    # can run with --no-skip-existing.
+    if branch_exists_remote(branch):
+        checkout_from_branch(f"origin/{branch}", "infra/")
+    else:
+        sys.exit(
+            f"ERROR: Cannot bootstrap '{branch}' from scratch — infra/ is not on main.\n"
+            "Commit the infra/ package to a local 'infra-base' branch, push it to\n"
+            "origin, then re-run this script."
+        )
     checkout_from_main(
-        "infra/",
         "docs/PROJECT_INSTRUCTIONS_AGENT.md",
         "docs/AGENT_TRACK_ROADMAP.md",
         ".github/workflows/agent-review.yml",

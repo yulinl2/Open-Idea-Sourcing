@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/fix_orphan_gitignore.py
+.github/scripts/fix_orphan_gitignore.py
 
 One-shot script to write (or overwrite) the comprehensive .gitignore on all
 existing orphan agent-track branches without recreating them from scratch.
@@ -9,7 +9,7 @@ Run this when orphan branches are missing the full .gitignore (e.g. after a
 bootstrap that predated the ORPHAN_GITIGNORE template).
 
 Usage:
-    python3 scripts/fix_orphan_gitignore.py
+    python3 .github/scripts/fix_orphan_gitignore.py
 
 The script uses git worktrees so it never needs to abandon the current branch.
 Each worktree is cleaned up on exit whether the run succeeds or fails.
@@ -65,8 +65,8 @@ def worktree(branch: str):
     with tempfile.TemporaryDirectory(prefix=f"wt-{branch.replace('/', '-')}-") as tmpdir:
         run(["git", "worktree", "add", "--detach", tmpdir, f"origin/{branch}"])
         try:
-            # Create a local tracking branch inside the worktree
-            run(["git", "checkout", "-b", branch], cwd=tmpdir)
+            # Create (or reset) a local branch inside the worktree
+            run(["git", "checkout", "-B", branch], cwd=tmpdir)
             yield Path(tmpdir)
         finally:
             run(["git", "worktree", "remove", "--force", tmpdir], check=False)
