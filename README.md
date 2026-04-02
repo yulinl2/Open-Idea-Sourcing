@@ -114,6 +114,24 @@ housekeeping-reports target_branch=agent-reports
 The dispatcher always uses `gh workflow run agent-track-workflows.yml --ref main`
 to avoid the recurring default-branch lookup failure.
 
+Important for one-off sync operation:
+- `sync-agent-review-workflow` updates `.github/workflows/agent-review.yml` on orphan branches.
+- GitHub's default `GITHUB_TOKEN` often cannot push workflow-file changes.
+- Configure repo secret `ORPHAN_WORKFLOW_PUSH_TOKEN` before running this operation.
+- Recommended token scopes:
+  - classic PAT: `repo` + `workflow`
+  - fine-grained PAT: repository `Contents: Read and write` + `Workflows: Read and write`
+
+What is PAT?
+- PAT means Personal Access Token: a GitHub token you create in your account settings.
+- In this repo, PAT is needed only for operations that write `.github/workflows/*.yml` via Actions automation.
+- For normal review dispatch and most code/report writes, default `GITHUB_TOKEN` is enough.
+
+Why `fix-gitignore` may not disappear immediately:
+- `fix-gitignore` can still apply `.gitignore` updates without a PAT.
+- But auto-retire edits `agent-track-workflows.yml` (a workflow file), which needs PAT-level workflow write access.
+- If `ORPHAN_WORKFLOW_PUSH_TOKEN` is missing, the run now shows an explicit summary note and skips retirement.
+
 Deferred cloud option:
 If one-click dispatch is ever needed on GitHub.com rather than VS Code, the
 recommended implementation is a comment-triggered Actions workflow that listens

@@ -116,10 +116,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      ORPHAN_WORKFLOW_PUSH_TOKEN: ${{ secrets.ORPHAN_WORKFLOW_PUSH_TOKEN }}
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
         with:
+          token: ${{ secrets.ORPHAN_WORKFLOW_PUSH_TOKEN || github.token }}
           fetch-depth: 0
 
       - name: Configure git
@@ -137,9 +140,18 @@ jobs:
         run: python3 .github/scripts/fix_orphan_gitignore.py
 
       - name: Self-archive this operation
-        if: success()
+        if: success() && env.ORPHAN_WORKFLOW_PUSH_TOKEN != ''
         continue-on-error: true
         run: python3 .github/scripts/retire_maintenance_op.py --op fix-gitignore
+
+      - name: Self-archive skipped (missing token)
+        if: success() && env.ORPHAN_WORKFLOW_PUSH_TOKEN == ''
+        run: |
+          printf '### Maintenance note\n\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'fix-gitignore applied, but auto-retire was skipped because `ORPHAN_WORKFLOW_PUSH_TOKEN` is missing.\n' \
+            >> "$GITHUB_STEP_SUMMARY"
+          printf 'Add the secret, then rerun operation=`fix-gitignore` once more to retire it automatically.\n' \
+            >> "$GITHUB_STEP_SUMMARY"
 
   # ------------------------------------------------------------------
   # Maintenance: patch the correct agent-review.yml onto infra-base
@@ -157,6 +169,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
+          token: ${{ secrets.ORPHAN_WORKFLOW_PUSH_TOKEN || github.token }}
           fetch-depth: 0
 
       - name: Configure git
@@ -175,6 +188,18 @@ jobs:
           for branch in ${{ github.event.inputs.branches }}; do
             git fetch origin "$branch" || true
           done
+
+      - name: Validate workflow push token
+        if: inputs.dry_run == false
+        env:
+          ORPHAN_WORKFLOW_PUSH_TOKEN: ${{ secrets.ORPHAN_WORKFLOW_PUSH_TOKEN }}
+        run: |
+          if [ -z "$ORPHAN_WORKFLOW_PUSH_TOKEN" ]; then
+            echo "::error::Missing required secret ORPHAN_WORKFLOW_PUSH_TOKEN."
+            echo "::error::sync-agent-review-workflow updates .github/workflows/agent-review.yml on orphan branches, which requires a token with workflow write access."
+            echo "::error::Create repo secret ORPHAN_WORKFLOW_PUSH_TOKEN (classic PAT: repo + workflow, or fine-grained token with repository contents/workflows write), then rerun."
+            exit 1
+          fi
 
       - name: Run patch script (dry run)
         if: inputs.dry_run

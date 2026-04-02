@@ -50,3 +50,77 @@ def test_permissions_do_not_use_unsupported_workflows_scope():
                 "Unsupported permissions key 'workflows' found in "
                 f"{workflow_file}. Use supported scopes only."
             )
+
+
+def test_sync_workflow_uses_dedicated_token_and_preflight_check():
+    workflow_file = WORKFLOWS_DIR / "agent-track-workflows.yml"
+    data = yaml.safe_load(workflow_file.read_text(encoding="utf-8"))
+    sync_job = data["jobs"]["sync-agent-review-workflow"]
+
+    checkout_steps = [
+        step
+        for step in sync_job.get("steps", [])
+        if step.get("name") == "Checkout main"
+    ]
+    assert checkout_steps, "Expected 'Checkout main' step in sync-agent-review-workflow"
+
+    token_expr = checkout_steps[0].get("with", {}).get("token", "")
+    assert "ORPHAN_WORKFLOW_PUSH_TOKEN" in token_expr, (
+        "Checkout main in sync-agent-review-workflow must prefer "
+        "secrets.ORPHAN_WORKFLOW_PUSH_TOKEN"
+    )
+
+    validate_steps = [
+        step
+        for step in sync_job.get("steps", [])
+        if step.get("name") == "Validate workflow push token"
+    ]
+    assert validate_steps, (
+        "sync-agent-review-workflow must fail fast when "
+        "ORPHAN_WORKFLOW_PUSH_TOKEN is missing"
+    )
+
+    validate_run = validate_steps[0].get("run", "")
+    assert "ORPHAN_WORKFLOW_PUSH_TOKEN" in validate_run, (
+        "Validate workflow push token step must explicitly check "
+        "ORPHAN_WORKFLOW_PUSH_TOKEN"
+    )
+
+
+def test_fix_gitignore_workflow_has_explicit_missing_token_notice():
+    workflow_file = WORKFLOWS_DIR / "agent-track-workflows.yml"
+    data = yaml.safe_load(workflow_file.read_text(encoding="utf-8"))
+    fix_job = data["jobs"]["fix-gitignore"]
+
+    steps = fix_job.get("steps", [])
+    names = [step.get("name") for step in steps]
+    assert "Self-archive this operation" in names, (
+        "fix-gitignore must keep self-archive step"
+    )
+    assert "Self-archive skipped (missing token)" in names, (
+        "fix-gitignore must explain why auto-retire did not run"
+    )
+
+
+def test_agent_review_has_strict_prechecks_without_placeholder_fallback():
+    workflow_file = WORKFLOWS_DIR / "agent-review.yml"
+    data = yaml.safe_load(workflow_file.read_text(encoding="utf-8"))
+    job = data["jobs"]["agent-review"]
+
+    steps = job.get("steps", [])
+    keycheck = [step for step in steps if step.get("name") == "Validate OPENAI_API_KEY"]
+    assert keycheck, "agent-review workflow must validate OPENAI_API_KEY before execution"
+
+    run_steps = [step for step in steps if step.get("name") == "Run agent review"]
+    assert run_steps, "Expected Run agent review step"
+    run_script = run_steps[0].get("run", "")
+    assert "reports/report.md is missing or empty" in run_script, (
+        "Run agent review must fail if agent.py does not produce a non-empty report"
+    )
+
+    validate_track_steps = [
+        step for step in steps if step.get("name") == "Validate track implementation exists"
+    ]
+    assert validate_track_steps, (
+        "agent-review workflow must fail fast if agent.py is missing on track branch"
+    )
