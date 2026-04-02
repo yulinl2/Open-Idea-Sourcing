@@ -115,6 +115,10 @@ Before calling `report_progress`, confirm that:
 - When running `gh workflow run`, always pass `--ref main` to avoid a GraphQL
   lookup for the default branch (which `GITHUB_TOKEN` cannot perform on push
   events).
+- `sync-agent-review-workflow` updates `.github/workflows/agent-review.yml` on
+  orphan branches and therefore must use a dedicated PAT secret
+  (`ORPHAN_WORKFLOW_PUSH_TOKEN`) with workflow write access. Do not rely on the
+  default `GITHUB_TOKEN` for this operation.
 - Stale workflow versions are retired by renaming to `*.yml.bak` (not `.yml`),
   keeping them out of GitHub Actions while preserving local history.
 

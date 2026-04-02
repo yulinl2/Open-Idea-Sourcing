@@ -94,14 +94,16 @@ dispatching the agent-track workflow from chat:
 In VS Code chat, use:
 
 ```text
-/ci-review paper_url=https://arxiv.org/abs/2006.06138 model=gpt-5.4
+/ci-review track=all paper_url=https://arxiv.org/abs/2006.06138 model=gpt-5.4
 /ci-one-off fix-gitignore
 /ci-one-off sync-agent-review-workflow branches='infra-base agent-e2e' dry_run=true
 /ci-one-off housekeeping-reports target_branch=agent-reports
 ```
 
-`/ci-review` is the recurring review path. `/ci-one-off` is the stable entrypoint
-for non-recurring maintenance and patch operations.
+`/ci-review` dispatches `agent-review.yml` directly and supports
+`track=all|e2e|linear|reconstruct`.
+
+`/ci-one-off` dispatches `agent-track-workflows.yml` and is maintenance-only.
 
 The one-off command accepts arguments such as:
 
@@ -111,8 +113,39 @@ sync-agent-review-workflow dry_run=true
 housekeeping-reports target_branch=agent-reports
 ```
 
-The dispatcher always uses `gh workflow run agent-track-workflows.yml --ref main`
-to avoid the recurring default-branch lookup failure.
+The dispatcher always uses `--ref main` on workflow dispatch commands to avoid
+the recurring default-branch lookup failure.
+
+PR comment formatting tip:
+- To avoid broken markdown from escaped newlines, post PR comments with:
+  `scripts/post_pr_comment.sh <pr-number> --repo owner/repo --body-file /path/to/comment.md`
+- You can also pipe stdin:
+  `cat /path/to/comment.md | scripts/post_pr_comment.sh <pr-number> --repo owner/repo`
+- To fix an already-posted comment in place:
+  `scripts/post_pr_comment.sh --edit-comment-id <comment-id> --repo owner/repo --body-file /path/to/comment.md`
+- By default the helper formats agent-posted comments with a visible badge:
+  ```text
+  <small>········ _Posted by @🍪`Copilot via VS Code`_ ········</small>
+  ```
+- To post without the badge, add `--as-user` (or `--plain`).
+
+Important for one-off sync operation:
+- `sync-agent-review-workflow` updates `.github/workflows/agent-review.yml` on orphan branches.
+- GitHub's default `GITHUB_TOKEN` often cannot push workflow-file changes.
+- Configure repo secret `ORPHAN_WORKFLOW_PUSH_TOKEN` before running this operation.
+- Recommended token scopes:
+  - classic PAT: `repo` + `workflow`
+  - fine-grained PAT: repository `Contents: Read and write` + `Workflows: Read and write`
+
+What is PAT?
+- PAT means Personal Access Token: a GitHub token you create in your account settings.
+- In this repo, PAT is needed only for operations that write `.github/workflows/*.yml` via Actions automation.
+- For normal review dispatch and most code/report writes, default `GITHUB_TOKEN` is enough.
+
+Why `fix-gitignore` may not disappear immediately:
+- `fix-gitignore` can still apply `.gitignore` updates without a PAT.
+- But auto-retire edits `agent-track-workflows.yml` (a workflow file), which needs PAT-level workflow write access.
+- If `ORPHAN_WORKFLOW_PUSH_TOKEN` is missing, the run now shows an explicit summary note and skips retirement.
 
 Deferred cloud option:
 If one-click dispatch is ever needed on GitHub.com rather than VS Code, the

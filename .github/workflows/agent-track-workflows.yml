@@ -7,8 +7,6 @@ name: Agent track workflows
 #
 # Operations (controlled by the `operation` input on manual dispatch):
 #
-#   review (default)      — fans out to all three agent tracks by triggering
-#                           agent-review.yml once per track in parallel.
 #   fix-gitignore         — writes the comprehensive .gitignore to all orphan
 #                           branches (one-shot maintenance; idempotent).
 #   sync-agent-review-workflow — syncs infra-base and agent-* branches to the
@@ -20,38 +18,19 @@ name: Agent track workflows
 #                           files accumulate).
 #
 # Trigger matrix:
-#   • Manual (workflow_dispatch) — supply operation, paper URL, and model
-#   • Push to main               — auto-fire `review` with default paper/model
+#   • Manual (workflow_dispatch) only
 
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - "reports/**"
-      - "*.md"
-      - ".github/workflows/**"
-
   workflow_dispatch:
     inputs:
       operation:
-        description: "Operation to run (review: fans out to all tracks; fix-gitignore/sync-agent-review-workflow: one-shot maintenance; housekeeping-reports: recurring cleanup)"
-        required: false
-        default: "review"
+        description: "Maintenance operation to run"
+        required: true
         type: choice
         options:
-          - review
           - fix-gitignore
           - sync-agent-review-workflow
           - housekeeping-reports
-      paper_url:
-        description: "Paper URL (arXiv abstract or PDF) — used when operation=review"
-        required: false
-        default: "https://arxiv.org/abs/2006.06138"
-      model:
-        description: "LLM model identifier (e.g. gpt-4o) — used when operation=review"
-        required: false
-        default: "gpt-4o"
       branches:
         description: "Space-separated branches to update — used when operation=sync-agent-review-workflow"
         required: false
@@ -75,38 +54,6 @@ on:
 
 jobs:
   # ------------------------------------------------------------------
-  # Fan-out: dispatch agent-review.yml for every track in parallel.
-  # matrix.track drives 3 parallel runners from one job definition,
-  # so future edits only need to touch a single place.
-  # github.event.inputs.* is used (not inputs.*) so the expression
-  # evaluates safely on both workflow_dispatch and push events.
-  # ------------------------------------------------------------------
-  dispatch-tracks:
-    name: Dispatch agent-review (${{ matrix.track }})
-    if: github.event_name == 'push' || github.event.inputs.operation == 'review' || github.event.inputs.operation == ''
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-    strategy:
-      matrix:
-        track: [e2e, linear, reconstruct]
-    steps:
-      - name: Trigger agent-review for ${{ matrix.track }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PAPER_URL: ${{ github.event.inputs.paper_url || 'https://arxiv.org/abs/2006.06138' }}
-          MODEL: ${{ github.event.inputs.model || 'gpt-4o' }}
-          TRACK: ${{ matrix.track }}
-        run: |
-          gh workflow run agent-review.yml \
-            --repo "${{ github.repository }}" \
-            --ref main \
-            --field paper_url="$PAPER_URL" \
-            --field track="$TRACK" \
-            --field model="$MODEL"
-          echo "Dispatched agent-review for track=$TRACK"
-
-  # ------------------------------------------------------------------
   # Maintenance: write comprehensive .gitignore to all orphan branches.
   # Trigger manually with operation=fix-gitignore.
   # ------------------------------------------------------------------
@@ -120,6 +67,7 @@ jobs:
       - name: Checkout main
         uses: actions/checkout@v4
         with:
+          token: ${{ secrets.ORPHAN_WORKFLOW_PUSH_TOKEN || github.token }}
           fetch-depth: 0
 
       - name: Configure git
@@ -137,9 +85,18 @@ jobs:
         run: python3 .github/scripts/fix_orphan_gitignore.py
 
       - name: Self-archive this operation
-        if: success()
+        if: success() && secrets.ORPHAN_WORKFLOW_PUSH_TOKEN != ''
         continue-on-error: true
         run: python3 .github/scripts/retire_maintenance_op.py --op fix-gitignore
+
+      - name: Self-archive skipped (missing token)
+        if: success() && secrets.ORPHAN_WORKFLOW_PUSH_TOKEN == ''
+        run: |
+          printf '### Maintenance note\n\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'fix-gitignore applied, but auto-retire was skipped because `ORPHAN_WORKFLOW_PUSH_TOKEN` is missing.\n' \
+            >> "$GITHUB_STEP_SUMMARY"
+          printf 'Add the secret, then rerun operation=`fix-gitignore` once more to retire it automatically.\n' \
+            >> "$GITHUB_STEP_SUMMARY"
 
   # ------------------------------------------------------------------
   # Maintenance: patch the correct agent-review.yml onto infra-base
@@ -157,6 +114,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
+          token: ${{ secrets.ORPHAN_WORKFLOW_PUSH_TOKEN || github.token }}
           fetch-depth: 0
 
       - name: Configure git
@@ -175,6 +133,18 @@ jobs:
           for branch in ${{ github.event.inputs.branches }}; do
             git fetch origin "$branch" || true
           done
+
+      - name: Validate workflow push token
+        if: inputs.dry_run == false
+        env:
+          ORPHAN_WORKFLOW_PUSH_TOKEN: ${{ secrets.ORPHAN_WORKFLOW_PUSH_TOKEN }}
+        run: |
+          if [ -z "$ORPHAN_WORKFLOW_PUSH_TOKEN" ]; then
+            echo "::error::Missing required secret ORPHAN_WORKFLOW_PUSH_TOKEN."
+            echo "::error::sync-agent-review-workflow updates .github/workflows/agent-review.yml on orphan branches, which requires a token with workflow write access."
+            echo "::error::Create repo secret ORPHAN_WORKFLOW_PUSH_TOKEN (classic PAT: repo + workflow, or fine-grained token with repository contents/workflows write), then rerun."
+            exit 1
+          fi
 
       - name: Run patch script (dry run)
         if: inputs.dry_run

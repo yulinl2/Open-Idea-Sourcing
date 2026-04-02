@@ -180,6 +180,28 @@ for file in "${files[@]}"; do
       bad=1
     fi
   fi
+
+  # Guardrail: sync-agent-review-workflow updates workflow files on orphan
+  # branches, so it must require a dedicated token secret and validate it.
+  if [[ "$file" == ".github/workflows/agent-track-workflows.yml" ]]; then
+    if grep -Eq 'name:[[:space:]]+Sync agent-review workflow on orphan branches' "$file"; then
+      if ! grep -Eq 'token:[[:space:]]+\$\{\{[[:space:]]*secrets\.ORPHAN_WORKFLOW_PUSH_TOKEN[[:space:]]*\|\|[[:space:]]*github\.token[[:space:]]*\}\}' "$file"; then
+        echo "$file: sync-agent-review-workflow Checkout main must set with.token to secrets.ORPHAN_WORKFLOW_PUSH_TOKEN || github.token."
+        bad=1
+      fi
+      if ! grep -Eq 'name:[[:space:]]+Validate workflow push token' "$file"; then
+        echo "$file: sync-agent-review-workflow must include a preflight token validation step."
+        bad=1
+      fi
+    fi
+
+    if grep -Eq 'name:[[:space:]]+Write \.gitignore to all orphan branches' "$file"; then
+      if ! grep -Eq 'Self-archive skipped \(missing token\)' "$file"; then
+        echo "$file: fix-gitignore must include explicit self-archive skipped messaging when token is missing."
+        bad=1
+      fi
+    fi
+  fi
 done
 
 if [[ $bad -ne 0 ]]; then
