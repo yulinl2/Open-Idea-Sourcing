@@ -91,6 +91,26 @@ for open-ended values like URLs or space-separated branch lists. See
 
 ---
 
+## Merge-readiness gate — required before merge claims
+
+Before saying a PR is merge-ready (or doing merge actions), run:
+
+```bash
+bash scripts/check_pr_merge_readiness.sh <pr-number>
+# or omit argument for current branch PR
+bash scripts/check_pr_merge_readiness.sh
+```
+
+Treat any of these as a hard stop:
+- any required check bucket is not `pass`
+- PR is draft
+- review decision is `CHANGES_REQUESTED`
+- check metadata cannot be fetched
+
+Do not claim "all checks passed" unless this gate has just succeeded.
+
+---
+
 ## Pushing changes
 
 Use `report_progress` tool — do not run `git push` directly.

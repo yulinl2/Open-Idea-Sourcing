@@ -4,7 +4,7 @@ VENV_PYTHON := $(VENV)/bin/python
 ENV_FILE := .env
 ENV_TEMPLATE := .env.example
 
-.PHONY: help install install-hooks test test-fast test-quiet test-workflows test-workflows-py clean
+.PHONY: help install install-hooks test test-fast test-quiet test-workflows test-workflows-py check-pr-ready clean
 
 help:
 	@echo "Available targets:"
@@ -15,6 +15,7 @@ help:
 	@echo "  make test-quiet Run full test suite (quiet)"
 	@echo "  make test-workflows Run workflow guardrail checks only (no deps)"
 	@echo "  make test-workflows-py Run workflow guardrail pytest checks"
+	@echo "  make check-pr-ready Ensure required PR checks are green (gh required)"
 	@echo "  make install-hooks Enable local pre-commit and pre-push hooks"
 	@echo "  make clean      Remove caches and local venv"
 
@@ -48,6 +49,9 @@ test-workflows-py: $(VENV_PYTHON)
 	$(VENV_PYTHON) -m ensurepip --upgrade
 	$(VENV_PYTHON) -m pip install -r requirements.txt
 	$(VENV_PYTHON) -m pytest tests/test_workflow_guardrails.py -v
+
+check-pr-ready:
+	bash scripts/check_pr_merge_readiness.sh
 
 install-hooks:
 	bash scripts/install-git-hooks.sh

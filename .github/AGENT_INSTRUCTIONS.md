@@ -107,6 +107,25 @@ Before calling `report_progress`, confirm that:
 
 ---
 
+## 6.1 Merge-readiness gate — fail closed on CI
+
+Before saying a PR is ready to merge (or performing any merge action), run:
+
+```bash
+bash scripts/check_pr_merge_readiness.sh <pr-number>
+# or on the current branch PR:
+bash scripts/check_pr_merge_readiness.sh
+```
+
+Rules:
+- If this command reports any required check bucket other than `pass`, draft
+  state, or `CHANGES_REQUESTED`, stop and report blockers.
+- If check data cannot be fetched, treat it as **not merge-ready**.
+- Never claim "all checks passed" without running this gate immediately before
+  the claim.
+
+---
+
 ## 7. Workflow file discipline
 
 - The stable filename for agent-track fan-out is

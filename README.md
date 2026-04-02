@@ -73,6 +73,14 @@ make install-hooks
 make test-workflows
 ```
 
+To fail closed before merging a PR, run:
+
+```bash
+make check-pr-ready
+# or target a specific PR
+bash scripts/check_pr_merge_readiness.sh <pr-number>
+```
+
 The hooks currently block known breaking patterns in GitHub workflow files,
 including:
 
