@@ -143,34 +143,7 @@ jobs:
           # Copy each report into <paper-slug>/v<code-version>/ so reports
           # are organised by paper and package version from the start,
           # preventing flat-file accumulation at the branch root.
-          python3 - <<'EOF'
-import re, shutil
-from pathlib import Path
-
-TIMESTAMP_RE = re.compile(r"^(.+?)_(\d{4}-\d{2}-\d{2}T\d{6})$")
-
-def paper_slug(stem: str) -> str:
-    m = TIMESTAMP_RE.match(stem)
-    return m.group(1) if m else stem
-
-def parse_version(text: str) -> str:
-    m = re.search(r"\|\s*Code version\s*\|\s*([^|\n]+?)\s*\|", text)
-    return m.group(1).strip() if m else ""
-
-src = Path("reports")
-dst = Path("/tmp/reports-branch")
-for report in sorted(src.iterdir()):
-    if report.suffix == ".md":
-        content = report.read_text(encoding="utf-8", errors="replace")
-        slug = paper_slug(report.stem)
-        version = parse_version(content)
-        dest = dst / slug / f"v{version}" / report.name if version else dst / report.name
-    else:
-        dest = dst / report.name
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(report, dest)
-    print(f"  copied {report.name} → {dest.relative_to(dst)}")
-EOF
+          python3 .github/scripts/publish_reports.py reports /tmp/reports-branch
 
           cd /tmp/reports-branch
           git add .
