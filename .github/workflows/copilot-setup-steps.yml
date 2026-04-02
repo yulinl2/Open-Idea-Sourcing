@@ -1,0 +1,51 @@
+name: "Copilot Setup Steps"
+
+# Run automatically when this file changes, and allow manual triggers for validation.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  # This job name MUST be `copilot-setup-steps` — Copilot coding agent looks for it by name.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Fetch orphan branch refs for Copilot diff baseline
+        run: |
+          # Fetch orphan branches (agent-reports, reports) that the Copilot agent
+          # uses as PR base refs when building its diff context. A standard
+          # actions/checkout only fetches the current branch, so orphan branches
+          # are unavailable and `git diff agent-reports HEAD` fails with:
+          #   fatal: ambiguous argument 'agent-reports': unknown revision or path
+          #
+          # Fetch each branch as both a remote-tracking ref and a local branch so
+          # the bare name (e.g. "agent-reports") resolves in git commands.
+          for branch in agent-reports reports; do
+            if git ls-remote --exit-code --heads origin "$branch" > /dev/null 2>&1; then
+              git fetch origin "${branch}:refs/remotes/origin/${branch}" || true
+              git branch "$branch" "origin/${branch}" 2>/dev/null || true
+            fi
+          done
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.12"
+          cache: "pip"
+
+      - name: Install dependencies into .venv
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
