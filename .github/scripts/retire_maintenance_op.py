@@ -85,7 +85,7 @@ def _remove_from_description(content: str, op: str) -> str:
 
 
 def _remove_from_choice_options(content: str, op: str) -> str:
-    """Remove op from the 'operation' input's type:choice options list."""
+    """Remove op from the 'operation' input's type: choice options list."""
     lines = content.splitlines(keepends=True)
     result: list[str] = []
     in_operation_block = False

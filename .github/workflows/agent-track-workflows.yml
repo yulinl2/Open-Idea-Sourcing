@@ -160,7 +160,7 @@ jobs:
           done
 
       - name: Run patch script (dry run)
-        if: github.event.inputs.dry_run == 'true'
+        if: inputs.dry_run
         run: |
           echo "DRY RUN — would update: ${{ github.event.inputs.branches }}"
           python3 -c "
@@ -174,7 +174,7 @@ jobs:
           "
 
       - name: Run patch script
-        if: github.event.inputs.dry_run != 'true'
+        if: inputs.dry_run == false
         run: |
           python3 .github/scripts/fix_orphan_agent_review.py \
             --branches ${{ github.event.inputs.branches }}
@@ -183,7 +183,7 @@ jobs:
         run: |
           printf '### Patch complete\n\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'Branches targeted: `%s`\n\n' "${{ github.event.inputs.branches }}" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
             printf 'Dry run — no changes pushed.\n' >> "$GITHUB_STEP_SUMMARY"
           else
             printf 'agent-review.yml updated on each branch that was outdated.\n' \
@@ -191,5 +191,5 @@ jobs:
           fi
 
       - name: Self-archive this operation
-        if: success() && github.event.inputs.dry_run != 'true'
+        if: success() && inputs.dry_run == false
         run: python3 .github/scripts/retire_maintenance_op.py --op patch-agent-review
