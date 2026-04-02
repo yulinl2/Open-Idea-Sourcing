@@ -55,6 +55,7 @@ Every run record includes: git commit, CI run URL, model, timestamp, and a Merma
 git clone https://github.com/yulinl2/Open-Idea-Sourcing.git
 cd Open-Idea-Sourcing
 make install          # creates .venv, installs deps, copies .env.example → .env
+make install-hooks    # enables local pre-commit / pre-push guardrails
 ```
 
 Then open `.env` and set your API key:
@@ -62,6 +63,18 @@ Then open `.env` and set your API key:
 ```bash
 OPENAI_API_KEY=sk-...
 ```
+
+### Local Workflow Guardrails
+
+To catch workflow mistakes before commit/push:
+
+```bash
+make install-hooks
+make test-workflows-shell
+```
+
+The hooks currently block known breaking patterns in GitHub workflow files,
+including unsupported `permissions: workflows:` entries.
 
 ### Review a Paper
 

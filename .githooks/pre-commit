@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+changed_workflows=()
+while IFS= read -r f; do
+  changed_workflows+=("$f")
+done < <(git diff --cached --name-only --diff-filter=ACMR -- .github/workflows/*.yml 2>/dev/null || true)
+
+if [[ ${#changed_workflows[@]} -eq 0 ]]; then
+  exit 0
+fi
+
+echo "Running workflow guardrails on staged workflow changes..."
+scripts/check_workflow_guardrails.sh "${changed_workflows[@]}"
