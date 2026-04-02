@@ -38,7 +38,7 @@ body_file=""
 body_text=""
 use_agent_format=1
 
-agent_badge='<div style="padding: 10px 12px; margin: 12px 0; background-color: rgba(0,0,0,0.06); border: 1px solid rgba(0,0,0,0.08); border-radius: 4px;">🍪 Copilot via VS Code</div>'
+agent_badge='<small>········ _Posted by @🍪`Copilot via VS Code`_ ········</small>'
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
