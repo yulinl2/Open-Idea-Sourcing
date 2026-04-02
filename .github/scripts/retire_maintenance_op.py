@@ -289,7 +289,6 @@ def main() -> None:
             run(["git", "add", str(bak_path)])
         if script_path and not script_path.exists():
             run(["git", "rm", "--cached", "--ignore-unmatch", str(script_path)])
-            run(["git", "add", "-u", str(script_path)])
         run(
             [
                 "git",
