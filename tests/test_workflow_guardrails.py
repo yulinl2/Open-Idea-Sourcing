@@ -131,9 +131,16 @@ def test_agent_track_workflow_is_maintenance_only():
 
     workflow_on = _workflow_on(data)
 
-    assert "push" not in workflow_on, (
-        "agent-track-workflows should be manual maintenance-only"
-    )
+    # A push trigger is allowed ONLY if it is narrowed to a paths filter
+    # (no-op guard to prevent phantom failure check-runs when this file
+    # changes in a PR commit).  A blanket push trigger without paths would
+    # fire on every branch push and is not permitted.
+    if "push" in workflow_on:
+        push_cfg = workflow_on["push"] or {}
+        assert push_cfg.get("paths"), (
+            "agent-track-workflows push trigger must have a 'paths' filter — "
+            "a blanket push trigger is not allowed for a maintenance-only workflow"
+        )
 
     options = workflow_on["workflow_dispatch"]["inputs"]["operation"]["options"]
     assert "review" not in options, "review should dispatch via agent-review.yml, not maintenance workflow"

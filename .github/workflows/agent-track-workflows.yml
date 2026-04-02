@@ -18,9 +18,14 @@ name: Agent track workflows
 #                           files accumulate).
 #
 # Trigger matrix:
-#   • Manual (workflow_dispatch) only
+#   • Manual (workflow_dispatch) — main entry point for all operations
+#   • push (paths filter)        — no-op guard; prevents phantom failure check-runs
+#                                  when this file is modified in a PR commit
 
 on:
+  push:
+    paths:
+      - .github/workflows/agent-track-workflows.yml
   workflow_dispatch:
     inputs:
       operation:
@@ -53,6 +58,18 @@ on:
           - reports
 
 jobs:
+  # ------------------------------------------------------------------
+  # No-op guard: keeps push check-runs green when this file changes.
+  # GitHub creates a check run for any workflow file touched in a push;
+  # without a matching job the run would fail with 0 jobs.
+  # ------------------------------------------------------------------
+  noop:
+    name: "Workflow file changed (push guard)"
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "agent-track-workflows.yml changed — no maintenance op dispatched."
+
   # ------------------------------------------------------------------
   # Maintenance: write comprehensive .gitignore to all orphan branches.
   # Trigger manually with operation=fix-gitignore.
