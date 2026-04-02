@@ -1,0 +1,69 @@
+name: Propagate Agent Implementations
+
+# One-shot workflow: propagates full agent implementations from infra-base
+# (agent_impls/) to the three agent-track branches.
+#
+# Run this after the clean-up PR is merged into infra-base.
+#
+# The workflow:
+#   1. Checks out infra-base (which has agent_impls/ after the clean-up PR)
+#   2. Runs scripts/propagate_agent_impls.py for each track
+#   3. Pushes the updated implementations to agent-e2e, agent-linear, agent-reconstruct
+
+on:
+  workflow_dispatch:
+    inputs:
+      tracks:
+        description: "Comma-separated tracks to propagate: e2e,linear,reconstruct (default: all)"
+        required: false
+        default: "e2e,linear,reconstruct"
+      dry_run:
+        description: "Dry run (true = show changes without pushing)"
+        required: false
+        default: "false"
+
+jobs:
+  propagate:
+    name: Propagate implementations
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout infra-base
+        uses: actions/checkout@v4
+        with:
+          ref: infra-base
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.12"
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch agent branches
+        run: |
+          git fetch origin agent-e2e agent-linear agent-reconstruct || true
+
+      - name: Run propagation
+        run: |
+          TRACKS="${{ inputs.tracks }}"
+          DRY_RUN_FLAG=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            DRY_RUN_FLAG="--dry-run"
+          fi
+          python3 scripts/propagate_agent_impls.py \
+            --tracks ${TRACKS//,/ } \
+            $DRY_RUN_FLAG
+
+      - name: Summary
+        run: |
+          printf '### Propagation complete\n\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'Tracks propagated: `${{ inputs.tracks }}`\n\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'Next step: trigger the Agent Track Review workflow on each track.\n' \
+            >> "$GITHUB_STEP_SUMMARY"
