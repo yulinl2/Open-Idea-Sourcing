@@ -70,11 +70,18 @@ To catch workflow mistakes before commit/push:
 
 ```bash
 make install-hooks
-make test-workflows-shell
+make test-workflows
 ```
 
 The hooks currently block known breaking patterns in GitHub workflow files,
-including unsupported `permissions: workflows:` entries.
+including:
+
+- unsupported `permissions: workflows:` entries
+- tab indentation in workflow YAML
+- `workflow_dispatch` inputs with `options:` but no `type: choice`
+- `gh workflow run agent-review.yml` calls that omit `--ref main`
+- staged generated junk such as `.venv/`, `__pycache__/`, `*.pyc`, and shell-redirect artifacts like `=6.0`
+- pushes from `main` / `copilot/*` branches whose history is not rooted in `origin/main`
 
 ### Review a Paper
 

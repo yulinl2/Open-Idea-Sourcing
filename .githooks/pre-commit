@@ -4,6 +4,9 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
+echo "Running staged-file guardrails..."
+scripts/check_staged_guardrails.sh
+
 changed_workflows=()
 while IFS= read -r f; do
   changed_workflows+=("$f")

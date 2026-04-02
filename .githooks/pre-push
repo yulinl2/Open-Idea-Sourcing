@@ -4,5 +4,18 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
+current_branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+case "$current_branch" in
+	main|copilot/*)
+		if ! git merge-base --is-ancestor origin/main HEAD; then
+			cat <<'EOF'
+Current branch is not rooted in origin/main.
+Reset or rebase onto origin/main before pushing to avoid orphan-branch history leaks.
+EOF
+			exit 1
+		fi
+		;;
+esac
+
 echo "Running workflow guardrails before push..."
 scripts/check_workflow_guardrails.sh

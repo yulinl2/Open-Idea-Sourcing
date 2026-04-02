@@ -29,6 +29,11 @@ for file in "${files[@]}"; do
     continue
   fi
 
+  if grep -n $'\t' "$file" >/dev/null 2>&1; then
+    grep -n $'\t' "$file" | sed "s|^|$file: tab indentation is not allowed in workflow YAML: |"
+    bad=1
+  fi
+
   # Guardrail: `permissions.workflows` is not a supported GitHub Actions scope
   # and causes workflow syntax validation errors.
   if awk '
@@ -67,13 +72,121 @@ for file in "${files[@]}"; do
   else
     bad=1
   fi
+
+  # Guardrail: any workflow_dispatch input that declares options must also
+  # declare `type: choice` in the same input block.
+  if awk '
+    function indent(s,  i) {
+      for (i = 1; i <= length(s); i++) {
+        if (substr(s, i, 1) != " ") return i - 1
+      }
+      return length(s)
+    }
+    function finish_input_block() {
+      if (in_input && saw_options && !saw_choice_type) {
+        printf("%s:%d: workflow_dispatch input \"%s\" has options but no type: choice\n", FILENAME, input_start_line, input_name)
+        bad = 1
+      }
+      in_input = 0
+      input_indent = -1
+      input_name = ""
+      saw_options = 0
+      saw_choice_type = 0
+    }
+    {
+      line = $0
+      if (line ~ /^[[:space:]]*#/) next
+
+      if (line ~ /^[[:space:]]*workflow_dispatch:[[:space:]]*$/) {
+        in_workflow_dispatch = 1
+        workflow_dispatch_indent = indent(line)
+        next
+      }
+
+      if (in_workflow_dispatch) {
+        curr_indent = indent(line)
+        if (line !~ /^[[:space:]]*$/ && curr_indent <= workflow_dispatch_indent) {
+          finish_input_block()
+          in_workflow_dispatch = 0
+          in_inputs = 0
+        }
+      }
+
+      if (in_workflow_dispatch && line ~ /^[[:space:]]*inputs:[[:space:]]*$/) {
+        in_inputs = 1
+        inputs_indent = indent(line)
+        next
+      }
+
+      if (in_inputs) {
+        curr_indent = indent(line)
+        if (line !~ /^[[:space:]]*$/ && curr_indent <= inputs_indent) {
+          finish_input_block()
+          in_inputs = 0
+        }
+      }
+
+      if (in_inputs) {
+        if (line ~ /^[[:space:]]*[A-Za-z0-9_-]+:[[:space:]]*$/) {
+          curr_indent = indent(line)
+          if (curr_indent > inputs_indent) {
+            if (in_input && curr_indent <= input_indent) {
+              finish_input_block()
+            }
+            if (!in_input) {
+              input_name = line
+              sub(/^[[:space:]]*/, "", input_name)
+              sub(/:.*/, "", input_name)
+              in_input = 1
+              input_indent = curr_indent
+              input_start_line = NR
+              saw_options = 0
+              saw_choice_type = 0
+              next
+            }
+          }
+        }
+
+        if (in_input) {
+          curr_indent = indent(line)
+          if (line !~ /^[[:space:]]*$/ && curr_indent <= input_indent) {
+            finish_input_block()
+          }
+        }
+
+        if (in_input) {
+          if (line ~ /^[[:space:]]*options:[[:space:]]*$/) {
+            saw_options = 1
+          }
+          if (line ~ /^[[:space:]]*type:[[:space:]]*choice[[:space:]]*$/) {
+            saw_choice_type = 1
+          }
+        }
+      }
+    }
+    END {
+      finish_input_block()
+      exit bad
+    }
+  ' "$file"; then
+    :
+  else
+    bad=1
+  fi
+
+  if grep -Eq 'gh[[:space:]]+workflow[[:space:]]+run[[:space:]]+agent-review\.yml' "$file"; then
+    if ! grep -Eq -- '--ref[[:space:]]+main' "$file"; then
+      echo "$file: gh workflow run agent-review.yml must include --ref main."
+      bad=1
+    fi
+  fi
 done
 
 if [[ $bad -ne 0 ]]; then
   cat <<'EOF'
 
 Workflow guardrail failed.
-Remove unsupported `workflows:` keys from `permissions:` blocks.
+Fix the reported workflow issues before committing or pushing.
 EOF
   exit 1
 fi

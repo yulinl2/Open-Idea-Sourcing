@@ -4,7 +4,7 @@ VENV_PYTHON := $(VENV)/bin/python
 ENV_FILE := .env
 ENV_TEMPLATE := .env.example
 
-.PHONY: help install install-hooks test test-fast test-quiet test-workflows test-workflows-shell clean
+.PHONY: help install install-hooks test test-fast test-quiet test-workflows test-workflows-py clean
 
 help:
 	@echo "Available targets:"
@@ -13,8 +13,8 @@ help:
 	@echo "  make test       Run full test suite (verbose)"
 	@echo "  make test-fast  Run only fast unit tests, skip @pytest.mark.slow classes"
 	@echo "  make test-quiet Run full test suite (quiet)"
-	@echo "  make test-workflows Run workflow guardrail checks only (pytest)"
-	@echo "  make test-workflows-shell Run workflow guardrail checks only (no deps)"
+	@echo "  make test-workflows Run workflow guardrail checks only (no deps)"
+	@echo "  make test-workflows-py Run workflow guardrail pytest checks"
 	@echo "  make install-hooks Enable local pre-commit and pre-push hooks"
 	@echo "  make clean      Remove caches and local venv"
 
@@ -41,13 +41,13 @@ test-fast: $(VENV_PYTHON)
 test-quiet: $(VENV_PYTHON)
 	$(VENV_PYTHON) -m pytest tests/ -q
 
-test-workflows: $(VENV_PYTHON)
+test-workflows:
+	bash scripts/check_workflow_guardrails.sh
+
+test-workflows-py: $(VENV_PYTHON)
 	$(VENV_PYTHON) -m ensurepip --upgrade
 	$(VENV_PYTHON) -m pip install -r requirements.txt
 	$(VENV_PYTHON) -m pytest tests/test_workflow_guardrails.py -v
-
-test-workflows-shell:
-	bash scripts/check_workflow_guardrails.sh
 
 install-hooks:
 	bash scripts/install-git-hooks.sh
