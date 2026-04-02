@@ -85,10 +85,10 @@ on:
         required: false
         default: "gpt-4o"
 
-# Prevent concurrent agent runs on the same track from interfering.
-concurrency:
-  group: "agent-${{ inputs.track || github.ref_name }}"
-  cancel-in-progress: false
+# Workflow-level concurrency is intentionally absent: with a matrix
+# fan-out the per-track mutex is handled at the job level below, so that
+# a concurrent `track=all` dispatch and a `track=e2e` dispatch don't race
+# on the same agent-reports branch.
 
 jobs:
   resolve-track-matrix:
@@ -105,7 +105,7 @@ jobs:
           if [ "$TRACK_INPUT" = "all" ]; then
             echo 'matrix={"track":["e2e","linear","reconstruct"]}' >> "$GITHUB_OUTPUT"
           else
-            printf 'matrix={"track":["%s"]}\\n' "$TRACK_INPUT" >> "$GITHUB_OUTPUT"
+            printf 'matrix={"track":["%s"]}\n' "$TRACK_INPUT" >> "$GITHUB_OUTPUT"
           fi
 
   # ------------------------------------------------------------------
@@ -158,6 +158,12 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
     needs: [resolve-track-matrix, test-infra]
+    # Per-track mutex: prevents a concurrent track=all dispatch and a
+    # specific track=e2e dispatch from racing on the same agent-reports
+    # branch for the same paper.
+    concurrency:
+      group: "agent-track-${{ matrix.track }}"
+      cancel-in-progress: false
     permissions:
       contents: write
     strategy:

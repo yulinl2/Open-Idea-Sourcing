@@ -95,10 +95,12 @@ def test_sync_workflow_uses_workflows_write_permission():
     ]
     assert checkout_steps, "Expected 'Checkout main' step in sync-agent-review-workflow"
     token_expr = checkout_steps[0].get("with", {}).get("token", "")
-    assert token_expr == "", (
-        "Checkout main in sync-agent-review-workflow should use the default "
-        "github.token (no explicit token override needed when workflows:write "
-        "permission is set)"
+    normalized_token = str(token_expr).strip()
+    assert normalized_token in ("", "${{ github.token }}"), (
+        "Checkout main in sync-agent-review-workflow must use the default "
+        "github.token (no PAT or non-default secret such as "
+        "secrets.ORPHAN_WORKFLOW_PUSH_TOKEN; if set explicitly, token must be "
+        "${{ github.token }})"
     )
 
 

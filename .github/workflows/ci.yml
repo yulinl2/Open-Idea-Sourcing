@@ -31,7 +31,7 @@ jobs:
         run: python -m pytest tests/ -v -m "not slow"
 
       - name: Run full test suite
-        # Full suite runs on main-branch pushes and manual workflow_dispatch.
-        # On feature-branch push/PR only the fast tests run (see above).
-        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+        # Full suite (including @pytest.mark.slow integration tests) only runs
+        # on manual workflow_dispatch to avoid 4+ hour bills on every merge to main.
+        if: github.event_name == 'workflow_dispatch'
         run: python -m pytest tests/ -v
