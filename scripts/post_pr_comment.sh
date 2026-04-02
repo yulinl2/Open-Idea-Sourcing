@@ -38,8 +38,10 @@ body_file=""
 body_text=""
 use_agent_format=1
 
-agent_prefix='> 🤖 Copilot via VS Code'
-agent_separator=''
+agent_header='> [!NOTE]'
+agent_badge='> 🤖 Copilot via VS Code'
+agent_subtitle='> AI-assisted PR note'
+agent_footer='> _Posted with scripts/post_pr_comment.sh_'
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -96,11 +98,14 @@ submit_comment() {
   local rendered_file="$file_path"
 
   if [[ "$use_agent_format" -eq 1 ]]; then
-    if ! grep -Fqx "$agent_prefix" "$file_path"; then
+    if ! grep -Fqx "$agent_badge" "$file_path"; then
       tmp_file="$(mktemp -t pr-comment-XXXXXX.md)"
       {
-        printf '%s\n\n' "$agent_prefix"
+        printf '%s\n' "$agent_header"
+        printf '%s\n' "$agent_badge"
+        printf '%s\n\n' "$agent_subtitle"
         cat "$file_path"
+        printf '\n\n%s\n' "$agent_footer"
       } > "$tmp_file"
       rendered_file="$tmp_file"
     fi

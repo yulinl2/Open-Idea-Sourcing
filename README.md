@@ -124,7 +124,11 @@ PR comment formatting tip:
 - To fix an already-posted comment in place:
   `scripts/post_pr_comment.sh --edit-comment-id <comment-id> --repo owner/repo --body-file /path/to/comment.md`
 - By default the helper formats agent-posted comments with a visible badge:
-  `> 🤖 Copilot via VS Code`
+  ```text
+  > [!NOTE]
+  > 🤖 Copilot via VS Code
+  > AI-assisted PR note
+  ```
 - To post without the badge, add `--as-user` (or `--plain`).
 
 Important for one-off sync operation:
