@@ -85,18 +85,20 @@ jobs:
         run: python3 .github/scripts/fix_orphan_gitignore.py
 
       - name: Self-archive this operation
-        if: success() && secrets.ORPHAN_WORKFLOW_PUSH_TOKEN != ''
+        if: success()
         continue-on-error: true
-        run: python3 .github/scripts/retire_maintenance_op.py --op fix-gitignore
-
-      - name: Self-archive skipped (missing token)
-        if: success() && secrets.ORPHAN_WORKFLOW_PUSH_TOKEN == ''
+        env:
+          ORPHAN_WORKFLOW_PUSH_TOKEN: ${{ secrets.ORPHAN_WORKFLOW_PUSH_TOKEN }}
         run: |
-          printf '### Maintenance note\n\n' >> "$GITHUB_STEP_SUMMARY"
-          printf 'fix-gitignore applied, but auto-retire was skipped because `ORPHAN_WORKFLOW_PUSH_TOKEN` is missing.\n' \
-            >> "$GITHUB_STEP_SUMMARY"
-          printf 'Add the secret, then rerun operation=`fix-gitignore` once more to retire it automatically.\n' \
-            >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$ORPHAN_WORKFLOW_PUSH_TOKEN" ]; then
+            printf '### Maintenance note\n\n' >> "$GITHUB_STEP_SUMMARY"
+            printf 'fix-gitignore applied, but auto-retire was skipped because ORPHAN_WORKFLOW_PUSH_TOKEN is missing.\n' \
+              >> "$GITHUB_STEP_SUMMARY"
+            printf 'Add the secret, then rerun operation=fix-gitignore once more to retire it automatically.\n' \
+              >> "$GITHUB_STEP_SUMMARY"
+          else
+            python3 .github/scripts/retire_maintenance_op.py --op fix-gitignore
+          fi
 
   # ------------------------------------------------------------------
   # Maintenance: patch the correct agent-review.yml onto infra-base
