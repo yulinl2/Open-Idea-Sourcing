@@ -245,7 +245,31 @@ class TestGitStagingPath:
         assert git_cmds == [], f"Expected no git commands with --no-push, got: {git_cmds}"
 
     def test_no_crash_when_script_already_absent(self, tmp_path):
-        """Retiring an op whose script is already gone raises no exception."""
-        # Should complete without error.
-        cmds, fake_script = self._run_main_with_mocks(tmp_path, script_exists=False)
+        """Retiring an op whose script is already gone raises no exception.
+
+        Also regression-tests that git staging uses ``git rm --cached`` and
+        does *not* call ``git add -u <script>`` for an already-missing path.
+        """
+        # Should complete without error, even when git staging is enabled.
+        cmds, fake_script = self._run_main_with_mocks(
+            tmp_path, script_exists=False, no_push=False
+        )
+        # The script path should not exist on disk.
         assert not fake_script.exists()
+        script_str = str(fake_script)
+        # git rm --cached should be invoked to stage the (already-missing) script.
+        rm_cached_calls = [
+            c for c in cmds if len(c) >= 3 and c[:3] == ["git", "rm", "--cached"]
+        ]
+        assert any(script_str in c for c in rm_cached_calls), (
+            f"Expected 'git rm --cached' for {script_str}, got: {cmds}"
+        )
+        # git add -u must NOT be called for the script path.
+        add_u_for_script = [
+            c
+            for c in cmds
+            if len(c) >= 2 and c[:2] == ["git", "add"] and "-u" in c and script_str in c
+        ]
+        assert add_u_for_script == [], (
+            f"git add -u should NOT be called for the script path, but got: {add_u_for_script}"
+        )
