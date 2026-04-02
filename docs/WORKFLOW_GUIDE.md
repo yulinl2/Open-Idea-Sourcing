@@ -141,6 +141,20 @@ Add your OpenAI key as a repository secret:
 
 Every push to `main` automatically runs a review of `data/test_papers.ndjson` using the default inputs.
 
+### Deferred maintenance-dispatch option (GitHub cloud)
+
+If this repository later needs a GitHub.com equivalent of the local VS Code
+dispatcher, prefer an `issue_comment`-triggered workflow over a custom Copilot
+agent. The intended shape is:
+
+- PR comment command such as `/agent-track fix-gitignore`
+- lightweight parser/validator for supported fields
+- internal dispatch to `agent-track-workflows.yml` with `--ref main`
+
+This remains a deferred maintenance idea only. It is not currently enabled,
+because the repo-local VS Code agent and prompt already cover the common manual
+dispatch path with lower operational risk.
+
 ### Accessing results
 
 | Channel | Where to find it |

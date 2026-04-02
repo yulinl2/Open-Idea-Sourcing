@@ -83,6 +83,33 @@ including:
 - staged generated junk such as `.venv/`, `__pycache__/`, `*.pyc`, and shell-redirect artifacts like `=6.0`
 - pushes from `main` / `copilot/*` branches whose history is not rooted in `origin/main`
 
+### VS Code One-Click Workflow Dispatch
+
+This repo now includes a workspace-scoped Copilot custom agent and prompt for
+dispatching the agent-track workflow from chat:
+
+- Agent: `.github/agents/agent-track-dispatcher.agent.md`
+- Prompt: `.github/prompts/run-agent-track-workflow.prompt.md`
+
+In VS Code chat, type `/Run Agent Track Workflow` and pass a short argument such as:
+
+```text
+fix-gitignore
+patch-agent-review dry_run=true
+housekeeping-reports target_branch=agent-reports
+review paper_url=https://arxiv.org/abs/2006.06138 model=gpt-5.4
+```
+
+The dispatcher always uses `gh workflow run agent-track-workflows.yml --ref main`
+to avoid the recurring default-branch lookup failure.
+
+Deferred cloud option:
+If one-click dispatch is ever needed on GitHub.com rather than VS Code, the
+recommended implementation is a comment-triggered Actions workflow that listens
+to PR comments such as `/agent-track fix-gitignore` and then dispatches
+`agent-track-workflows.yml` with validated inputs. This is intentionally not
+enabled yet; keep the current repo-local VS Code agent as the primary path.
+
 ### Review a Paper
 
 ```bash
