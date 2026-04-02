@@ -63,11 +63,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      workflows: write
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.ORPHAN_WORKFLOW_PUSH_TOKEN || github.token }}
           fetch-depth: 0
 
       - name: Configure git
@@ -87,18 +87,7 @@ jobs:
       - name: Self-archive this operation
         if: success()
         continue-on-error: true
-        env:
-          ORPHAN_WORKFLOW_PUSH_TOKEN: ${{ secrets.ORPHAN_WORKFLOW_PUSH_TOKEN }}
-        run: |
-          if [ -z "$ORPHAN_WORKFLOW_PUSH_TOKEN" ]; then
-            printf '### Maintenance note\n\n' >> "$GITHUB_STEP_SUMMARY"
-            printf 'fix-gitignore applied, but auto-retire was skipped because ORPHAN_WORKFLOW_PUSH_TOKEN is missing.\n' \
-              >> "$GITHUB_STEP_SUMMARY"
-            printf 'Add the secret, then rerun operation=fix-gitignore once more to retire it automatically.\n' \
-              >> "$GITHUB_STEP_SUMMARY"
-          else
-            python3 .github/scripts/retire_maintenance_op.py --op fix-gitignore
-          fi
+        run: python3 .github/scripts/retire_maintenance_op.py --op fix-gitignore
 
   # ------------------------------------------------------------------
   # Maintenance: patch the correct agent-review.yml onto infra-base
