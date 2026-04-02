@@ -38,7 +38,8 @@ body_file=""
 body_text=""
 use_agent_format=1
 
-agent_badge='### 🤖 Copilot via VS Code'
+agent_badge='## ✨🤖 Copilot via VS Code ✨'
+agent_kicker='**AI-assisted PR update**'
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -99,7 +100,10 @@ submit_comment() {
       tmp_file="$(mktemp -t pr-comment-XXXXXX.md)"
       {
         printf '%s\n\n' "$agent_badge"
+        printf '%s\n\n' "$agent_kicker"
+        printf '%s\n\n' '---'
         cat "$file_path"
+        printf '\n\n%s\n' '---'
       } > "$tmp_file"
       rendered_file="$tmp_file"
     fi

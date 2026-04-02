@@ -125,7 +125,11 @@ PR comment formatting tip:
   `scripts/post_pr_comment.sh --edit-comment-id <comment-id> --repo owner/repo --body-file /path/to/comment.md`
 - By default the helper formats agent-posted comments with a visible badge:
   ```text
-  ### 🤖 Copilot via VS Code
+  ## ✨🤖 Copilot via VS Code ✨
+
+  **AI-assisted PR update**
+
+  ---
   ```
 - To post without the badge, add `--as-user` (or `--plain`).
 
