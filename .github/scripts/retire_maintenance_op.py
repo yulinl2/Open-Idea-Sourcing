@@ -11,8 +11,8 @@ What it does:
     1. Removes the operation name from the 'operation' input description.
     2. Removes the op's entry from the file-header comment block.
     3. Removes any workflow_dispatch inputs exclusively used by this operation.
-    4. Extracts the comment block + job block and saves it as a dated .yml.bak
-       file in .github/workflows/ for historical reference.
+    4. Extracts the comment block + job block and saves it as <op>.yml.bak
+       in .github/workflows/ for historical reference.
     5. Removes the comment block + job block from agent-track-workflows.yml.
     6. Deletes the associated one-time script file (if listed in OP_SCRIPTS).
     7. Commits the change and pushes it to main (unless --no-push is given).
@@ -31,7 +31,6 @@ import argparse
 import re
 import subprocess
 import sys
-from datetime import date
 from pathlib import Path
 
 WORKFLOW_PATH = Path(".github/workflows/agent-track-workflows.yml")
@@ -228,13 +227,11 @@ def main() -> None:
     WORKFLOW_PATH.write_text(updated)
     print(f"Retired '{op}' from {WORKFLOW_PATH}")
 
-    # Save the extracted job block as a dated .yml.bak for historical reference.
-    today = date.today().isoformat()
-    bak_path = WORKFLOWS_DIR / f"{op}.completed-{today}.yml.bak"
+    # Save the extracted job block as a .yml.bak for historical reference.
+    bak_path = WORKFLOWS_DIR / f"{op}.yml.bak"
     if job_block:
         bak_header = (
             f"# Auto-archived maintenance op: {op}\n"
-            f"# Retired: {today}\n"
             f"# Originally inlined in agent-track-workflows.yml\n"
             f"# This is a historical record only — this job will never run.\n\n"
         )

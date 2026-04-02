@@ -147,7 +147,7 @@ as guarded jobs inside `agent-track-workflows.yml`.  **Never add a new standalon
 3. AUTO-RETIRE On success the Self-archive step runs retire_maintenance_op.py,
             which:
             a. Extracts the job block and saves it as
-               .github/workflows/<op>.completed-<YYYY-MM-DD>.yml.bak
+               .github/workflows/<op>.yml.bak
                for historical reference (inert — GitHub Actions ignores non-.yml).
             b. Strips the op from agent-track-workflows.yml.
             c. Deletes the associated one-time script (from OP_SCRIPTS).
