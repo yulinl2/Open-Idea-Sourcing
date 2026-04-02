@@ -59,7 +59,7 @@ def reorganize(branch: str, *, dry_run: bool = False) -> int:
     """Reorganize flat report files on *branch*.
 
     Returns the number of files moved (or that would have been moved for
-    a dry run), or -1 on error.
+    a dry run).
     """
     check = subprocess.run(
         ["git", "ls-remote", "--exit-code", "--heads", "origin", branch],
