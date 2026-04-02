@@ -30,7 +30,7 @@ done
 
 for file in "${staged_files[@]}"; do
   case "$file" in
-    .github/workflows/*.yml|.github/scripts/*|scripts/*|README.md|docs/*.md|.github/*.md)
+    .github/workflows/*.yml|.github/scripts/*|scripts/*|Makefile)
       content="$(git show ":$file" 2>/dev/null || true)"
 
       if printf '%s\n' "$content" | grep -Eq 'gh[[:space:]]+workflow[[:space:]]+run[[:space:]]+agent-review\.yml'; then

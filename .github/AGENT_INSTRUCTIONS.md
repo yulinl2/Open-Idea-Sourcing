@@ -140,7 +140,7 @@ on:
         options:
           - review
           - fix-gitignore
-          - patch-agent-review
+          - sync-agent-review-workflow
 
 # CORRECT — checkbox for a boolean flag
       dry_run:
@@ -212,7 +212,7 @@ When your new op needs custom inputs (like `branches`), add them to the
 
 ```python
 OP_EXCLUSIVE_INPUTS: dict[str, list[str]] = {
-    "patch-agent-review": ["branches", "dry_run"],
+  "sync-agent-review-workflow": ["branches", "dry_run"],
     "fix-gitignore": [],
     "my-new-op": ["my-extra-input"],   # ← add here
 }
@@ -223,7 +223,7 @@ on retire.  Set to `None` if there is no associated script:
 
 ```python
 OP_SCRIPTS: dict[str, str | None] = {
-    "patch-agent-review": ".github/scripts/fix_orphan_agent_review.py",
+  "sync-agent-review-workflow": ".github/scripts/fix_orphan_agent_review.py",
     "fix-gitignore": ".github/scripts/fix_orphan_gitignore.py",
     "my-new-op": ".github/scripts/my_new_op.py",   # ← add here, or None
 }

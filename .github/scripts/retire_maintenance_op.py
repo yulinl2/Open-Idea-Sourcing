@@ -4,7 +4,7 @@ Retire a completed one-shot maintenance operation from agent-track-workflows.yml
 
 Usage:
     python3 .github/scripts/retire_maintenance_op.py --op fix-gitignore
-    python3 .github/scripts/retire_maintenance_op.py --op patch-agent-review
+    python3 .github/scripts/retire_maintenance_op.py --op sync-agent-review-workflow
     python3 .github/scripts/retire_maintenance_op.py --op my-new-op --no-push  # dry-run
 
 What it does:
@@ -39,7 +39,7 @@ WORKFLOWS_DIR = Path(".github/workflows")
 # workflow_dispatch inputs that belong exclusively to a specific maintenance op.
 # They are removed when the op is retired.  Key = op name, value = list of input keys.
 OP_EXCLUSIVE_INPUTS: dict[str, list[str]] = {
-    "patch-agent-review": ["branches", "dry_run"],
+    "sync-agent-review-workflow": ["branches", "dry_run"],
     "fix-gitignore": [],
 }
 
@@ -47,7 +47,7 @@ OP_EXCLUSIVE_INPUTS: dict[str, list[str]] = {
 # script is deleted too so it doesn't linger as dead code on main.
 # Set to None if the op has no associated script to delete.
 OP_SCRIPTS: dict[str, str | None] = {
-    "patch-agent-review": ".github/scripts/fix_orphan_agent_review.py",
+    "sync-agent-review-workflow": ".github/scripts/fix_orphan_agent_review.py",
     "fix-gitignore": ".github/scripts/fix_orphan_gitignore.py",
 }
 

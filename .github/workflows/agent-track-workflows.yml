@@ -11,9 +11,9 @@ name: Agent track workflows
 #                           agent-review.yml once per track in parallel.
 #   fix-gitignore         — writes the comprehensive .gitignore to all orphan
 #                           branches (one-shot maintenance; idempotent).
-#   patch-agent-review    — patches infra-base and agent-* branches with the
-#                           correct agent-review.yml that has the push trigger
-#                           (one-shot maintenance; idempotent).
+#   sync-agent-review-workflow — syncs infra-base and agent-* branches to the
+#                                current maintenance copy of agent-review.yml
+#                                (one-shot maintenance; idempotent).
 #   housekeeping-reports  — moves flat .md report files at the root of a
 #                           target branch into <paper-slug>/v<code-version>/
 #                           subdirectories (recurring; rerun whenever flat
@@ -35,14 +35,14 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: "Operation to run (review: fans out to all tracks; fix-gitignore/patch-agent-review: one-shot maintenance; housekeeping-reports: recurring cleanup)"
+        description: "Operation to run (review: fans out to all tracks; fix-gitignore/sync-agent-review-workflow: one-shot maintenance; housekeeping-reports: recurring cleanup)"
         required: false
         default: "review"
         type: choice
         options:
           - review
           - fix-gitignore
-          - patch-agent-review
+          - sync-agent-review-workflow
           - housekeeping-reports
       paper_url:
         description: "Paper URL (arXiv abstract or PDF) — used when operation=review"
@@ -53,11 +53,11 @@ on:
         required: false
         default: "gpt-4o"
       branches:
-        description: "Space-separated branches to patch — used when operation=patch-agent-review"
+        description: "Space-separated branches to update — used when operation=sync-agent-review-workflow"
         required: false
         default: "infra-base agent-e2e agent-linear agent-reconstruct"
       dry_run:
-        description: "Dry run (show changes, no push) — used when operation=patch-agent-review"
+        description: "Dry run (show changes, no push) — used when operation=sync-agent-review-workflow"
         required: false
         default: false
         type: boolean
@@ -144,11 +144,11 @@ jobs:
   # ------------------------------------------------------------------
   # Maintenance: patch the correct agent-review.yml onto infra-base
   # and agent-* branches (adds push trigger, shell placeholder fix).
-  # Trigger manually with operation=patch-agent-review.
+  # Trigger manually with operation=sync-agent-review-workflow.
   # ------------------------------------------------------------------
-  patch-agent-review:
-    name: Patch agent-review.yml on orphan branches
-    if: github.event.inputs.operation == 'patch-agent-review'
+  sync-agent-review-workflow:
+    name: Sync agent-review workflow on orphan branches
+    if: github.event.inputs.operation == 'sync-agent-review-workflow' || github.event.inputs.operation == 'patch-agent-review'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -210,7 +210,7 @@ jobs:
       - name: Self-archive this operation
         if: success() && inputs.dry_run == false
         continue-on-error: true
-        run: python3 .github/scripts/retire_maintenance_op.py --op patch-agent-review
+        run: python3 .github/scripts/retire_maintenance_op.py --op sync-agent-review-workflow
 
   # ------------------------------------------------------------------
   # Baseline reports housekeeping: reorganize flat .md report files on

@@ -1,8 +1,8 @@
 ---
 name: Agent Track Dispatcher
-description: "Use when you want to dispatch .github/workflows/agent-track-workflows.yml from VS Code chat, including review, fix-gitignore, patch-agent-review, or housekeeping-reports."
+description: "Use when you want to dispatch .github/workflows/agent-track-workflows.yml from VS Code chat, including review, fix-gitignore, sync-agent-review-workflow, or housekeeping-reports."
 tools: [execute]
-argument-hint: "Operation plus optional fields, for example: fix-gitignore; review paper_url=https://arxiv.org/abs/2006.06138 model=gpt-5.4; patch-agent-review dry_run=false branches='infra-base agent-e2e'; housekeeping-reports target_branch=agent-reports"
+argument-hint: "Operation plus optional fields, for example: fix-gitignore; review paper_url=https://arxiv.org/abs/2006.06138 model=gpt-5.4; sync-agent-review-workflow dry_run=false branches='infra-base agent-e2e'; housekeeping-reports target_branch=agent-reports"
 user-invocable: true
 agents: []
 ---
@@ -13,7 +13,7 @@ Your only job is to dispatch `.github/workflows/agent-track-workflows.yml` throu
 ## Constraints
 - Only run `gh workflow run agent-track-workflows.yml`.
 - Always include `--ref main`.
-- Only use supported operations: `review`, `fix-gitignore`, `patch-agent-review`, `housekeeping-reports`.
+- Only use supported operations: `review`, `fix-gitignore`, `sync-agent-review-workflow`, `housekeeping-reports`.
 - Do not edit files.
 - Do not push commits.
 - Do not guess missing required intent when the user's request is ambiguous; ask a short clarifying question instead.
@@ -21,7 +21,7 @@ Your only job is to dispatch `.github/workflows/agent-track-workflows.yml` throu
 ## Field Mapping
 - `review`: optional `paper_url`, optional `model`
 - `fix-gitignore`: no extra fields
-- `patch-agent-review`: optional `branches`, optional `dry_run`
+- `sync-agent-review-workflow`: optional `branches`, optional `dry_run`
 - `housekeeping-reports`: optional `target_branch`
 
 ## Execution Rules

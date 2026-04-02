@@ -95,7 +95,7 @@ In VS Code chat, type `/Run Agent Track Workflow` and pass a short argument such
 
 ```text
 fix-gitignore
-patch-agent-review dry_run=true
+sync-agent-review-workflow dry_run=true
 housekeeping-reports target_branch=agent-reports
 review paper_url=https://arxiv.org/abs/2006.06138 model=gpt-5.4
 ```
