@@ -35,7 +35,7 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: "Operation to run (review fans out to all tracks; maintenance ops are one-shot)"
+        description: "Operation to run (review: fans out to all tracks; fix-gitignore/patch-agent-review: one-shot maintenance; housekeeping-reports: recurring cleanup)"
         required: false
         default: "review"
         type: choice
