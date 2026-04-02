@@ -455,7 +455,11 @@ def stage_render(paper_ck: dict, synthesis: dict, refs: dict,
 
 def run_pipeline(paper_url: str, model: str, from_stage: int, output_path: Path) -> None:
     openai = _import_openai()
-    client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    if not api_key:
+        print("[agent-linear] ERROR: OPENAI_API_KEY is not set. Add it as a GitHub secret.")
+        sys.exit(1)
+    client = openai.OpenAI(api_key=api_key)
 
     paper_id = _extract_paper_id(paper_url)
     print(f"[agent-linear] impl_id={AGENT_IMPL_ID} paper={paper_id} model={model} "

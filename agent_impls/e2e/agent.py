@@ -232,7 +232,11 @@ def _parse_search_queries(messages: list[dict]) -> list[str]:
 
 def run_agent(paper_url: str, model: str, output_path: Path) -> None:
     openai = _import_openai()
-    client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    if not api_key:
+        print("[agent-e2e] ERROR: OPENAI_API_KEY is not set. Add it as a GitHub secret.")
+        sys.exit(1)
+    client = openai.OpenAI(api_key=api_key)
 
     paper_id = _extract_paper_id(paper_url)
     ctx = RunContext(
