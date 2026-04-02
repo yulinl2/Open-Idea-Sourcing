@@ -342,13 +342,15 @@ class TestOnlineReferenceSearchSearch:
         ids = [p.id for p in papers]
         assert len(ids) == len(set(ids))
 
-    def test_max_results_respected(self):
+    def test_max_results_no_longer_caps_search_results(self):
+        """search() returns all unique hits up to _MAX_RESULTS_PER_QUERY per query."""
         body = self._make_api_response([f"p{i}" for i in range(20)])
         mock_resp = _make_mock_response(body)
         searcher = OnlineReferenceSearch(max_results=3)
         with patch("urllib.request.urlopen", return_value=mock_resp):
             papers = searcher.search("My Title")
-        assert len(papers) <= 3
+        # 20 results < _MAX_RESULTS_PER_QUERY (25), so all pass through.
+        assert len(papers) == 20
 
     def test_network_error_returns_empty_list(self):
         searcher = OnlineReferenceSearch()
@@ -365,20 +367,26 @@ class TestOnlineReferenceSearchSearch:
 
     def test_last_query_counts_populated_after_search(self):
         """last_query_counts must map each query to the number of raw API hits."""
+        import threading
+
         body1 = self._make_api_response(["p1", "p2"])
         body2 = self._make_api_response(["p3"])
         responses = [_make_mock_response(body1), _make_mock_response(body2)]
+        lock = threading.Lock()
 
         def fake_urlopen(req, timeout=None):
-            return responses.pop(0)
+            with lock:
+                return responses.pop(0)
 
         searcher = OnlineReferenceSearch(max_results=10)
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
             searcher.search("t", queries=["query A", "query B"])
 
         counts = searcher.last_query_counts
-        assert counts["query A"] == 2
-        assert counts["query B"] == 1
+        # Both queries must be tracked; total hits = 2 + 1 = 3 (order may vary
+        # when queries are issued concurrently).
+        assert set(counts.keys()) == {"query A", "query B"}
+        assert sum(counts.values()) == 3
 
     def test_last_query_counts_includes_fallback_query(self):
         """Fallback abstract query should appear in last_query_counts."""
@@ -410,6 +418,29 @@ class TestOnlineReferenceSearchSearch:
         with patch("urllib.request.urlopen", return_value=_make_mock_response(body)):
             searcher.search("second", queries=["only-q"])
         assert list(searcher.last_query_counts.keys()) == ["only-q"]
+
+    def test_cross_query_papers_ranked_first(self):
+        """Papers returned by multiple queries appear first in the results."""
+        import threading
+
+        # p_shared appears in both queries; p_a only in query A; p_b only in B.
+        body_a = self._make_api_response(["p_shared", "p_a"])
+        body_b = self._make_api_response(["p_shared", "p_b"])
+        responses = [_make_mock_response(body_a), _make_mock_response(body_b)]
+        lock = threading.Lock()
+
+        def fake_urlopen(req, timeout=None):
+            with lock:
+                return responses.pop(0)
+
+        searcher = OnlineReferenceSearch(max_results=10)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            papers = searcher.search("t", queries=["query A", "query B"])
+
+        ids = [p.id for p in papers]
+        # p_shared (hit count 2) must come before p_a and p_b (hit count 1).
+        assert ids[0] == "p_shared"
+        assert set(ids) == {"p_shared", "p_a", "p_b"}
 
 
 # ---------------------------------------------------------------------------
@@ -1081,10 +1112,21 @@ class TestTemporalFilter:
         assert year == 2022
 
     def test_lookup_paper_year_returns_none_on_failure(self):
-        """lookup_paper_year returns None when all lookups fail."""
+        """lookup_paper_year falls back to arXiv ID year when S2 lookup fails.
+
+        With arXiv ID "2206.12345" the fallback extracts 2022.  Without an
+        arXiv ID (title-only), it must return None when S2 is unreachable.
+        """
         with patch("urllib.request.urlopen", side_effect=Exception("network error")):
             searcher = OnlineReferenceSearch()
+            # With an arXiv ID the fallback extracts year from YYMM prefix.
             year = searcher.lookup_paper_year(arxiv_id="2206.12345", title="My Paper")
+        assert year == 2022  # extracted from arXiv ID "2206" → 2022
+
+        with patch("urllib.request.urlopen", side_effect=Exception("network error")):
+            searcher = OnlineReferenceSearch()
+            # Without an arXiv ID there is no fallback — must return None.
+            year = searcher.lookup_paper_year(title="My Paper")
         assert year is None
 
 
@@ -1159,3 +1201,158 @@ class TestHttpGetRetry:
             result = searcher._http_get("http://example.com/test", "test")
         assert result is None
         assert calls["n"] == 1  # no retry
+
+
+# ---------------------------------------------------------------------------
+# New-feature tests for bug fixes
+# ---------------------------------------------------------------------------
+
+
+class TestCitedRefsLimit:
+    """_fetch_references must NOT cap its API limit at max_results."""
+
+    def test_fetch_references_uses_large_limit(self):
+        """The /references request must use _MAX_CITED_REFS_LIMIT, not max_results."""
+        from open_idea_sourcing.online_search import _MAX_CITED_REFS_LIMIT
+        urls_called = []
+
+        def fake_urlopen(req, timeout=None):
+            urls_called.append(req.full_url)
+            raise Exception("stop after recording url")
+
+        # Create a searcher with a small max_results (like the default top_k*2=40)
+        searcher = OnlineReferenceSearch(max_results=40)
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            searcher._fetch_references("arXiv:2006.06138")
+
+        assert urls_called, "Expected at least one HTTP call"
+        url = urls_called[0]
+        # The limit in the URL must equal _MAX_CITED_REFS_LIMIT, not max_results
+        assert f"limit={_MAX_CITED_REFS_LIMIT}" in url, (
+            f"Expected limit={_MAX_CITED_REFS_LIMIT} in URL, got: {url}"
+        )
+        assert "limit=40" not in url, (
+            "limit should NOT be capped at max_results=40"
+        )
+
+    def test_fetch_references_limit_larger_than_default_max_results(self):
+        """_MAX_CITED_REFS_LIMIT must exceed the default keyword-search limit."""
+        from open_idea_sourcing.online_search import _MAX_CITED_REFS_LIMIT, _DEFAULT_LIMIT
+        assert _MAX_CITED_REFS_LIMIT > _DEFAULT_LIMIT * 10, (
+            "_MAX_CITED_REFS_LIMIT should be much larger than the per-query keyword limit"
+        )
+
+
+class TestYearFromArxivId:
+    """_year_from_arxiv_id helper tests."""
+
+    def test_new_style_id_extracts_year(self):
+        from open_idea_sourcing.online_search import _year_from_arxiv_id
+        assert _year_from_arxiv_id("2006.06138") == 2020
+
+    def test_2022_id(self):
+        from open_idea_sourcing.online_search import _year_from_arxiv_id
+        assert _year_from_arxiv_id("2206.12345") == 2022
+
+    def test_2017_id(self):
+        from open_idea_sourcing.online_search import _year_from_arxiv_id
+        assert _year_from_arxiv_id("1706.03762") == 2017
+
+    def test_old_style_id_returns_none(self):
+        """Old-style arXiv IDs (cs/0001234) are not supported."""
+        from open_idea_sourcing.online_search import _year_from_arxiv_id
+        assert _year_from_arxiv_id("cs/0001234") is None
+
+    def test_empty_string_returns_none(self):
+        from open_idea_sourcing.online_search import _year_from_arxiv_id
+        assert _year_from_arxiv_id("") is None
+
+
+class TestLookupPaperYearArxivFallback:
+    """lookup_paper_year falls back to arXiv ID extraction when S2 is down."""
+
+    def test_falls_back_to_arxiv_id_year_when_s2_fails(self):
+        """If S2 returns nothing, year is extracted from the arXiv ID."""
+        with patch("urllib.request.urlopen", side_effect=Exception("timeout")):
+            searcher = OnlineReferenceSearch()
+            year = searcher.lookup_paper_year(arxiv_id="2006.06138")
+        assert year == 2020  # extracted from "2006" → 2020
+
+    def test_s2_year_preferred_over_arxiv_id_fallback(self):
+        """S2 year takes precedence over the arXiv ID-derived year."""
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({"year": 2021}).encode()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            searcher = OnlineReferenceSearch()
+            year = searcher.lookup_paper_year(arxiv_id="2006.06138")
+        # S2 says 2021 (published year), not 2020 (submission year from ID)
+        assert year == 2021
+
+    def test_no_arxiv_id_and_s2_fails_returns_none(self):
+        """Without an arXiv ID and with S2 down, return None."""
+        with patch("urllib.request.urlopen", side_effect=Exception("timeout")):
+            searcher = OnlineReferenceSearch()
+            year = searcher.lookup_paper_year(title="Some Paper Title")
+        assert year is None
+
+
+class TestQueryClientSideYearFilter:
+    """_query applies client-side year filtering in addition to the server-side
+    ``year=`` parameter, so that stale or rate-limited S2 responses that
+    include out-of-range papers are still filtered correctly."""
+
+    def _make_search_response(self, papers: list[dict]) -> MagicMock:
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({"data": papers}).encode()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        return mock_resp
+
+    def test_query_client_side_max_year_filter(self):
+        """Papers with year > max_year are dropped even if S2 returned them."""
+        papers = [
+            {"paperId": "old1", "title": "Old Paper", "abstract": "",
+             "year": 2019, "authors": [], "externalIds": {}, "url": ""},
+            {"paperId": "fut1", "title": "Future Paper", "abstract": "",
+             "year": 2026, "authors": [], "externalIds": {}, "url": ""},
+        ]
+        with patch("urllib.request.urlopen", return_value=self._make_search_response(papers)):
+            searcher = OnlineReferenceSearch(max_year=2021)
+            result = searcher._query("causal inference")
+
+        ids = {p.id for p in result}
+        assert "old1" in ids
+        assert "fut1" not in ids, "Future paper (2026) must be filtered out client-side"
+
+    def test_query_client_side_min_year_filter(self):
+        """Papers with year < min_year are dropped even if S2 returned them."""
+        papers = [
+            {"paperId": "old1", "title": "Old Paper", "abstract": "",
+             "year": 2015, "authors": [], "externalIds": {}, "url": ""},
+            {"paperId": "new1", "title": "New Paper", "abstract": "",
+             "year": 2022, "authors": [], "externalIds": {}, "url": ""},
+        ]
+        with patch("urllib.request.urlopen", return_value=self._make_search_response(papers)):
+            searcher = OnlineReferenceSearch(min_year=2020)
+            result = searcher._query("causal inference")
+
+        ids = {p.id for p in result}
+        assert "new1" in ids
+        assert "old1" not in ids, "Old paper (2015) must be filtered out client-side"
+
+    def test_query_undated_papers_pass_through_filter(self):
+        """Papers with year=None are not filtered out (unknown date is conservative)."""
+        papers = [
+            {"paperId": "undated", "title": "Undated Paper", "abstract": "",
+             "year": None, "authors": [], "externalIds": {}, "url": ""},
+        ]
+        with patch("urllib.request.urlopen", return_value=self._make_search_response(papers)):
+            searcher = OnlineReferenceSearch(max_year=2021)
+            result = searcher._query("some query")
+
+        assert any(p.id == "undated" for p in result), (
+            "Papers without a year should not be dropped by the temporal filter"
+        )

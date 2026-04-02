@@ -46,6 +46,7 @@ import time as _time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
 from . import __version__
@@ -103,6 +104,24 @@ _MAX_RETRIES = 4
 _RETRY_BASE_DELAY = 2.0  # seconds; doubles on each attempt
 _RETRY_429_MIN_DELAY = 60.0  # minimum wait after a 429 (rate-limit) response
 _RETRYABLE_HTTP_CODES = frozenset({429, 500, 503})
+# Maximum number of cited references to fetch per paper from the /references
+# endpoint.  The paper-cited reference list should not be capped at top_k * 2
+# (which is the keyword-search max_results); a paper may have 100+ references.
+_MAX_CITED_REFS_LIMIT = 500
+# Maximum results per keyword-search request to the S2 /paper/search endpoint.
+# The S2 API accepts up to 100 per page.  Fetching the full page gives the
+# caller a richer pool before deduplication across multiple queries.
+_MAX_KEYWORD_SEARCH_LIMIT = 100
+# Number of keyword queries to issue concurrently.  S2's public endpoint
+# allows ~100 unauthenticated requests per 5 minutes; 5 parallel threads
+# keeps well within that limit while reducing wall-clock time proportionally.
+_MAX_SEARCH_WORKERS = 5
+# Relevance cap: keep only the top N results from each individual query before
+# merging.  S2 returns results in descending relevance order, so the first N
+# are the most relevant to that query.  This limits the total pool to at most
+# _MAX_RESULTS_PER_QUERY * N_queries papers and prevents low-relevance
+# long-tail hits from diluting the merged corpus.
+_MAX_RESULTS_PER_QUERY = 25
 
 _USER_AGENT = (
     f"open-idea-sourcing/{__version__} (academic novelty evaluator; "
@@ -302,12 +321,16 @@ class OnlineReferenceSearch:
 
         Strategy
         --------
-        1. **Conceptual keyword search** (breadth): when LLM-generated *queries*
-           are provided, each query is issued independently against
-           ``/paper/search``; results are merged.  This surfaces work that is
-           conceptually equivalent to the submitted paper even when the wording
-           differs.  When *queries* is *None* or empty, the raw *title* is used
-           as a single fallback query.
+        1. **Concurrent keyword search** (breadth): each LLM-generated query is
+           issued in parallel against ``/paper/search`` (up to
+           ``_MAX_SEARCH_WORKERS`` concurrent threads).  S2 returns results in
+           descending relevance order; each query contributes at most
+           ``_MAX_RESULTS_PER_QUERY`` results so that low-relevance long-tail
+           hits are excluded.  The merged pool is deduplicated by paper ID and
+           sorted by cross-query hit count — papers returned by multiple queries
+           are ranked higher as they are more likely to be genuinely related.
+           When *queries* is *None* or empty, the raw *title* is used as a
+           single fallback query.
         2. **Abstract fallback** (when above is sparse): an additional keyword
            query derived from the opening of *abstract*.
 
@@ -328,31 +351,59 @@ class OnlineReferenceSearch:
         Returns
         -------
         list[ReferencePaper]
-            Deduplicated list of keyword-matched papers, capped at *max_results*.
+            Deduplicated list of keyword-matched papers, sorted by relevance
+            (papers matching more queries appear first).
         """
-        results: dict[str, ReferencePaper] = {}
+        # Track first-seen paper objects and how many queries returned each ID.
+        result_papers: dict[str, ReferencePaper] = {}
+        result_counts: dict[str, int] = {}
         self._last_errors = []
         self._last_query_counts = {}
 
         # Phase 2: conceptual keyword search (breadth).
         # Use LLM-generated queries when available; fall back to the raw title.
         search_queries = queries if queries else ([title] if title else [])
-        for q in search_queries:
+
+        # Issue all queries concurrently to reduce wall-clock time.  S2 returns
+        # results in descending relevance order; we cap each query's contribution
+        # at _MAX_RESULTS_PER_QUERY so that only the most relevant papers per
+        # query are kept.  Papers returned by multiple queries get their hit
+        # count incremented and appear first in the merged pool (cross-query
+        # frequency is a strong relevance signal).
+        def _run_query(q: str) -> tuple[str, list[ReferencePaper]]:
             hits = self._query(q)
-            self._last_query_counts[q] = len(hits)
-            for paper in hits:
-                results.setdefault(paper.id, paper)
+            # Apply per-query relevance cap (top N by S2 relevance score).
+            return q, hits[:_MAX_RESULTS_PER_QUERY]
+
+        with ThreadPoolExecutor(max_workers=_MAX_SEARCH_WORKERS) as pool:
+            futures = {pool.submit(_run_query, q): q for q in search_queries}
+            for future in as_completed(futures):
+                try:
+                    q, hits = future.result()
+                except Exception as exc:
+                    q = futures[future]
+                    self._last_errors.append(f"{q}: {type(exc).__name__}: {exc}")
+                    hits = []
+                self._last_query_counts[q] = len(hits)
+                for paper in hits:
+                    if paper.id not in result_papers:
+                        result_papers[paper.id] = paper
+                    result_counts[paper.id] = result_counts.get(paper.id, 0) + 1
 
         # Phase 3: abstract fallback when keyword search is sparse.
-        if len(results) < max(1, self._max_results // 2) and abstract:
+        if len(result_papers) < max(1, self._max_results // 2) and abstract:
             fallback_query = _extract_query_from_abstract(abstract)
             if fallback_query:
-                hits = self._query(fallback_query)
+                hits = self._query(fallback_query)[:_MAX_RESULTS_PER_QUERY]
                 self._last_query_counts[fallback_query] = len(hits)
                 for paper in hits:
-                    results.setdefault(paper.id, paper)
+                    if paper.id not in result_papers:
+                        result_papers[paper.id] = paper
+                    result_counts[paper.id] = result_counts.get(paper.id, 0) + 1
 
-        return list(results.values())[: self._max_results]
+        # Sort by cross-query hit count descending: papers appearing in more
+        # queries are more likely to be genuinely related and surface first.
+        return sorted(result_papers.values(), key=lambda p: result_counts[p.id], reverse=True)
 
     def lookup_domain_refs(
         self, domain_refs: list,  # list[DomainReference]
@@ -498,7 +549,10 @@ class OnlineReferenceSearch:
         Used to establish an upper temporal bound so that papers published
         after the submission date are excluded from the prior-art pool.
         Tries the arXiv ID first (most reliable); falls back to a title
-        search when no arXiv ID is available.
+        search when no arXiv ID is available.  When both S2 lookups fail
+        (e.g. due to rate-limiting) the year is derived from the arXiv ID's
+        ``YYMM`` prefix as a last resort, so the temporal filter can still
+        be applied.
 
         Parameters
         ----------
@@ -537,6 +591,16 @@ class OnlineReferenceSearch:
                             return year_raw
                     except json.JSONDecodeError:
                         pass
+        # Last resort: derive the year from the arXiv ID's YYMM prefix.
+        # New-style IDs (YYMM.NNNNN, introduced in April 2007) encode the
+        # submission year and month.  IDs submitted from 2007 onwards have a
+        # two-digit year ≤ 99; we assume 20YY for YY ≤ 99 (no arXiv IDs
+        # predate 2007 in new-style format, and 2099 is far enough away that
+        # this heuristic is safe for the foreseeable future).
+        if arxiv_id:
+            year_from_id = _year_from_arxiv_id(arxiv_id)
+            if year_from_id is not None:
+                return year_from_id
         return None
 
     def _fetch_references(self, semantic_paper_id: str) -> list[ReferencePaper]:
@@ -555,7 +619,9 @@ class OnlineReferenceSearch:
         params = urllib.parse.urlencode(
             {
                 "fields": _REFERENCE_FIELDS,
-                "limit": self._max_results,
+                # Use a dedicated large limit here: the paper's own reference list
+                # should not be capped at the keyword-search max_results value.
+                "limit": _MAX_CITED_REFS_LIMIT,
             }
         )
         url = f"{_SEMANTIC_SCHOLAR_PAPER_URL}/{paper_id_encoded}/references?{params}"
@@ -590,7 +656,7 @@ class OnlineReferenceSearch:
         query_params: dict[str, str | int] = {
             "query": query,
             "fields": _FIELDS,
-            "limit": self._max_results,
+            "limit": _MAX_KEYWORD_SEARCH_LIMIT,
         }
         if self._min_year is not None or self._max_year is not None:
             min_part = str(self._min_year) if self._min_year is not None else ""
@@ -611,6 +677,15 @@ class OnlineReferenceSearch:
             paper = _parse_semantic_scholar_item(item)
             if paper is not None:
                 papers.append(paper)
+        # Apply client-side year filtering as a safeguard: the server-side
+        # ``year`` parameter is not always honoured (e.g. when S2 rate-limits
+        # the request and the year lookup failed, leaving max_year=None).
+        # Papers with year=None pass through so that undated papers are not
+        # silently dropped — the same convention as _fetch_references.
+        if self._min_year is not None:
+            papers = [p for p in papers if p.year is None or p.year >= self._min_year]
+        if self._max_year is not None:
+            papers = [p for p in papers if p.year is None or p.year <= self._max_year]
         return papers
 
 
@@ -627,6 +702,21 @@ def _extract_query_from_abstract(abstract: str, max_words: int = 15) -> str:
     """
     words = abstract.split()
     return " ".join(words[:max_words])
+
+
+def _year_from_arxiv_id(arxiv_id: str) -> int | None:
+    """Derive a publication year from a new-style arXiv ID (``YYMM.NNNNN``).
+
+    New-style arXiv IDs were introduced in April 2007 and encode the
+    submission year and month as a four-digit prefix ``YYMM``.  Returns the
+    four-digit year (e.g. ``2020`` for ID ``"2006.06138"``) or *None* when
+    the ID does not match the expected pattern.
+    """
+    m = re.match(r'^(\d{2})\d{2}\.\d+', arxiv_id)
+    if m:
+        yy = int(m.group(1))
+        return 2000 + yy
+    return None
 
 
 def _parse_semantic_scholar_item(item: dict[str, Any]) -> ReferencePaper | None:
