@@ -1,0 +1,195 @@
+name: Agent track workflows
+
+# Stable public entry-point for all agent-branch development.
+# Filename: agent-track-workflows.yml  (keep this name fixed; edit content in-place).
+# Stale versions are retired by renaming to a descriptive *.yml.bak name so local
+# dev history stays clear, e.g. agent-track-workflows.v1-fan-out-3tracks.yml.bak
+#
+# Operations (controlled by the `operation` input on manual dispatch):
+#
+#   review (default)      — fans out to all three agent tracks by triggering
+#                           agent-review.yml once per track in parallel.
+#   fix-gitignore         — writes the comprehensive .gitignore to all orphan
+#                           branches (one-shot maintenance; idempotent).
+#   patch-agent-review    — patches infra-base and agent-* branches with the
+#                           correct agent-review.yml that has the push trigger
+#                           (one-shot maintenance; idempotent).
+#
+# Trigger matrix:
+#   • Manual (workflow_dispatch) — supply operation, paper URL, and model
+#   • Push to main               — auto-fire `review` with default paper/model
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "reports/**"
+      - "*.md"
+      - ".github/workflows/**"
+
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Operation to run (review fans out to all tracks; maintenance ops are one-shot)"
+        required: false
+        default: "review"
+        type: choice
+        options:
+          - review
+          - fix-gitignore
+          - patch-agent-review
+      paper_url:
+        description: "Paper URL (arXiv abstract or PDF) — used when operation=review"
+        required: false
+        default: "https://arxiv.org/abs/2006.06138"
+      model:
+        description: "LLM model identifier (e.g. gpt-4o) — used when operation=review"
+        required: false
+        default: "gpt-4o"
+      branches:
+        description: "Space-separated branches to patch — used when operation=patch-agent-review"
+        required: false
+        default: "infra-base agent-e2e agent-linear agent-reconstruct"
+      dry_run:
+        description: "Dry run (show changes, no push) — used when operation=patch-agent-review"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  # ------------------------------------------------------------------
+  # Fan-out: dispatch agent-review.yml for every track in parallel.
+  # matrix.track drives 3 parallel runners from one job definition,
+  # so future edits only need to touch a single place.
+  # github.event.inputs.* is used (not inputs.*) so the expression
+  # evaluates safely on both workflow_dispatch and push events.
+  # ------------------------------------------------------------------
+  dispatch-tracks:
+    name: Dispatch agent-review (${{ matrix.track }})
+    if: github.event_name == 'push' || github.event.inputs.operation == 'review' || github.event.inputs.operation == ''
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    strategy:
+      matrix:
+        track: [e2e, linear, reconstruct]
+    steps:
+      - name: Trigger agent-review for ${{ matrix.track }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PAPER_URL: ${{ github.event.inputs.paper_url || 'https://arxiv.org/abs/2006.06138' }}
+          MODEL: ${{ github.event.inputs.model || 'gpt-4o' }}
+          TRACK: ${{ matrix.track }}
+        run: |
+          gh workflow run agent-review.yml \
+            --repo "${{ github.repository }}" \
+            --ref main \
+            --field paper_url="$PAPER_URL" \
+            --field track="$TRACK" \
+            --field model="$MODEL"
+          echo "Dispatched agent-review for track=$TRACK"
+
+  # ------------------------------------------------------------------
+  # Maintenance: write comprehensive .gitignore to all orphan branches.
+  # Trigger manually with operation=fix-gitignore.
+  # ------------------------------------------------------------------
+  fix-gitignore:
+    name: Write .gitignore to all orphan branches
+    if: github.event.inputs.operation == 'fix-gitignore'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config commit.gpgsign false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.12"
+
+      - name: Run fix script
+        run: python3 .github/scripts/fix_orphan_gitignore.py
+
+      - name: Self-archive this operation
+        if: success()
+        run: python3 .github/scripts/retire_maintenance_op.py --op fix-gitignore
+
+  # ------------------------------------------------------------------
+  # Maintenance: patch the correct agent-review.yml onto infra-base
+  # and agent-* branches (adds push trigger, shell placeholder fix).
+  # Trigger manually with operation=patch-agent-review.
+  # ------------------------------------------------------------------
+  patch-agent-review:
+    name: Patch agent-review.yml on orphan branches
+    if: github.event.inputs.operation == 'patch-agent-review'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config commit.gpgsign false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.12"
+
+      - name: Fetch target branches
+        run: |
+          for branch in ${{ github.event.inputs.branches }}; do
+            git fetch origin "$branch" || true
+          done
+
+      - name: Run patch script (dry run)
+        if: inputs.dry_run
+        run: |
+          echo "DRY RUN — would update: ${{ github.event.inputs.branches }}"
+          python3 -c "
+          import sys, importlib.util
+          spec = importlib.util.spec_from_file_location('fix_orphan_agent_review', '.github/scripts/fix_orphan_agent_review.py')
+          m = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(m)
+          print('Target content preview (first 30 lines):')
+          for i, line in enumerate(m.INFRA_AGENT_REVIEW_YML.splitlines()[:30]):
+              print(f'  {line}')
+          "
+
+      - name: Run patch script
+        if: inputs.dry_run == false
+        run: |
+          python3 .github/scripts/fix_orphan_agent_review.py \
+            --branches ${{ github.event.inputs.branches }}
+
+      - name: Summary
+        run: |
+          printf '### Patch complete\n\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'Branches targeted: `%s`\n\n' "${{ github.event.inputs.branches }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            printf 'Dry run — no changes pushed.\n' >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf 'agent-review.yml updated on each branch that was outdated.\n' \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Self-archive this operation
+        if: success() && inputs.dry_run == false
+        run: python3 .github/scripts/retire_maintenance_op.py --op patch-agent-review

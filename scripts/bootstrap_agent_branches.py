@@ -9,6 +9,7 @@ Usage (from the workflow's checkout directory):
     python3 scripts/bootstrap_agent_branches.py [--skip-existing]
 """
 import argparse
+import os
 import subprocess
 import sys
 import textwrap
@@ -37,6 +38,10 @@ def checkout_from_main(*paths: str) -> None:
     run(["git", "checkout", "main", "--"] + list(paths))
 
 
+def checkout_from_branch(branch: str, *paths: str) -> None:
+    run(["git", "checkout", branch, "--"] + list(paths))
+
+
 def commit_and_push(branch: str, message: str, force: bool = False) -> None:
     run(["git", "add", "."])
     run(["git", "commit", "-m", message])
@@ -49,6 +54,29 @@ def commit_and_push(branch: str, message: str, force: bool = False) -> None:
 
 def back_to_main() -> None:
     run(["git", "checkout", "main"])
+
+
+# ---------------------------------------------------------------------------
+# Shared content written to every orphan branch
+# ---------------------------------------------------------------------------
+
+# Comprehensive .gitignore for orphan agent branches.
+# Must stay in sync with the template/guidance in .github/AGENT_INSTRUCTIONS.md
+ORPHAN_GITIGNORE = textwrap.dedent("""\
+    __pycache__/
+    *.pyc
+    *.pyo
+    .env
+    .env.local
+    checkpoints/
+    reports/
+    .pytest_cache/
+    *.egg-info/
+    dist/
+    build/
+    .venv/
+    venv/
+""")
 
 
 # ---------------------------------------------------------------------------
@@ -69,8 +97,8 @@ INFRA_BASE_README = textwrap.dedent("""\
     | Path | Purpose |
     |------|---------|
     | infra/ | Shared Python execution shell: RunContext, ReportWriter, ToolRegistry, search clients, PDF utils |
-    | PROJECT_INSTRUCTIONS_AGENT.md | Canonical agent-track charter |
-    | AGENT_TRACK_ROADMAP.md | Per-branch build sequences and human workflow |
+    | docs/PROJECT_INSTRUCTIONS_AGENT.md | Canonical agent-track charter |
+    | docs/AGENT_TRACK_ROADMAP.md | Per-branch build sequences and human workflow |
     | .github/workflows/agent-review.yml | Parallel CI workflow (cherry-picked into each track branch) |
 
     ## Cherry-picking into a track branch
@@ -85,7 +113,7 @@ AGENT_E2E_README = textwrap.dedent("""\
 
     Single autonomous tool loop: no imposed stage order, one report.md output.
 
-    See AGENT_TRACK_ROADMAP.md section 3 for the full build sequence.
+    See docs/AGENT_TRACK_ROADMAP.md section 3 for the full build sequence.
 
     ## Quickstart
 
@@ -96,7 +124,7 @@ AGENT_E2E_PY = textwrap.dedent("""\
     #!/usr/bin/env python3
     \"\"\"agent-e2e: single autonomous tool loop.
 
-    Implementation guide: AGENT_TRACK_ROADMAP.md section 3
+    Implementation guide: docs/AGENT_TRACK_ROADMAP.md section 3
     \"\"\"
     import argparse
     import sys
@@ -111,7 +139,7 @@ AGENT_E2E_PY = textwrap.dedent("""\
         parser.add_argument("--output", default="reports/report.md")
         args = parser.parse_args()
         print(f"[agent-e2e] impl_id={AGENT_IMPL_ID} paper_url={args.paper_url} model={args.model}")
-        print("[agent-e2e] Not yet implemented -- see AGENT_TRACK_ROADMAP.md section 3")
+        print("[agent-e2e] Not yet implemented -- see docs/AGENT_TRACK_ROADMAP.md section 3")
         sys.exit(1)
 
 
@@ -125,7 +153,7 @@ AGENT_LINEAR_README = textwrap.dedent("""\
     6-stage checkpointed pipeline with full I/O specs per stage.
     Supports --from-stage N for resuming interrupted runs.
 
-    See AGENT_TRACK_ROADMAP.md section 4 for the full build sequence.
+    See docs/AGENT_TRACK_ROADMAP.md section 4 for the full build sequence.
 
     ## Quickstart
 
@@ -138,7 +166,7 @@ AGENT_LINEAR_PY = textwrap.dedent("""\
     #!/usr/bin/env python3
     \"\"\"agent-linear: 6-stage checkpointed pipeline.
 
-    Implementation guide: AGENT_TRACK_ROADMAP.md section 4
+    Implementation guide: docs/AGENT_TRACK_ROADMAP.md section 4
     Supports --from-stage N for resuming interrupted runs.
     \"\"\"
     import argparse
@@ -157,7 +185,7 @@ AGENT_LINEAR_PY = textwrap.dedent("""\
         args = parser.parse_args()
         print(f"[agent-linear] impl_id={AGENT_IMPL_ID} paper_url={args.paper_url} model={args.model} "
               f"from_stage={args.from_stage}")
-        print("[agent-linear] Not yet implemented -- see AGENT_TRACK_ROADMAP.md section 4")
+        print("[agent-linear] Not yet implemented -- see docs/AGENT_TRACK_ROADMAP.md section 4")
         sys.exit(1)
 
 
@@ -174,7 +202,7 @@ AGENT_RECONSTRUCT_README = textwrap.dedent("""\
     revealed). The student agent independently develops a methodology using only the
     hint and an allowed reference set -- no external search.
 
-    See AGENT_TRACK_ROADMAP.md section 5 for the full build sequence.
+    See docs/AGENT_TRACK_ROADMAP.md section 5 for the full build sequence.
 
     ## Quickstart
 
@@ -194,7 +222,7 @@ AGENT_RECONSTRUCT_PY = textwrap.dedent("""\
     #!/usr/bin/env python3
     \"\"\"agent-reconstruct: minimal teacher-student reconstruction track.
 
-    Implementation guide: AGENT_TRACK_ROADMAP.md section 5
+    Implementation guide: docs/AGENT_TRACK_ROADMAP.md section 5
 
     Teacher agent: reads paper, extracts domain problem hint (no solution revealed).
     Student agent: given hint + allowed refs only, develops methodology independently.
@@ -219,7 +247,7 @@ AGENT_RECONSTRUCT_PY = textwrap.dedent("""\
         args = parser.parse_args()
         print(f"[agent-reconstruct] impl_id={AGENT_IMPL_ID} paper_url={args.paper_url} "
               f"refs={args.refs} model={args.model}")
-        print("[agent-reconstruct] Not yet implemented -- see AGENT_TRACK_ROADMAP.md section 5")
+        print("[agent-reconstruct] Not yet implemented -- see docs/AGENT_TRACK_ROADMAP.md section 5")
         sys.exit(1)
 
 
@@ -262,13 +290,25 @@ def setup_infra_base(skip_existing: bool) -> None:
         return
     print(f"\n=== Creating '{branch}' ===")
     switch_to_orphan(branch)
+    # infra/ lives on infra-base only (not on main). When recreating, source it
+    # from the existing remote. When bootstrapping from scratch, infra/ must be
+    # committed to origin/infra-base first via a manual push before this script
+    # can run with --no-skip-existing.
+    if branch_exists_remote(branch):
+        checkout_from_branch(f"origin/{branch}", "infra/")
+    else:
+        sys.exit(
+            f"ERROR: Cannot bootstrap '{branch}' from scratch — infra/ is not on main.\n"
+            "Commit the infra/ package to a local 'infra-base' branch, push it to\n"
+            "origin, then re-run this script."
+        )
     checkout_from_main(
-        "infra/",
-        "PROJECT_INSTRUCTIONS_AGENT.md",
-        "AGENT_TRACK_ROADMAP.md",
+        "docs/PROJECT_INSTRUCTIONS_AGENT.md",
+        "docs/AGENT_TRACK_ROADMAP.md",
         ".github/workflows/agent-review.yml",
     )
     Path("README.md").write_text(INFRA_BASE_README)
+    Path(".gitignore").write_text(ORPHAN_GITIGNORE)
     commit_and_push(branch, "infra-base: shared execution shell, charter, and roadmap (bootstrap)",
                     force=not skip_existing)
     print(f"Created '{branch}'")
@@ -287,9 +327,11 @@ def setup_agent_branch(
         return
     print(f"\n=== Creating '{branch}' ===")
     switch_to_orphan(branch)
-    checkout_from_main("infra/", ".github/workflows/agent-review.yml")
+    checkout_from_branch("infra-base", "infra/")
+    checkout_from_main(".github/workflows/agent-review.yml")
     Path("README.md").write_text(readme)
     Path("agent.py").write_text(agent_py)
+    Path(".gitignore").write_text(ORPHAN_GITIGNORE)
     commit_and_push(branch, commit_msg, force=not skip_existing)
     print(f"Created '{branch}'")
     back_to_main()
@@ -303,6 +345,7 @@ def setup_agent_reports(skip_existing: bool) -> None:
     print(f"\n=== Creating '{branch}' ===")
     switch_to_orphan(branch)
     Path("README.md").write_text(AGENT_REPORTS_README)
+    Path(".gitignore").write_text(ORPHAN_GITIGNORE)
     for track in ("agent-e2e", "agent-linear", "agent-reconstruct"):
         Path(track).mkdir(exist_ok=True)
         Path(track, ".gitkeep").touch()
@@ -364,7 +407,7 @@ def main() -> None:
 
     print("\nDone. All agent branches are set up.")
     print(
-        "Next: implement agent.py on each track branch per AGENT_TRACK_ROADMAP.md."
+        "Next: implement agent.py on each track branch per docs/AGENT_TRACK_ROADMAP.md."
     )
 
 

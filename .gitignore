@@ -1,44 +1,14 @@
-# Environment / secrets — NEVER commit these
-.env
-*.env
-
-# Python cache
+checkpoints/
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
-*.pyd
-.Python
-
-# Virtual environments
+.env
+.env.local
 .venv/
 venv/
-env/
-ENV/
-
-# Distribution / packaging
+.pytest_cache/
+*.egg-info/
 dist/
 build/
-*.egg-info/
-*.egg
-.eggs/
-
-# Test & coverage artefacts
-.pytest_cache/
-.coverage
-htmlcov/
-*.cover
-.mypy_cache/
-.ruff_cache/
-
-# Editor / OS artefacts
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-*.swp
-*~
-README_files/
-README.html
-
-# Generated reports directory
 reports/
+=*

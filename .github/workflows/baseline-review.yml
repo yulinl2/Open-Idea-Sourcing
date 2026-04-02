@@ -18,9 +18,15 @@ on:
         required: false
         default: "references.json"
       output_format:
-        description: "Report format: text | markdown | json | pdf (default: markdown)"
+        description: "Report format"
         required: false
         default: "markdown"
+        type: choice
+        options:
+          - markdown
+          - text
+          - json
+          - pdf
       online_search:
         description: "Enable Semantic Scholar keyword search (default: true)"
         required: false
