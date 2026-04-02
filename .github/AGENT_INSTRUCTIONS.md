@@ -145,9 +145,15 @@ as guarded jobs inside `agent-track-workflows.yml`.  **Never add a new standalon
                Actions → Agent track workflows → Run workflow → operation=<op>
 
 3. AUTO-RETIRE On success the Self-archive step runs retire_maintenance_op.py,
-            which strips the op from agent-track-workflows.yml and pushes the
-            change to main.  The op disappears from the Run-workflow dropdown
-            automatically — no follow-up PR needed.
+            which:
+            a. Extracts the job block and saves it as
+               .github/workflows/<op>.completed-<YYYY-MM-DD>.yml.bak
+               for historical reference (inert — GitHub Actions ignores non-.yml).
+            b. Strips the op from agent-track-workflows.yml.
+            c. Deletes the associated one-time script (from OP_SCRIPTS).
+            d. Pushes the change to main.
+            The op disappears from the Run-workflow dropdown automatically —
+            no follow-up PR needed.
 ```
 
 ### Why `.github/workflows/**` is in the push trigger's `paths-ignore`

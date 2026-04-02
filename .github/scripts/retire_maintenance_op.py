@@ -11,9 +11,11 @@ What it does:
     1. Removes the operation name from the 'operation' input description.
     2. Removes the op's entry from the file-header comment block.
     3. Removes any workflow_dispatch inputs exclusively used by this operation.
-    4. Removes the comment block + job block for this operation.
-    5. Deletes the associated one-time script file (if listed in OP_SCRIPTS).
-    6. Commits the change and pushes it to main (unless --no-push is given).
+    4. Extracts the comment block + job block and saves it as a dated .yml.bak
+       file in .github/workflows/ for historical reference.
+    5. Removes the comment block + job block from agent-track-workflows.yml.
+    6. Deletes the associated one-time script file (if listed in OP_SCRIPTS).
+    7. Commits the change and pushes it to main (unless --no-push is given).
 
 Lifecycle convention for maintenance operations in agent-track-workflows.yml:
     ADD:      Add a guarded job (if: github.event.inputs.operation == '<op>') with
@@ -29,9 +31,11 @@ import argparse
 import re
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 WORKFLOW_PATH = Path(".github/workflows/agent-track-workflows.yml")
+WORKFLOWS_DIR = Path(".github/workflows")
 
 # workflow_dispatch inputs that belong exclusively to a specific maintenance op.
 # They are removed when the op is retired.  Key = op name, value = list of input keys.
@@ -57,15 +61,16 @@ def run(cmd: list[str]) -> None:
 # Public entry-point
 # ---------------------------------------------------------------------------
 
-def retire_op(content: str, op: str) -> str:
-    """Return workflow YAML with all traces of *op* removed."""
+def retire_op(content: str, op: str) -> tuple[str, str]:
+    """Return (updated YAML, extracted job block text) with all traces of *op* removed."""
     content = _remove_from_description(content, op)
     content = _remove_header_comment_entry(content, op)
     exclusive = OP_EXCLUSIVE_INPUTS.get(op, [])
     if exclusive:
         content = _remove_exclusive_inputs(content, exclusive)
+    job_block = _extract_job_block(content, op)
     content = _remove_job_block(content, op)
-    return content
+    return content, job_block
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +125,41 @@ def _remove_exclusive_inputs(content: str, inputs_to_remove: list[str]) -> str:
             result.append(lines[i])
             i += 1
     return "".join(result)
+
+
+def _extract_job_block(content: str, op: str) -> str:
+    """Extract the comment block + job block for *op* and return it as text."""
+    lines = content.splitlines(keepends=True)
+    # Find the job start line.
+    job_start = None
+    for idx, line in enumerate(lines):
+        if re.match(rf"^  {re.escape(op)}:\s*$", line):
+            job_start = idx
+            break
+    if job_start is None:
+        return ""
+    # Walk backwards to include the preceding comment/separator block.
+    comment_start = job_start
+    i = job_start - 1
+    while i >= 0 and (not lines[i].strip() or lines[i].strip().startswith("#")):
+        comment_start = i
+        i -= 1
+    # Walk forward to include the full job body.
+    job_end = job_start + 1
+    while job_end < len(lines):
+        if not lines[job_end].strip():
+            # Blank — peek ahead for next non-blank.
+            k = job_end + 1
+            while k < len(lines) and not lines[k].strip():
+                k += 1
+            if k < len(lines) and len(lines[k]) - len(lines[k].lstrip()) <= 2:
+                break
+            job_end += 1
+            continue
+        if len(lines[job_end]) - len(lines[job_end].lstrip()) <= 2:
+            break
+        job_end += 1
+    return "".join(lines[comment_start:job_end])
 
 
 def _remove_job_block(content: str, op: str) -> str:
@@ -179,7 +219,7 @@ def main() -> None:
         sys.exit(1)
 
     original = WORKFLOW_PATH.read_text()
-    updated = retire_op(original, op)
+    updated, job_block = retire_op(original, op)
 
     if updated == original:
         print(f"No changes — '{op}' may already be retired or not present.")
@@ -187,6 +227,19 @@ def main() -> None:
 
     WORKFLOW_PATH.write_text(updated)
     print(f"Retired '{op}' from {WORKFLOW_PATH}")
+
+    # Save the extracted job block as a dated .yml.bak for historical reference.
+    today = date.today().isoformat()
+    bak_path = WORKFLOWS_DIR / f"{op}.completed-{today}.yml.bak"
+    if job_block:
+        bak_header = (
+            f"# Auto-archived maintenance op: {op}\n"
+            f"# Retired: {today}\n"
+            f"# Originally inlined in agent-track-workflows.yml\n"
+            f"# This is a historical record only — this job will never run.\n\n"
+        )
+        bak_path.write_text(bak_header + job_block)
+        print(f"Saved archived job block: {bak_path}")
 
     # Delete the associated one-time script (if any) so it doesn't linger as dead code.
     script_path_str = OP_SCRIPTS.get(op)
@@ -197,6 +250,8 @@ def main() -> None:
 
     if not args.no_push:
         run(["git", "add", str(WORKFLOW_PATH)])
+        if job_block and bak_path.exists():
+            run(["git", "add", str(bak_path)])
         if script_path and not script_path.exists():
             run(["git", "rm", "--cached", "--ignore-unmatch", str(script_path)])
             run(["git", "add", "-u", str(script_path)])
