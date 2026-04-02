@@ -224,7 +224,7 @@ jobs:
           # Detect embedded newlines, carriage returns, tabs, or spaces.
           # These make the HTTP Authorization header value illegal and cause
           # httpx to raise LocalProtocolError ("Illegal header value").
-          _clean=$(printf '%s' "$OPENAI_API_KEY" | tr -d '\\n\\r\\t ')
+          _clean=$(printf '%s' "$OPENAI_API_KEY" | tr -d '\n\r\t ')
           if [ "${#_clean}" -ne "${#OPENAI_API_KEY}" ]; then
             echo "::error::OPENAI_API_KEY contains whitespace or control characters (e.g. a trailing newline). Re-save the secret with only the raw key value, no line breaks or spaces."
             exit 1
