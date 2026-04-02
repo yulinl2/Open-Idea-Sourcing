@@ -120,6 +120,43 @@ Before calling `report_progress`, confirm that:
 
 ---
 
+## 8. Workflow dispatch inputs — prefer dropdown menus
+
+When adding or modifying `workflow_dispatch` inputs, use `type: choice` (dropdown)
+whenever the valid values form a **finite, known set**.  This prevents typos,
+makes the "Run workflow" UI self-documenting, and avoids CI failures from invalid
+free-text values.
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Agent track to use"
+        required: true
+        default: "e2e"
+        type: choice
+        options:
+          - e2e
+          - linear
+          - reconstruct
+```
+
+Guidelines:
+- **Use `type: choice`** for enum-like inputs (operation names, format strings,
+  track names, log levels, environment names, etc.).
+- **Use `type: boolean`** for binary true/false flags (e.g., `dry_run`).  This
+  renders as a checkbox in the UI and keeps the semantics clear.
+- **Leave as free-text** (`type: string`, the default) only for truly open-ended
+  inputs: URLs, arbitrary filenames, model identifiers, branch lists, etc.
+- Keep the `default` set to the most common/safe value so accidental runs
+  without explicit input do the right thing.
+- When a `type: choice` input is part of a maintenance operation that auto-retires
+  via `retire_maintenance_op.py`, the retire script will remove the op's entry
+  from both the job block and the `options:` list automatically.
+
+---
+
 ## 9. Maintenance operations — lifecycle convention
 
 One-shot maintenance operations (e.g., fix a config on all orphan branches) live

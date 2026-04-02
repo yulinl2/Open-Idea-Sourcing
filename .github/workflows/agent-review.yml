@@ -23,9 +23,14 @@ on:
         required: true
         default: "https://arxiv.org/abs/2006.06138"
       track:
-        description: "Agent track to use: e2e | linear | reconstruct"
+        description: "Agent track to use"
         required: true
         default: "e2e"
+        type: choice
+        options:
+          - e2e
+          - linear
+          - reconstruct
       model:
         description: "LLM model identifier (e.g. gpt-4o, gpt-4o-mini)"
         required: false

@@ -63,6 +63,7 @@ def run(cmd: list[str]) -> None:
 def retire_op(content: str, op: str) -> tuple[str, str]:
     """Return (updated YAML, extracted job block text) with all traces of *op* removed."""
     content = _remove_from_description(content, op)
+    content = _remove_from_options(content, op)
     content = _remove_header_comment_entry(content, op)
     exclusive = OP_EXCLUSIVE_INPUTS.get(op, [])
     if exclusive:
@@ -77,10 +78,15 @@ def retire_op(content: str, op: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 def _remove_from_description(content: str, op: str) -> str:
-    """Remove op name from the 'operation' input description string."""
+    """Remove op name from the 'operation' input description string (free-text style)."""
     for pat in [f", '{op}'", f"'{op}', ", f', "{op}"', f'"{op}", ']:
         content = content.replace(pat, "")
     return content
+
+
+def _remove_from_options(content: str, op: str) -> str:
+    """Remove op name from the 'operation' input options list (type: choice style)."""
+    return re.sub(rf"^ *- {re.escape(op)}\n", "", content, flags=re.MULTILINE)
 
 
 def _remove_header_comment_entry(content: str, op: str) -> str:
