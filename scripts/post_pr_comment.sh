@@ -39,8 +39,6 @@ body_text=""
 use_agent_format=1
 
 agent_badge='### 🤖 Copilot via VS Code'
-agent_subtitle='_AI-assisted PR note_'
-agent_footer='_Posted with scripts/post_pr_comment.sh_'
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -101,9 +99,7 @@ submit_comment() {
       tmp_file="$(mktemp -t pr-comment-XXXXXX.md)"
       {
         printf '%s\n\n' "$agent_badge"
-        printf '%s\n\n' "$agent_subtitle"
         cat "$file_path"
-        printf '\n\n%s\n' "$agent_footer"
       } > "$tmp_file"
       rendered_file="$tmp_file"
     fi

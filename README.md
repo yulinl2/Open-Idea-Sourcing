@@ -126,8 +126,6 @@ PR comment formatting tip:
 - By default the helper formats agent-posted comments with a visible badge:
   ```text
   ### 🤖 Copilot via VS Code
-
-  _AI-assisted PR note_
   ```
 - To post without the badge, add `--as-user` (or `--plain`).
 
