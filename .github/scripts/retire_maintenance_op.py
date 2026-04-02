@@ -63,6 +63,7 @@ def run(cmd: list[str]) -> None:
 def retire_op(content: str, op: str) -> tuple[str, str]:
     """Return (updated YAML, extracted job block text) with all traces of *op* removed."""
     content = _remove_from_description(content, op)
+    content = _remove_from_choice_options(content, op)
     content = _remove_header_comment_entry(content, op)
     exclusive = OP_EXCLUSIVE_INPUTS.get(op, [])
     if exclusive:
@@ -77,10 +78,47 @@ def retire_op(content: str, op: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 def _remove_from_description(content: str, op: str) -> str:
-    """Remove op name from the 'operation' input description string."""
+    """Remove op name from the 'operation' input description string (legacy free-text style)."""
     for pat in [f", '{op}'", f"'{op}', ", f', "{op}"', f'"{op}", ']:
         content = content.replace(pat, "")
     return content
+
+
+def _remove_from_choice_options(content: str, op: str) -> str:
+    """Remove op from the 'operation' input's type:choice options list."""
+    lines = content.splitlines(keepends=True)
+    result: list[str] = []
+    in_operation_block = False
+    in_options_list = False
+
+    for line in lines:
+        stripped = line.rstrip("\n\r")
+
+        if re.match(r"^      operation:\s*$", stripped):
+            in_operation_block = True
+            in_options_list = False
+            result.append(line)
+            continue
+
+        if in_operation_block:
+            indent = len(stripped) - len(stripped.lstrip()) if stripped else float("inf")
+            if stripped and indent < 8:
+                # Left the operation block entirely.
+                in_operation_block = False
+                in_options_list = False
+            elif re.match(r"^        options:\s*$", stripped):
+                in_options_list = True
+            elif in_options_list and re.match(r"^          - ", stripped):
+                # Inside the options list — skip the line for the retiring op.
+                if stripped.strip() == f"- {op}":
+                    continue
+            elif in_options_list and stripped and indent < 10:
+                # A new property inside the operation block — end of options list.
+                in_options_list = False
+
+        result.append(line)
+
+    return "".join(result)
 
 
 def _remove_header_comment_entry(content: str, op: str) -> str:
