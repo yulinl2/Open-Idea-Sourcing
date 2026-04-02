@@ -185,8 +185,8 @@ for file in "${files[@]}"; do
   # branches, so it must require a dedicated token secret and validate it.
   if [[ "$file" == ".github/workflows/agent-track-workflows.yml" ]]; then
     if grep -Eq 'name:[[:space:]]+Sync agent-review workflow on orphan branches' "$file"; then
-      if ! grep -Eq 'ORPHAN_WORKFLOW_PUSH_TOKEN' "$file"; then
-        echo "$file: sync-agent-review-workflow must use ORPHAN_WORKFLOW_PUSH_TOKEN to update workflow files."
+      if ! grep -Eq 'token:[[:space:]]+\$\{\{[[:space:]]*secrets\.ORPHAN_WORKFLOW_PUSH_TOKEN[[:space:]]*\|\|[[:space:]]*github\.token[[:space:]]*\}\}' "$file"; then
+        echo "$file: sync-agent-review-workflow Checkout main must set with.token to secrets.ORPHAN_WORKFLOW_PUSH_TOKEN || github.token."
         bad=1
       fi
       if ! grep -Eq 'name:[[:space:]]+Validate workflow push token' "$file"; then

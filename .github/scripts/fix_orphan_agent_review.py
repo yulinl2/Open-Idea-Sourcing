@@ -319,15 +319,15 @@ def fix_branch(branch: str) -> bool:
             cwd=str(wt_path),
         )
         try:
-          run(["git", "push", "origin", f"HEAD:refs/heads/{branch}"], cwd=str(wt_path))
+            run(["git", "push", "origin", f"HEAD:refs/heads/{branch}"], cwd=str(wt_path))
         except subprocess.CalledProcessError:
-          print("  Push failed while updating a workflow file.")
-          print("  This operation requires a token with workflow write access.")
-          print(
-            "  In GitHub Actions, configure ORPHAN_WORKFLOW_PUSH_TOKEN and rerun "
-            "sync-agent-review-workflow.",
-          )
-          raise
+            print("  Push failed while updating a workflow file.")
+            print("  This operation requires a token with workflow write access.")
+            print(
+                "  In GitHub Actions, configure ORPHAN_WORKFLOW_PUSH_TOKEN and rerun "
+                "sync-agent-review-workflow.",
+            )
+            raise
         print(f"  Updated '{branch}'.")
         return True
 
@@ -347,18 +347,18 @@ def main() -> None:
 
     updated = []
     try:
-      for branch in args.branches:
-        if fix_branch(branch):
-          updated.append(branch)
+        for branch in args.branches:
+            if fix_branch(branch):
+                updated.append(branch)
     except subprocess.CalledProcessError as exc:
-      cmd = " ".join(str(part) for part in exc.cmd)
-      print(f"\nERROR: command failed: {cmd}", file=sys.stderr)
-      print(
-        "Hint: if this failed on git push for .github/workflows/agent-review.yml, "
-        "use a PAT with workflow write access.",
-        file=sys.stderr,
-      )
-      sys.exit(exc.returncode)
+        cmd = " ".join(str(part) for part in exc.cmd)
+        print(f"\nERROR: command failed: {cmd}", file=sys.stderr)
+        print(
+            "Hint: if this failed on git push for .github/workflows/agent-review.yml, "
+            "use a PAT with workflow write access.",
+            file=sys.stderr,
+        )
+        sys.exit(exc.returncode)
 
     print("\nDone.")
     if updated:

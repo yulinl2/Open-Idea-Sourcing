@@ -117,6 +117,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        id: checkout-track
         with:
           # Check out the agent-<track> branch so agent.py is present.
           # Falls back to the current ref if the track branch doesn't exist yet.
@@ -125,7 +126,7 @@ jobs:
 
       - name: Fallback checkout (track branch not yet created)
         uses: actions/checkout@v4
-        if: ${{ failure() }}
+        if: ${{ steps.checkout-track.outcome == 'failure' }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
