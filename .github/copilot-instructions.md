@@ -71,6 +71,11 @@ gh workflow run agent-review.yml \
 Without `--ref`, `gh` tries a GraphQL default-branch lookup that `GITHUB_TOKEN`
 cannot perform on push events (403 error).
 
+For `workflow_dispatch` inputs, **always use `type: choice` or `type: boolean`**
+whenever valid values are known ahead of time. Free-text (`type: string`) is only
+for open-ended values like URLs or space-separated branch lists. See
+`.github/AGENT_INSTRUCTIONS.md` §8 for the full rule and examples.
+
 ---
 
 ## Branch architecture — keep these completely separate

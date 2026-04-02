@@ -31,9 +31,14 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: "Operation to run: 'review' (default), 'fix-gitignore', 'patch-agent-review'"
+        description: "Operation to run (review fans out to all tracks; maintenance ops are one-shot)"
         required: false
         default: "review"
+        type: choice
+        options:
+          - review
+          - fix-gitignore
+          - patch-agent-review
       paper_url:
         description: "Paper URL (arXiv abstract or PDF) — used when operation=review"
         required: false
@@ -47,9 +52,10 @@ on:
         required: false
         default: "infra-base agent-e2e agent-linear agent-reconstruct"
       dry_run:
-        description: "Dry run (true = show changes, no push) — used when operation=patch-agent-review"
+        description: "Dry run (show changes, no push) — used when operation=patch-agent-review"
         required: false
-        default: "false"
+        default: false
+        type: boolean
 
 jobs:
   # ------------------------------------------------------------------
@@ -154,7 +160,7 @@ jobs:
           done
 
       - name: Run patch script (dry run)
-        if: github.event.inputs.dry_run == 'true'
+        if: inputs.dry_run
         run: |
           echo "DRY RUN — would update: ${{ github.event.inputs.branches }}"
           python3 -c "
@@ -168,7 +174,7 @@ jobs:
           "
 
       - name: Run patch script
-        if: github.event.inputs.dry_run != 'true'
+        if: inputs.dry_run == false
         run: |
           python3 .github/scripts/fix_orphan_agent_review.py \
             --branches ${{ github.event.inputs.branches }}
@@ -177,7 +183,7 @@ jobs:
         run: |
           printf '### Patch complete\n\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'Branches targeted: `%s`\n\n' "${{ github.event.inputs.branches }}" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
             printf 'Dry run — no changes pushed.\n' >> "$GITHUB_STEP_SUMMARY"
           else
             printf 'agent-review.yml updated on each branch that was outdated.\n' \
@@ -185,5 +191,5 @@ jobs:
           fi
 
       - name: Self-archive this operation
-        if: success() && github.event.inputs.dry_run != 'true'
+        if: success() && inputs.dry_run == false
         run: python3 .github/scripts/retire_maintenance_op.py --op patch-agent-review

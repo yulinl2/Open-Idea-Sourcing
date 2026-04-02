@@ -120,6 +120,47 @@ Before calling `report_progress`, confirm that:
 
 ---
 
+## 8. Workflow dispatch inputs — use dropdowns whenever possible
+
+For `workflow_dispatch` inputs with a fixed set of valid values, always use
+`type: choice` (dropdown) or `type: boolean` (checkbox) instead of a free-text
+`type: string`. This prevents typos, makes valid options visible in the UI, and
+avoids broken runs from invalid input.
+
+```yaml
+# CORRECT — dropdown for an enumerated string value
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Operation to run"
+        required: false
+        default: "review"
+        type: choice
+        options:
+          - review
+          - fix-gitignore
+          - patch-agent-review
+
+# CORRECT — checkbox for a boolean flag
+      dry_run:
+        description: "Dry run (show changes, no push)"
+        required: false
+        default: false
+        type: boolean
+```
+
+Rules:
+- Use `type: choice` for any input whose valid values form a small, known set
+  (operation names, track names, output formats, etc.).
+- Use `type: boolean` for on/off flags; omit the `"true"/"false"` string idiom.
+- When using `type: choice`, the options are visible in the dropdown — you do not
+  need to enumerate them in the `description:` string.
+- Free-text inputs (`type: string`, the default) are reserved for open-ended
+  values like URLs, arbitrary identifiers, or space-separated branch lists.
+
+---
+
 ## 9. Maintenance operations — lifecycle convention
 
 One-shot maintenance operations (e.g., fix a config on all orphan branches) live
