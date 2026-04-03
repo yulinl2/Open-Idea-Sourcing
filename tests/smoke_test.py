@@ -29,10 +29,16 @@ def _save(name: str, result: dict) -> None:
 
 def _get_client():
     import openai
-    key = os.environ.get("OPENAI_API_KEY", "")
+    key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not key:
         return None, "OPENAI_API_KEY not set"
     return openai.OpenAI(api_key=key), ""
+
+
+def _sanitize_traceback(tb: str) -> str:
+    """Remove API keys and secrets from traceback strings."""
+    import re
+    return re.sub(r"(Bearer |sk-)[A-Za-z0-9_\-]+", r"\1[REDACTED]", tb)
 
 
 # ── Test 1: Basic API connectivity ────────────────────────────────────
@@ -58,7 +64,7 @@ def test_api_connectivity():
         return True
     except Exception as exc:
         _save("01_connectivity", {"pass": False, "error": str(exc),
-                                   "traceback": traceback.format_exc()})
+                                   "traceback": _sanitize_traceback(traceback.format_exc())})
         print(f"  FAIL — {exc}")
         return False
 
@@ -112,7 +118,7 @@ def test_logprobs():
         return has_logprobs
     except Exception as exc:
         _save("02_logprobs", {"pass": False, "error": str(exc),
-                               "traceback": traceback.format_exc()})
+                               "traceback": _sanitize_traceback(traceback.format_exc())})
         print(f"  FAIL — {exc}")
         return False
 

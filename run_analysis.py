@@ -34,7 +34,7 @@ def _get_openai_client():
     """Create an OpenAI client from environment."""
     import openai
 
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not api_key:
         print(
             "ERROR: OPENAI_API_KEY not set. "
