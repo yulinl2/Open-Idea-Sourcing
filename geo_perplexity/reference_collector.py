@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 _S2_BASE = "https://api.semanticscholar.org/graph/v1/paper"
-_FIELDS = "title,abstract,year,authors,externalIds,url"
+_FIELDS = "title,abstract,year,authors,externalIds,url,tldr,venue"
 _REF_FIELDS = ",".join(f"citedPaper.{f}" for f in _FIELDS.split(","))
 _PAGE_SIZE = 500  # S2 max per request for /references
 _MAX_REFS = 2000  # safety ceiling
@@ -110,10 +110,17 @@ def _parse_s2_paper(raw: dict) -> Optional[CitedPaper]:
         if name:
             authors.append(name)
 
+    # Use abstract if available; fall back to S2 TLDR auto-summary
+    abstract = raw.get("abstract") or ""
+    if not abstract:
+        tldr = raw.get("tldr")
+        if tldr and isinstance(tldr, dict):
+            abstract = tldr.get("text", "")
+
     return CitedPaper(
         paper_id=paper_id,
         title=raw.get("title", ""),
-        abstract=raw.get("abstract") or "",
+        abstract=abstract,
         authors=authors,
         year=raw.get("year"),
         arxiv_id=arxiv_id,

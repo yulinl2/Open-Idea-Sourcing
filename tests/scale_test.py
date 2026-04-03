@@ -26,8 +26,8 @@ RESULTS_DIR.mkdir(exist_ok=True)
 
 MODEL = "gpt-4o"
 TARGET_ARXIV = "2006.06138"
-# Use a modest number of refs to keep CI fast
-MAX_REFS = 8
+# All refs with abstracts — full scale test
+MAX_REFS = 100
 
 
 def _save(name: str, result: dict) -> None:
@@ -108,9 +108,8 @@ def test_real_paper_abstracts():
     result["n_total_refs"] = len(all_refs)
     result["n_refs_with_abstract"] = len(refs_with_abstract)
 
-    # Pick a diverse subset: first few and last few (by list order)
-    test_refs = refs_with_abstract[:MAX_REFS // 2] + refs_with_abstract[-(MAX_REFS // 2):]
-    test_refs = test_refs[:MAX_REFS]  # deduplicate if overlap
+    # Use all refs with abstracts (up to MAX_REFS)
+    test_refs = refs_with_abstract[:MAX_REFS]
     result["n_test_refs"] = len(test_refs)
     print(f"  Using {len(test_refs)} refs (of {len(refs_with_abstract)} with abstracts)")
 
