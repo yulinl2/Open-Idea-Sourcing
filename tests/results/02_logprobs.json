@@ -1,0 +1,21 @@
+{
+  "pass": true,
+  "model": "gpt-4o-2024-08-06",
+  "output": "The quick brown fox jumps over the lazy dog.",
+  "n_logprob_tokens": 10,
+  "sample_logprobs": [
+    -8.470901229884475e-05,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    -1.9361264946837764e-07,
+    0.0,
+    -1.9361264946837764e-07,
+    0.0,
+    -1.981667537620524e-06
+  ],
+  "avg_logprob": -8.707790513540203e-06,
+  "perplexity": 1.0000087078284265,
+  "timestamp": "2026-04-03T01:00:53.896209+00:00"
+}
