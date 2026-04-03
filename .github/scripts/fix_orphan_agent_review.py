@@ -221,6 +221,13 @@ jobs:
             echo "::error::OPENAI_API_KEY appears to be a placeholder/masked literal (for example ***). Use a real API key value."
             exit 1
           fi
+          # Detect any embedded whitespace or control characters.
+          # These make the HTTP Authorization header value illegal and cause
+          # httpx to raise LocalProtocolError ("Illegal header value").
+          if printf '%s' "$OPENAI_API_KEY" | grep -q '[[:space:][:cntrl:]]'; then
+            echo "::error::OPENAI_API_KEY contains whitespace or control characters (e.g. a trailing newline). Re-save the secret with only the raw key value, no line breaks or spaces."
+            exit 1
+          fi
           echo "OPENAI_API_KEY format check passed."
 
       - name: Validate track implementation exists

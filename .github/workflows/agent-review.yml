@@ -167,6 +167,13 @@ jobs:
             echo "::error::OPENAI_API_KEY appears to be a placeholder/masked literal (for example ***). Use a real API key value."
             exit 1
           fi
+          # Detect any whitespace or ASCII control characters.
+          # These make the HTTP Authorization header value illegal and cause
+          # httpx to raise LocalProtocolError ("Illegal header value").
+          if ! python -c "import os, sys; key = os.environ['OPENAI_API_KEY']; sys.exit(1 if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in key) else 0)"; then
+            echo "::error::OPENAI_API_KEY contains whitespace or control characters (e.g. a trailing newline). Re-save the secret with only the raw key value, no line breaks, spaces, or other control characters."
+            exit 1
+          fi
           echo "OPENAI_API_KEY format check passed."
 
       - name: Validate track implementation exists
