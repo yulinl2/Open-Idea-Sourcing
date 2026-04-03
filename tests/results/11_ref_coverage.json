@@ -1,0 +1,48 @@
+{
+  "arxiv_id": "2006.06138",
+  "n_total": 92,
+  "categories": {
+    "has_arxiv_and_abstract": {
+      "count": 36,
+      "samples": [
+        "Classification with Valid and Adaptive Coverage",
+        "Conformal prediction intervals for the individual treatment effect",
+        "Towards optimal doubly robust estimation of heterogeneous causal effects",
+        "A comparison of some conformal quantile regression methods",
+        "Assessing Treatment Effect Variation in Observational Studies: Results from a Da"
+      ]
+    },
+    "has_arxiv_no_abstract": {
+      "count": 0,
+      "samples": []
+    },
+    "no_arxiv_has_abstract": {
+      "count": 8,
+      "samples": [
+        "Use of directed acyclic graphs (DAGs) in applied health research: review and rec",
+        "Evaluation of Differences in Individual Treatment Response in Schizophrenia Spec",
+        "Inference on finite-population treatment effects under limited overlap",
+        "A national experiment reveals where a growth mindset improves achievement",
+        "Causal Processes in Psychology Are Heterogeneous"
+      ]
+    },
+    "no_arxiv_no_abstract": {
+      "count": 48,
+      "samples": [
+        "Quantile Regression",
+        "Balancing Out Regression Error: Efficient Treatment Effect Estimation without Sm",
+        "Estimating Heterogeneous Treatment Effects and the Effects of Heterogeneous Trea",
+        "Causal Inference in Statistics: A Primer",
+        "Transductive conformal predictors"
+      ]
+    }
+  },
+  "coverage": {
+    "arxiv_pdf_only": "36/92 (39%)",
+    "abstract_only": "44/92 (48%)",
+    "arxiv_or_abstract": "44/92 (48%)",
+    "nothing": "48/92 (52%)"
+  },
+  "pass": true,
+  "timestamp": "2026-04-03T01:05:33.833942+00:00"
+}
