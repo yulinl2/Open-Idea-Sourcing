@@ -7,8 +7,8 @@
   "raw_extraction_ok": true,
   "raw_text_preview": "Conformal Inference\nof Counterfactuals and Individual Treatment Effects\nLihua Lei\nDepartmentofStatistics,StanfordUniversity\nE-mail: lihualei@stanford.edu\nEmmanuel J. Cande`s\nDepartmentofStatisticsandDepartmentofMathematics,StanfordUniversity\nE-mail: candes@stanford.edu\nSummary. Evaluatingtreatmenteffectheterogeneitywidelyinformstreatmentdecisionmaking. At\nthe moment, much emphasis is placed on the estimation of the conditional average treatment ef-\nfect via flexible machine learning algorithms. ",
   "llm_extraction_ok": true,
-  "llm_text_length": 8902,
+  "llm_text_length": 10328,
   "llm_text_preview": "Evaluating treatment effect heterogeneity widely informs treatment decision making. At the moment, much emphasis is placed on the estimation of the conditional average treatment effect via flexible machine learning algorithms. While these methods enjoy some theoretical appeal in terms of consistency and convergence rates, they generally perform poorly in terms of uncertainty quantification. This is troubling since assessing risk is crucial for reliable decision-making in sensitive and uncertain ",
   "pass": true,
-  "timestamp": "2026-04-03T01:05:33.037089+00:00"
+  "timestamp": "2026-04-03T01:12:56.724346+00:00"
 }

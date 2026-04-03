@@ -1,34 +1,34 @@
 {
   "closely_related": {
-    "perplexity": 1.0000007392492143,
-    "avg_logprob": -7.392489410009265e-07,
+    "perplexity": 1.0000021913220016,
+    "avg_logprob": -2.1913196006138486e-06,
     "n_tokens": 31,
     "n_chunks": 1,
     "error": ""
   },
   "somewhat_related": {
-    "perplexity": 1.0000005416948756,
-    "avg_logprob": -5.416947289866643e-07,
+    "perplexity": 1.000000550830392,
+    "avg_logprob": -5.508302402015561e-07,
     "n_tokens": 31,
     "n_chunks": 1,
     "error": ""
   },
   "unrelated": {
-    "perplexity": 1.000001811593892,
-    "avg_logprob": -1.811592251178515e-06,
+    "perplexity": 1.000001301615956,
+    "avg_logprob": -1.30161510885647e-06,
     "n_tokens": 31,
     "n_chunks": 1,
     "error": ""
   },
   "self": {
-    "perplexity": 1.0000026335301964,
-    "avg_logprob": -2.6335267285327476e-06,
+    "perplexity": 1.0000016414459534,
+    "avg_logprob": -1.6414446062731991e-06,
     "n_tokens": 31,
     "n_chunks": 1,
     "error": ""
   },
   "ordering_check": {
-    "self < closely_related": false,
+    "self < closely_related": true,
     "closely_related < somewhat_related": false,
     "somewhat_related < unrelated": true,
     "self < closely_related < unrelated (key test)": false
@@ -36,5 +36,5 @@
   "all_finite": true,
   "pass": true,
   "ordering_sensible": false,
-  "timestamp": "2026-04-03T01:04:57.639720+00:00"
+  "timestamp": "2026-04-03T01:12:26.942779+00:00"
 }

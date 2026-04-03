@@ -4,8 +4,8 @@
     "Logprobs": true,
     "Mini perplexity": true,
     "Text extraction": true,
-    "Reference collection": true
+    "Reference collection": false
   },
-  "all_passed": true,
-  "timestamp": "2026-04-03T01:05:33.237349+00:00"
+  "all_passed": false,
+  "timestamp": "2026-04-03T01:12:56.883064+00:00"
 }
