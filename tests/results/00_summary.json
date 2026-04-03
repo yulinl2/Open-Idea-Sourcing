@@ -1,0 +1,11 @@
+{
+  "tests": {
+    "API connectivity": false,
+    "Logprobs": false,
+    "Mini perplexity": false,
+    "Text extraction": true,
+    "Reference collection": true
+  },
+  "all_passed": false,
+  "timestamp": "2026-04-03T00:57:00.572008+00:00"
+}

@@ -1,0 +1,71 @@
+{
+  "arxiv_id": "2006.06138",
+  "n_total": 92,
+  "n_with_arxiv_id": 36,
+  "n_with_abstract": 44,
+  "n_no_content": 48,
+  "pass": true,
+  "sample_refs": [
+    {
+      "title": "Classification with Valid and Adaptive Coverage",
+      "has_arxiv": true,
+      "has_abstract": true,
+      "arxiv_id": "2006.02544"
+    },
+    {
+      "title": "Conformal prediction intervals for the individual treatment effect",
+      "has_arxiv": true,
+      "has_abstract": true,
+      "arxiv_id": "2006.01474"
+    },
+    {
+      "title": "Towards optimal doubly robust estimation of heterogeneous causal effects",
+      "has_arxiv": true,
+      "has_abstract": true,
+      "arxiv_id": "2004.14497"
+    },
+    {
+      "title": "Use of directed acyclic graphs (DAGs) in applied health research: review and rec",
+      "has_arxiv": false,
+      "has_abstract": true,
+      "arxiv_id": ""
+    },
+    {
+      "title": "Evaluation of Differences in Individual Treatment Response in Schizophrenia Spec",
+      "has_arxiv": false,
+      "has_abstract": true,
+      "arxiv_id": ""
+    },
+    {
+      "title": "A comparison of some conformal quantile regression methods",
+      "has_arxiv": true,
+      "has_abstract": true,
+      "arxiv_id": "1909.05433"
+    },
+    {
+      "title": "Inference on finite-population treatment effects under limited overlap",
+      "has_arxiv": false,
+      "has_abstract": true,
+      "arxiv_id": ""
+    },
+    {
+      "title": "A national experiment reveals where a growth mindset improves achievement",
+      "has_arxiv": false,
+      "has_abstract": true,
+      "arxiv_id": ""
+    },
+    {
+      "title": "Assessing Treatment Effect Variation in Observational Studies: Results from a Da",
+      "has_arxiv": true,
+      "has_abstract": true,
+      "arxiv_id": "1907.07592"
+    },
+    {
+      "title": "Predictive inference with the jackknife+",
+      "has_arxiv": true,
+      "has_abstract": true,
+      "arxiv_id": "1905.02928"
+    }
+  ],
+  "timestamp": "2026-04-03T00:57:00.571628+00:00"
+}
