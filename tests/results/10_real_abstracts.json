@@ -2,19 +2,681 @@
   "target_arxiv": "2006.06138",
   "model": "gpt-4o",
   "target_text_length": 8902,
-  "n_total_refs": 0,
-  "n_refs_with_abstract": 0,
-  "n_test_refs": 0,
+  "n_total_refs": 92,
+  "n_refs_with_abstract": 65,
+  "n_test_refs": 65,
   "self_ppl": {
-    "perplexity": 1.0000060954644507,
-    "avg_logprob": -6.0954458735507535e-06,
+    "perplexity": 1.000008249610804,
+    "avg_logprob": -8.249576776157361e-06,
     "n_tokens": 1697,
     "n_chunks": 3,
     "error": ""
   },
-  "ref_results": [],
-  "n_valid": 0,
+  "ref_results": [
+    {
+      "title": "Classification with Valid and Adaptive Coverage",
+      "has_arxiv": true,
+      "abstract_length": 956,
+      "perplexity": 1.0006530494777814,
+      "avg_logprob": -0.0006528363337618933,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Conformal prediction intervals for the individual treatment effect",
+      "has_arxiv": true,
+      "abstract_length": 690,
+      "perplexity": 1.0007211526756767,
+      "avg_logprob": -0.0007208927700327494,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Towards optimal doubly robust estimation of heterogeneous causal effects",
+      "has_arxiv": true,
+      "abstract_length": 1651,
+      "perplexity": 1.0000790141105904,
+      "avg_logprob": -7.901098913996155e-05,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Use of directed acyclic graphs (DAGs) in applied health research: review and rec",
+      "has_arxiv": false,
+      "abstract_length": 1705,
+      "perplexity": 1.0003402574574487,
+      "avg_logprob": -0.00034019958300781283,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Evaluation of Differences in Individual Treatment Response in Schizophrenia Spec",
+      "has_arxiv": false,
+      "abstract_length": 2422,
+      "perplexity": 1.0000859839440677,
+      "avg_logprob": -8.598024766025046e-05,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "A comparison of some conformal quantile regression methods",
+      "has_arxiv": true,
+      "abstract_length": 973,
+      "perplexity": 1.0000580074521404,
+      "avg_logprob": -5.800576977324237e-05,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Inference on finite-population treatment effects under limited overlap",
+      "has_arxiv": false,
+      "abstract_length": 1039,
+      "perplexity": 1.0000325851285632,
+      "avg_logprob": -3.2584597679519224e-05,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "A national experiment reveals where a growth mindset improves achievement",
+      "has_arxiv": false,
+      "abstract_length": 1245,
+      "perplexity": 1.0000300995326417,
+      "avg_logprob": -3.0099079659804836e-05,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Assessing Treatment Effect Variation in Observational Studies: Results from a Da",
+      "has_arxiv": true,
+      "abstract_length": 1050,
+      "perplexity": 1.0010487745244963,
+      "avg_logprob": -0.0010482249447179015,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Predictive inference with the jackknife+",
+      "has_arxiv": true,
+      "abstract_length": 1229,
+      "perplexity": 1.0002547121980034,
+      "avg_logprob": -0.0002546797643589384,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Conformalized Quantile Regression",
+      "has_arxiv": true,
+      "abstract_length": 798,
+      "perplexity": 1.0024439358629633,
+      "avg_logprob": -0.002440954308542658,
+      "n_tokens": 795,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Conformal Prediction Under Covariate Shift",
+      "has_arxiv": true,
+      "abstract_length": 761,
+      "perplexity": 1.000962564222275,
+      "avg_logprob": -0.0009621012544010909,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Causal Processes in Psychology Are Heterogeneous",
+      "has_arxiv": false,
+      "abstract_length": 913,
+      "perplexity": 1.002214146368031,
+      "avg_logprob": -0.0022116987582065746,
+      "n_tokens": 795,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "The limits of distribution-free conditional predictive inference",
+      "has_arxiv": true,
+      "abstract_length": 948,
+      "perplexity": 1.0018264081343318,
+      "avg_logprob": -0.0018247422790412466,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Orthogonal Statistical Learning",
+      "has_arxiv": true,
+      "abstract_length": 1763,
+      "perplexity": 1.0005464379387683,
+      "avg_logprob": -0.0005462886959233829,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Synthetic Difference In Differences",
+      "has_arxiv": true,
+      "abstract_length": 694,
+      "perplexity": 1.000635122557504,
+      "avg_logprob": -0.0006349209525305803,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "The Augmented Synthetic Control Method",
+      "has_arxiv": true,
+      "abstract_length": 1438,
+      "perplexity": 1.0012420604572863,
+      "avg_logprob": -0.0012412897383167899,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Robust Inference Using Inverse Probability Weighting",
+      "has_arxiv": true,
+      "abstract_length": 1399,
+      "perplexity": 1.0000868481991014,
+      "avg_logprob": -8.684442801494534e-05,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "The conditional permutation test for independence while controlling for confound",
+      "has_arxiv": false,
+      "abstract_length": 1251,
+      "perplexity": 1.0014039162083865,
+      "avg_logprob": -0.0014029316394203234,
+      "n_tokens": 795,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "The Book of Why: The New Science of Cause and Effect",
+      "has_arxiv": false,
+      "abstract_length": 162,
+      "perplexity": 1.0013916795738351,
+      "avg_logprob": -0.0013907120853357475,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Quasi-oracle estimation of heterogeneous treatment effects",
+      "has_arxiv": true,
+      "abstract_length": 1363,
+      "perplexity": 1.000238075473478,
+      "avg_logprob": -0.00023804713800971736,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Augmented minimax linear estimation",
+      "has_arxiv": true,
+      "abstract_length": 667,
+      "perplexity": 1.000224792327082,
+      "avg_logprob": -0.00022476706507247544,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Overlap in observational studies with high-dimensional covariates",
+      "has_arxiv": true,
+      "abstract_length": 1092,
+      "perplexity": 1.0008778863052525,
+      "avg_logprob": -0.0008775011884461026,
+      "n_tokens": 1542,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Estimating Heterogeneous Treatment Effects and the Effects of Heterogeneous Trea",
+      "has_arxiv": false,
+      "abstract_length": 270,
+      "perplexity": 1.0007857802996039,
+      "avg_logprob": -0.0007854717358957596,
+      "n_tokens": 1542,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Automated versus Do-It-Yourself Methods for Causal Inference: Lessons Learned fr",
+      "has_arxiv": true,
+      "abstract_length": 1471,
+      "perplexity": 1.0008983360134205,
+      "avg_logprob": -0.0008979327511159932,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Bayesian regression tree models for causal inference: regularization, confoundin",
+      "has_arxiv": true,
+      "abstract_length": 1312,
+      "perplexity": 1.002299962880539,
+      "avg_logprob": -0.002297322014400602,
+      "n_tokens": 795,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Metalearners for estimating heterogeneous treatment effects using machine learni",
+      "has_arxiv": true,
+      "abstract_length": 2015,
+      "perplexity": 1.0005224291560175,
+      "avg_logprob": -0.0005222927374167206,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Generalized random forests",
+      "has_arxiv": true,
+      "abstract_length": 1229,
+      "perplexity": 1.0000355773635126,
+      "avg_logprob": -3.557673065309506e-05,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Least Ambiguous Set-Valued Classifiers With Bounded Error Levels",
+      "has_arxiv": true,
+      "abstract_length": 1158,
+      "perplexity": 1.0013195311428198,
+      "avg_logprob": -0.0013186613266836908,
+      "n_tokens": 795,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Distribution-Free Predictive Inference for Regression",
+      "has_arxiv": true,
+      "abstract_length": 1549,
+      "perplexity": 1.0002454754353423,
+      "avg_logprob": -0.000245445311177201,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Causal Inference in Statistics: A Primer",
+      "has_arxiv": false,
+      "abstract_length": 280,
+      "perplexity": 1.0005141248840546,
+      "avg_logprob": -0.0005139927671374363,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Transductive conformal predictors",
+      "has_arxiv": false,
+      "abstract_length": 286,
+      "perplexity": 1.0026113864295298,
+      "avg_logprob": -0.0026079826843626724,
+      "n_tokens": 795,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Estimation and Inference of Heterogeneous Treatment Effects using Random Forests",
+      "has_arxiv": true,
+      "abstract_length": 1212,
+      "perplexity": 1.0007712565349913,
+      "avg_logprob": -0.0007709592695053933,
+      "n_tokens": 1542,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Causal inference by using invariant prediction: identification and confidence in",
+      "has_arxiv": true,
+      "abstract_length": 1292,
+      "perplexity": 1.000365916699511,
+      "avg_logprob": -0.00036584976832233616,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "External Validity: From Do-Calculus to Transportability Across Populations",
+      "has_arxiv": true,
+      "abstract_length": 1092,
+      "perplexity": 1.0002360002889363,
+      "avg_logprob": -0.00023597244524887416,
+      "n_tokens": 1542,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Estimation and Accuracy After Model Selection",
+      "has_arxiv": false,
+      "abstract_length": 234,
+      "perplexity": 1.001740557849275,
+      "avg_logprob": -0.0017390448338678323,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Conformal Prediction for Reliable Machine Learning: Theory, Adaptations and Appl",
+      "has_arxiv": false,
+      "abstract_length": 314,
+      "perplexity": 1.0000161615119876,
+      "avg_logprob": -1.6161381391664798e-05,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Distribution\u2010free prediction bands for non\u2010parametric regression",
+      "has_arxiv": false,
+      "abstract_length": 208,
+      "perplexity": 1.0001732091716438,
+      "avg_logprob": -0.00017319417266719014,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "bartMachine: Machine Learning with Bayesian Additive Regression Trees",
+      "has_arxiv": true,
+      "abstract_length": 464,
+      "perplexity": 1.0000115922653072,
+      "avg_logprob": -1.1592198117384411e-05,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Confidence intervals for random forests: the jackknife and the infinitesimal jac",
+      "has_arxiv": true,
+      "abstract_length": 983,
+      "perplexity": 1.001661669917739,
+      "avg_logprob": -0.0016602908717492713,
+      "n_tokens": 795,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Conditional validity of inductive conformal predictors",
+      "has_arxiv": false,
+      "abstract_length": 234,
+      "perplexity": 1.002702625336603,
+      "avg_logprob": -0.002698979811596133,
+      "n_tokens": 795,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Distribution-Free Prediction Sets",
+      "has_arxiv": false,
+      "abstract_length": 268,
+      "perplexity": 1.0026976973698567,
+      "avg_logprob": -0.002694065115323022,
+      "n_tokens": 795,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Conditional validity of inductive conformal predictors",
+      "has_arxiv": true,
+      "abstract_length": 665,
+      "perplexity": 1.0009639966663375,
+      "avg_logprob": -0.0009635323199460955,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Cross-conformal predictors",
+      "has_arxiv": true,
+      "abstract_length": 759,
+      "perplexity": 1.0016715969144478,
+      "avg_logprob": -0.0016702013513219215,
+      "n_tokens": 795,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Estimating Heterogeneous Treatment Effects with Observational Data",
+      "has_arxiv": false,
+      "abstract_length": 201,
+      "perplexity": 1.0001446827659943,
+      "avg_logprob": -0.00014467230045231587,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "The use of propensity scores to assess the generalizability of results from rand",
+      "has_arxiv": false,
+      "abstract_length": 1412,
+      "perplexity": 1.0011071761611978,
+      "avg_logprob": -0.0011065636937030077,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Who Benefits Most from College?",
+      "has_arxiv": false,
+      "abstract_length": 167,
+      "perplexity": 1.000113291897089,
+      "avg_logprob": -0.00011328548004658439,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "BART: Bayesian Additive Regression Trees",
+      "has_arxiv": true,
+      "abstract_length": 999,
+      "perplexity": 1.0018654699113974,
+      "avg_logprob": -0.0018637320833104613,
+      "n_tokens": 795,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Comment: Demystifying Double Robustness: A Comparison of Alternative Strategies ",
+      "has_arxiv": true,
+      "abstract_length": 1597,
+      "perplexity": 1.000502902411029,
+      "avg_logprob": -0.0005027759979919206,
+      "n_tokens": 1542,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Demystifying Double Robustness: A Comparison of Alternative Strategies for Estim",
+      "has_arxiv": true,
+      "abstract_length": 1486,
+      "perplexity": 1.0010620899094855,
+      "avg_logprob": -0.0010615262910380052,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "A tutorial on conformal prediction",
+      "has_arxiv": true,
+      "abstract_length": 1414,
+      "perplexity": 1.0000387280817327,
+      "avg_logprob": -3.872733181991565e-05,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Semiparametric efficiency in GMM models with auxiliary data",
+      "has_arxiv": true,
+      "abstract_length": 984,
+      "perplexity": 1.0002118549655756,
+      "avg_logprob": -0.00021183252748149456,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Quantile Regression Forests",
+      "has_arxiv": false,
+      "abstract_length": 216,
+      "perplexity": 1.0000251379075864,
+      "avg_logprob": -2.513759163449743e-05,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Hedging Predictions in Machine Learning: The Second Computer Journal Lecture",
+      "has_arxiv": true,
+      "abstract_length": 1175,
+      "perplexity": 1.0007929842028602,
+      "avg_logprob": -0.0007926699570042356,
+      "n_tokens": 1542,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "On-line predictive linear regression",
+      "has_arxiv": true,
+      "abstract_length": 1253,
+      "perplexity": 1.0010751927919668,
+      "avg_logprob": -0.0010746151861848088,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Algorithmic Learning in a Random World",
+      "has_arxiv": false,
+      "abstract_length": 301,
+      "perplexity": 1.0010426893564426,
+      "avg_logprob": -0.0010421461334713686,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Causation, Prediction, and Search",
+      "has_arxiv": false,
+      "abstract_length": 202,
+      "perplexity": 1.001316659435375,
+      "avg_logprob": -0.0013157933994402751,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Efficient estimation of average treatment effects using the estimated propensity",
+      "has_arxiv": false,
+      "abstract_length": 285,
+      "perplexity": 1.000097544850975,
+      "avg_logprob": -9.754009378531348e-05,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Toward a perception-based theory of probabilistic reasoning with imprecise proba",
+      "has_arxiv": false,
+      "abstract_length": 315,
+      "perplexity": 1.0032150279735266,
+      "avg_logprob": -0.0032098708217263914,
+      "n_tokens": 795,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Greedy function approximation: A gradient boosting machine.",
+      "has_arxiv": false,
+      "abstract_length": 294,
+      "perplexity": 1.0031994508342779,
+      "avg_logprob": -0.0031943434823720755,
+      "n_tokens": 795,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Book Reviews : Discovering Causal Structure: Artificial Intelligence, Philosophy",
+      "has_arxiv": false,
+      "abstract_length": 199,
+      "perplexity": 1.001424599642075,
+      "avg_logprob": -0.0014235858627103719,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "NBER WORKING PAPER SERIES MATRIX COMPLETION METHODS FOR CAUSAL PANEL DATA MODELS",
+      "has_arxiv": false,
+      "abstract_length": 378,
+      "perplexity": 1.000658693048891,
+      "avg_logprob": -0.0006584762058414828,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Single World Intervention Graphs ( SWIGs ) : A Unification of the Counterfactual",
+      "has_arxiv": false,
+      "abstract_length": 293,
+      "perplexity": 1.001580858897303,
+      "avg_logprob": -0.0015796106552330262,
+      "n_tokens": 795,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Quantile Regression",
+      "has_arxiv": false,
+      "abstract_length": 204,
+      "perplexity": 1.0000450286136628,
+      "avg_logprob": -4.502759990518748e-05,
+      "n_tokens": 1697,
+      "n_chunks": 3,
+      "error": ""
+    },
+    {
+      "title": "Maternal pesticide exposure from multiple sources and selected congenital anomal",
+      "has_arxiv": false,
+      "abstract_length": 407,
+      "perplexity": 1.0012070751986095,
+      "avg_logprob": -0.0012063472690601734,
+      "n_tokens": 950,
+      "n_chunks": 3,
+      "error": ""
+    }
+  ],
+  "n_valid": 65,
   "n_errored": 0,
-  "pass": false,
-  "timestamp": "2026-04-03T01:13:39.640213+00:00"
+  "stats": {
+    "mean": 1.0009287620479728,
+    "median": 1.0007712565349913,
+    "std": 0.0008561733773600864,
+    "min": 1.0000115922653072,
+    "max": 1.0032150279735266,
+    "spread": 0.0032034357082193488
+  },
+  "n_cited_below_self_ppl": 0,
+  "self_is_lowest": true,
+  "meaningful_spread": false,
+  "pass": true,
+  "timestamp": "2026-04-03T01:32:43.774562+00:00"
 }

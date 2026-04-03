@@ -1,8 +1,8 @@
 {
   "tests": {
-    "Ref coverage analysis": false,
-    "Real paper abstracts PPL": false
+    "Ref coverage analysis": true,
+    "Real paper abstracts PPL": true
   },
-  "all_passed": false,
-  "timestamp": "2026-04-03T01:13:39.640572+00:00"
+  "all_passed": true,
+  "timestamp": "2026-04-03T01:32:43.775445+00:00"
 }
