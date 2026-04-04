@@ -1,0 +1,29 @@
+{
+  "paper_id": "2103.04984",
+  "paper_url": "https://arxiv.org/abs/2103.04984",
+  "reconstruction_type": "no_refs/abstract",
+  "student_model": "claude-sonnet-4-20250514",
+  "teacher_model": "claude-opus-4-20250514",
+  "start_time": "2026-04-04T05:23:57.107393+00:00",
+  "finish_time": "2026-04-04T05:24:06.643944+00:00",
+  "steps": [
+    {
+      "step_name": "student_abstract",
+      "model": "claude-sonnet-4-20250514",
+      "system_prompt": "You are a researcher tasked with writing an abstract for a NEW paper that\naddresses the problem described below. You have access to the reference papers\nlisted, but you do NOT have access to the actual paper that solved this problem.\n\n## Problem context\n\nIn causal inference, researchers need to estimate not just average treatment effects (ATE) but individual treatment effects (ITE) to support personalized decision-making. The fundamental challenge is that for any individual, we only observe one potential outcome (either under treatment or control), making the other counterfactual. Existing methods that estimate conditional average treatment effects (CATE) using flexible machine learning algorithms often fail to provide reliable uncertainty quantification - their confidence/prediction intervals frequently have poor coverage in finite samples. This is problematic for high-stakes decisions in medicine, policy, and other sensitive domains. The problem is compounded by two distinct inferential tasks: (1) constructing intervals for subjects in the study where one potential outcome is observed, and (2) constructing intervals for new subjects where both potential outcomes are missing. Additionally, there's often a covariate shift between the study population and target population, requiring methods that can handle distributional differences.\n\n## Evaluation criteria\n\nA good solution must provide prediction intervals with guaranteed marginal coverage P(Y \u2208 C(X)) \u2265 1-\u03b1 in finite samples, ideally without strong modeling assumptions. The method should be robust to model misspecification and work under the standard causal inference assumptions (SUTVA, strong ignorability). For randomized experiments, coverage should hold exactly; for observational studies, the method should ideally have a 'doubly robust' property where coverage is maintained if either the propensity score or outcome model is well-specified. The intervals should be reasonably tight while maintaining coverage. The method should handle both tasks: inference for subjects in the study and for new subjects. It should also accommodate different coverage criteria (ATE-type, ATT-type, ATC-type) and handle covariate shifts for generalizability/transportability problems.\n\n## Your task\n\nWrite a complete research paper abstract (150\u2013300 words) that:\n\n1. Motivates the problem and its importance\n2. States the gap in existing work (based on the references you can see)\n3. Proposes a concrete approach (your own invention \u2014 be specific!)\n4. Summarizes expected contributions or properties of the approach\n\nWrite as if this is YOUR paper. Be technically precise. Use the references to\nground your understanding of the field, but the approach must be your own\nsynthesis.\n\nDo NOT fabricate specific experimental numbers. Focus on the conceptual\ncontribution.\n\n## References\n\nNo references provided. Rely on your own knowledge of the field.\n",
+      "user_prompt": "Begin your reconstruction now.",
+      "response": "# Conformal Prediction for Individual Treatment Effects with Covariate Shift Robustness\n\n**Abstract**\n\nEstimating individual treatment effects (ITEs) with reliable uncertainty quantification is crucial for personalized decision-making in medicine, policy, and other high-stakes domains. While existing methods for conditional average treatment effects (CATE) using flexible machine learning algorithms can achieve good point estimation performance, they typically fail to provide prediction intervals with valid finite-sample coverage guarantees. This limitation is particularly problematic when making individual-level decisions where uncertainty quantification is essential for risk assessment.\n\nWe propose **Doubly Robust Conformal Treatment Effect Prediction (DR-CTEP)**, a novel framework that combines conformal prediction with doubly robust estimation to provide finite-sample marginal coverage guarantees for individual treatment effects. Our approach constructs separate conformity scores for treated and control units using augmented inverse propensity weighting (AIPW) residuals, then combines them through a weighted conformal procedure that accounts for the propensity score. For subjects in the study population, we leverage the observed potential outcome to construct tighter intervals via a novel \"semi-factual\" conformal score that exploits the partial observability structure. For new subjects under covariate shift, we develop a covariate-shift-aware conformal procedure using importance weighting between source and target distributions.\n\nThe key theoretical contribution is proving that our intervals achieve exact 1-\u03b1 marginal coverage for randomized experiments and maintain coverage under either correct propensity score or outcome model specification in observational studies. Our method naturally handles different inferential targets (ATE-type, ATT-type, ATC-type coverage) and provides a principled approach to uncertainty quantification for personalized treatment decisions without restrictive distributional assumptions.",
+      "input_tokens": 602,
+      "output_tokens": 388,
+      "duration_seconds": 9.54,
+      "timestamp": "2026-04-04T05:24:06.643894+00:00",
+      "metadata": {
+        "response_id": "msg_01SweFZUPu8XnJgX9KRdNQDK",
+        "backend": "anthropic"
+      }
+    }
+  ],
+  "config": {
+    "condition": "no_refs"
+  }
+}

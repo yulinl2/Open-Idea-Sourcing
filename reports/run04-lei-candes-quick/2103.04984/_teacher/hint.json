@@ -1,0 +1,27 @@
+{
+  "problem_context": "In causal inference, researchers need to estimate not just average treatment effects (ATE) but individual treatment effects (ITE) to support personalized decision-making. The fundamental challenge is that for any individual, we only observe one potential outcome (either under treatment or control), making the other counterfactual. Existing methods that estimate conditional average treatment effects (CATE) using flexible machine learning algorithms often fail to provide reliable uncertainty quantification - their confidence/prediction intervals frequently have poor coverage in finite samples. This is problematic for high-stakes decisions in medicine, policy, and other sensitive domains. The problem is compounded by two distinct inferential tasks: (1) constructing intervals for subjects in the study where one potential outcome is observed, and (2) constructing intervals for new subjects where both potential outcomes are missing. Additionally, there's often a covariate shift between the study population and target population, requiring methods that can handle distributional differences.",
+  "reference_guidance": {
+    "arxiv-1904.06019": "This paper addresses prediction under covariate shift using weighted conformal inference. It's relevant because counterfactual inference involves a covariate shift between treated and control populations - the distribution of covariates differs between these groups. The paper provides methodology for constructing prediction sets with guaranteed coverage when the data distribution differs from the target distribution, which is exactly the situation when trying to infer counterfactuals from observational data or when generalizing from a study population to a target population."
+  },
+  "evaluation_criteria": "A good solution must provide prediction intervals with guaranteed marginal coverage P(Y \u2208 C(X)) \u2265 1-\u03b1 in finite samples, ideally without strong modeling assumptions. The method should be robust to model misspecification and work under the standard causal inference assumptions (SUTVA, strong ignorability). For randomized experiments, coverage should hold exactly; for observational studies, the method should ideally have a 'doubly robust' property where coverage is maintained if either the propensity score or outcome model is well-specified. The intervals should be reasonably tight while maintaining coverage. The method should handle both tasks: inference for subjects in the study and for new subjects. It should also accommodate different coverage criteria (ATE-type, ATT-type, ATC-type) and handle covariate shifts for generalizability/transportability problems.",
+  "domain_keywords": [
+    "potential outcomes",
+    "counterfactual inference",
+    "individual treatment effects",
+    "CATE",
+    "propensity score",
+    "strong ignorability",
+    "SUTVA",
+    "covariate shift",
+    "coverage guarantee",
+    "prediction intervals",
+    "doubly robust",
+    "conformal inference",
+    "weighted conformal inference",
+    "finite sample validity",
+    "uncertainty quantification",
+    "causal inference",
+    "observational studies",
+    "randomized experiments"
+  ]
+}

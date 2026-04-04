@@ -11,3 +11,4 @@ venv/
 !.env.example
 .pytest_cache/
 *.pdf
+!data/pdfs/*.pdf
