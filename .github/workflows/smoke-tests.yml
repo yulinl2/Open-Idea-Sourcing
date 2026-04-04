@@ -33,18 +33,23 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run smoke tests
+        id: smoke
+        continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           python tests/smoke_test.py
 
       - name: Run scale tests
+        id: scale
+        continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           python tests/scale_test.py
 
       - name: Upload test results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-test-results
@@ -52,6 +57,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Commit test results
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -64,7 +70,7 @@ jobs:
           fi
 
       - name: Trigger full analysis run
-        if: success()
+        if: steps.smoke.outcome == 'success' && steps.scale.outcome == 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -81,3 +87,10 @@ jobs:
           else
             echo "Dispatch failed with HTTP $HTTP_CODE"
           fi
+
+      - name: Fail if tests failed
+        if: steps.smoke.outcome == 'failure' || steps.scale.outcome == 'failure'
+        run: |
+          echo "Smoke test outcome: ${{ steps.smoke.outcome }}"
+          echo "Scale test outcome: ${{ steps.scale.outcome }}"
+          exit 1
