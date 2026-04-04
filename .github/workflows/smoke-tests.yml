@@ -59,3 +59,17 @@ jobs:
           else
             echo "No test results to commit"
           fi
+
+      - name: Trigger full analysis run
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Dispatch the full Geo-Perplexity Analysis workflow on this branch
+          curl -s -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/geo-perplexity.yml/dispatches" \
+            -d '{"ref":"${{ github.ref_name }}","inputs":{"models":"gpt-4o"}}' \
+            && echo "Dispatched full analysis on ${{ github.ref_name }}" \
+            || echo "Dispatch failed (workflow may not exist on this ref yet)"

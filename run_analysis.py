@@ -243,8 +243,8 @@ def main() -> None:
     parser.add_argument(
         "--models",
         nargs="+",
-        default=["gpt-5.4", "gpt-4o"],
-        help="OpenAI models to evaluate (default: gpt-5.4 gpt-4o)",
+        default=["gpt-4o"],
+        help="OpenAI models to evaluate (default: gpt-4o)",
     )
     parser.add_argument(
         "--output",

@@ -14,7 +14,7 @@ on:
       models:
         description: "Space-separated model names"
         required: false
-        default: "gpt-5.4 gpt-4o"
+        default: "gpt-4o"
   push:
     branches:
       - geo-perplexity
@@ -23,6 +23,7 @@ jobs:
   analyze:
     name: Run perplexity analysis
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: write
 

@@ -41,6 +41,7 @@ class CitedPaper:
     arxiv_id: str = ""
     url: str = ""
     full_text: str = ""  # populated later by text extractor
+    content_source: str = ""  # "abstract", "tldr", "full_text_llm", "full_text_raw"
 
     @property
     def has_content(self) -> bool:
@@ -110,14 +111,16 @@ def _parse_s2_paper(raw: dict) -> Optional[CitedPaper]:
         if name:
             authors.append(name)
 
+    abstract = raw.get("abstract") or ""
     return CitedPaper(
         paper_id=paper_id,
         title=raw.get("title", ""),
-        abstract=raw.get("abstract") or "",
+        abstract=abstract,
         authors=authors,
         year=raw.get("year"),
         arxiv_id=arxiv_id,
         url=raw.get("url") or "",
+        content_source="abstract" if abstract else "",
     )
 
 
@@ -236,6 +239,7 @@ def _backfill_tldr(papers: list[CitedPaper]) -> None:
         for p in missing:
             if p.paper_id in id_to_tldr:
                 p.abstract = id_to_tldr[p.paper_id]
+                p.content_source = "tldr"
                 filled += 1
 
         print(

@@ -30,13 +30,13 @@ def _stats(values: list[float]) -> dict[str, float]:
     }
 
 
-def _fmt(value: float) -> str:
+def _fmt(value: float, decimals: int = 2) -> str:
     """Format a float for display, handling inf/nan gracefully."""
     if math.isnan(value):
         return "—"
     if math.isinf(value):
         return "∞ (error)"
-    return f"{value:.2f}"
+    return f"{value:.{decimals}f}"
 
 
 def _fmt_lp(value: float) -> str:
@@ -44,6 +44,20 @@ def _fmt_lp(value: float) -> str:
     if not math.isfinite(value):
         return "—"
     return f"{value:.4f}"
+
+
+_SOURCE_LABELS = {
+    "abstract": "abstract",
+    "tldr": "S2-TLDR",
+    "full_text_llm": "full-text(LLM)",
+    "full_text_raw": "full-text(raw)",
+    "self": "self",
+}
+
+
+def _fmt_source(source: str) -> str:
+    """Format a content source tag for display."""
+    return _SOURCE_LABELS.get(source, source or "?")
 
 
 def generate_report(
@@ -101,15 +115,18 @@ def generate_report(
         lines.append(f"## Results: {model}")
         lines.append("")
 
-        # Self-perplexity
+        # Self-perplexity (needed as baseline for ratios)
         self_results = [r for r in model_results if r.context_type == "self"]
+        self_ppl = float("nan")
         if self_results:
             r = self_results[0]
+            self_ppl = r.perplexity
             lines.append("### Self-Perplexity (lower bound)")
             lines.append("")
-            lines.append(f"PPL(target | target) = **{_fmt(r.perplexity)}**")
+            lines.append(f"PPL(target | target) = **{_fmt(r.perplexity, 6)}**")
             lines.append(f"- Avg logprob: {_fmt_lp(r.avg_logprob)}")
-            lines.append(f"- Tokens: {r.n_tokens} across {r.n_chunks} chunks")
+            lines.append(f"- Tokens echoed: {r.n_tokens} across {r.n_chunks} chunks")
+            lines.append(f"- Context tokens: {r.context_tokens}")
             if r.error:
                 lines.append(f"- ⚠ Partial: {r.error}")
             lines.append("")
@@ -118,12 +135,15 @@ def generate_report(
         random_results = [r for r in model_results if r.context_type == "random"]
         if random_results:
             r = random_results[0]
+            ratio_str = _fmt(r.perplexity / self_ppl, 6) if math.isfinite(self_ppl) and math.isfinite(r.perplexity) else "—"
             lines.append("### Random Field Reference (control)")
             lines.append("")
-            lines.append(f"PPL(target | random) = **{_fmt(r.perplexity)}**")
+            lines.append(f"PPL(target | random) = **{_fmt(r.perplexity, 6)}** (ratio vs self: {ratio_str})")
             lines.append(f"- Reference: {r.context_title}")
+            lines.append(f"- Source: {_fmt_source(r.context_source)}")
             lines.append(f"- Avg logprob: {_fmt_lp(r.avg_logprob)}")
-            lines.append(f"- Tokens: {r.n_tokens} across {r.n_chunks} chunks")
+            lines.append(f"- Tokens echoed: {r.n_tokens} across {r.n_chunks} chunks")
+            lines.append(f"- Context tokens: {r.context_tokens}")
             if r.error:
                 lines.append(f"- ⚠ Partial: {r.error}")
             lines.append("")
@@ -142,10 +162,15 @@ def generate_report(
 
         if st["n"] > 0:
             lines.append(f"**Statistics** (n={st['n']} valid, {len(errored)} errored):")
-            lines.append(f"- Mean: {st['mean']:.2f}")
-            lines.append(f"- Median: {st['median']:.2f}")
-            lines.append(f"- Std: {st['std']:.2f}")
-            lines.append(f"- Range: [{st['min']:.2f}, {st['max']:.2f}]")
+            lines.append(f"- Mean PPL: {st['mean']:.6f}")
+            lines.append(f"- Median PPL: {st['median']:.6f}")
+            lines.append(f"- Std: {st['std']:.6f}")
+            lines.append(f"- Range: [{st['min']:.6f}, {st['max']:.6f}]")
+            if math.isfinite(self_ppl) and self_ppl > 0:
+                ratio_st = _stats([r.perplexity / self_ppl for r in cited_results])
+                if ratio_st["n"] > 0:
+                    lines.append(f"- Mean PPL/self ratio: {ratio_st['mean']:.6f}")
+                    lines.append(f"- Max PPL/self ratio: {ratio_st['max']:.6f}")
         else:
             lines.append(f"**No valid perplexity scores** ({len(errored)} errors)")
         lines.append("")
@@ -157,25 +182,50 @@ def generate_report(
         )
         error_cited = [r for r in cited_results if not math.isfinite(r.perplexity)]
 
-        lines.append("| Rank | PPL | Avg LogProb | Tokens | Chunks | Reference |")
-        lines.append("|------|-----|-------------|--------|--------|-----------|")
+        lines.append(
+            "| Rank | PPL | PPL/self | Ctx Tokens | Echo Tokens | Source | Reference |"
+        )
+        lines.append(
+            "|------|-----|---------|------------|-------------|--------|-----------|"
+        )
         for i, r in enumerate(finite_cited + error_cited, 1):
-            title_short = r.context_title[:55]
-            if len(r.context_title) > 55:
+            title_short = r.context_title[:50]
+            if len(r.context_title) > 50:
                 title_short += "…"
             err_mark = " ⚠" if r.error else ""
+
+            if math.isfinite(r.perplexity) and math.isfinite(self_ppl) and self_ppl > 0:
+                ratio = r.perplexity / self_ppl
+                ratio_str = f"{ratio:.6f}"
+            else:
+                ratio_str = "—"
+
+            src = _fmt_source(r.context_source)
             lines.append(
-                f"| {i} | {_fmt(r.perplexity)} | {_fmt_lp(r.avg_logprob)} | "
-                f"{r.n_tokens} | {r.n_chunks} | {title_short}{err_mark} |"
+                f"| {i} | {_fmt(r.perplexity, 6)} | {ratio_str} | "
+                f"{r.context_tokens} | {r.n_tokens} | {src} | "
+                f"{title_short}{err_mark} |"
             )
         lines.append("")
 
-        # Text histogram (only finite values)
-        if len(valid_ppls) >= 3:
-            lines.append("### Distribution")
+        # PPL/self ratio histogram (more interpretable than raw PPL)
+        if len(valid_ppls) >= 3 and math.isfinite(self_ppl) and self_ppl > 0:
+            ratios = [p / self_ppl for p in valid_ppls]
+            lines.append("### Distribution of PPL / self ratio")
+            lines.append("")
+            lines.append("Values >1 mean the reference makes the target harder to predict than itself.")
             lines.append("")
             lines.append("```")
-            lines.extend(_text_histogram(valid_ppls))
+            lines.extend(_text_histogram(ratios, label="PPL/self"))
+            lines.append("```")
+            lines.append("")
+
+        # Also show raw PPL histogram
+        if len(valid_ppls) >= 3:
+            lines.append("### Distribution of raw PPL")
+            lines.append("")
+            lines.append("```")
+            lines.extend(_text_histogram(valid_ppls, label="PPL"))
             lines.append("```")
             lines.append("")
 
@@ -220,7 +270,9 @@ def generate_report(
     return "\n".join(lines)
 
 
-def _text_histogram(values: list[float], bins: int = 12, width: int = 40) -> list[str]:
+def _text_histogram(
+    values: list[float], bins: int = 12, width: int = 40, label: str = "value",
+) -> list[str]:
     """Generate a text-based histogram of finite values."""
     vals = _finite(values)
     if not vals:
@@ -228,7 +280,7 @@ def _text_histogram(values: list[float], bins: int = 12, width: int = 40) -> lis
 
     lo, hi = min(vals), max(vals)
     if lo == hi:
-        return [f"  All values = {lo:.2f}"]
+        return [f"  All values = {lo:.6f}"]
 
     bin_width = (hi - lo) / bins
     counts = [0] * bins
@@ -237,15 +289,26 @@ def _text_histogram(values: list[float], bins: int = 12, width: int = 40) -> lis
         counts[idx] += 1
 
     max_count = max(counts) if counts else 1
-    lines = []
+
+    # Choose display precision based on range
+    spread = hi - lo
+    if spread < 0.01:
+        fmt = "10.6f"
+    elif spread < 1:
+        fmt = "8.4f"
+    else:
+        fmt = "7.1f"
+
+    header = f"  {label}"
+    hlines = [header]
     for i, count in enumerate(counts):
         bar_len = int(count / max_count * width) if max_count > 0 else 0
         lo_val = lo + i * bin_width
         hi_val = lo_val + bin_width
         bar = "█" * bar_len
-        lines.append(f"  {lo_val:7.1f}–{hi_val:7.1f} │ {bar} ({count})")
+        hlines.append(f"  {lo_val:{fmt}}–{hi_val:{fmt}} │ {bar} ({count})")
 
-    return lines
+    return hlines
 
 
 def save_report(report: str, output_dir: str | Path, filename: str = "report.md") -> Path:
