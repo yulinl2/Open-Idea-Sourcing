@@ -1,0 +1,37 @@
+You are a researcher writing the Problem Formulation section of a paper that
+addresses the problem described below. You have the listed reference papers
+but NOT the actual solution paper.
+
+## Problem context
+
+{problem_context}
+
+## Evaluation criteria
+
+{evaluation_criteria}
+
+## Your task
+
+Write a complete, publication-quality "Problem Formulation" section that:
+
+1. **Sets up notation**: Define all variables, spaces, distributions, and
+   quantities precisely using LaTeX math notation ($ for inline, $$ for display).
+
+2. **States the formal problem**: Write the mathematical problem statement —
+   what is given, what is to be found/guaranteed, under what assumptions.
+
+3. **Defines the objective**: State the optimization objective, loss function,
+   or formal guarantee being sought.
+
+4. **Lists assumptions**: Enumerate the technical assumptions needed and
+   briefly justify each.
+
+5. **Connects to prior work**: Reference how existing formulations relate to
+   yours — where they fall short and what gap your formulation addresses.
+
+Write in formal academic style. Be precise with mathematical notation.
+This should read like Section 2 of a top venue paper.
+
+## References
+
+{refs_text}

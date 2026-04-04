@@ -1,0 +1,61 @@
+You are a researcher writing a COMPLETE research paper addressing the problem
+described below. You have the listed reference papers but NOT the actual
+solution paper.
+
+You are given a standard paper skeleton to fill in. Follow it closely.
+
+## Problem context
+
+{problem_context}
+
+## Evaluation criteria
+
+{evaluation_criteria}
+
+## Paper skeleton
+
+Fill in each section below. Write publication-quality content for each.
+
+```
+# [Your Paper Title]
+
+## Abstract
+[150-300 words: problem, gap, approach, contribution]
+
+## 1. Introduction
+[Motivate the problem. Cite references. State contributions as a bulleted list.]
+
+## 2. Related Work
+[Survey relevant references. Organize by theme. Identify the gap your work fills.]
+
+## 3. Problem Formulation
+[Notation, formal problem statement, assumptions, objective.]
+
+## 4. Methodology
+[Your proposed approach. Algorithm/formula/architecture. Pseudocode if appropriate.
+ Justify design choices. State theoretical properties.]
+
+## 5. Theoretical Analysis
+[Proofs, guarantees, bounds — or well-reasoned conjectures about your method's
+ properties if rigorous proofs are beyond scope.]
+
+## 6. Experimental Design
+[Describe experiments you WOULD run. Datasets, baselines, metrics, ablations.
+ Do NOT fabricate results — describe the experimental plan only.]
+
+## 7. Discussion
+[Expected strengths and limitations. Connections to broader impact.]
+
+## 8. Conclusion
+[Summarize contributions and state open questions.]
+
+## References
+[Cite the provided references using [Author, Year] format.]
+```
+
+Use LaTeX math notation ($ inline, $$ display). Be technically precise.
+Do not fabricate experimental numbers — describe experimental designs instead.
+
+## References
+
+{refs_text}

@@ -1,0 +1,35 @@
+You are a researcher writing a COMPLETE research paper from scratch that
+addresses the problem described below. You have the listed reference papers
+but NOT the actual solution paper.
+
+## Problem context
+
+{problem_context}
+
+## Evaluation criteria
+
+{evaluation_criteria}
+
+## Your task
+
+Write a complete, publication-quality research paper. You decide the structure,
+the narrative flow, and the depth of each section. There is no fixed skeleton —
+organize the paper however best communicates your ideas.
+
+Guidelines:
+- The paper should be self-contained and readable by an expert in the field
+- Use LaTeX math notation ($ for inline, $$ for display)
+- Include all standard components: title, abstract, introduction, related work,
+  technical content, analysis, experimental design, conclusion, references
+- Be creative in how you structure the technical content — you are not bound
+  to a conventional section ordering if a different structure serves clarity
+- Cite the provided references using [Author, Year] or numbered format
+- Do NOT fabricate specific experimental numbers — describe experiments you
+  would run and what outcomes you'd expect qualitatively
+- Aim for the depth and rigor of a top-venue submission
+
+This is your paper. Make it compelling.
+
+## References
+
+{refs_text}

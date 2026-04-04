@@ -1,0 +1,498 @@
+#!/usr/bin/env python3
+"""agent-staged-reconstruct: multi-mode teacher-student paper reconstruction.
+
+Dispatches 6 parallel reconstruction experiments per test paper:
+  1. abstract          — reconstruct the paper's abstract
+  2. mindmap           — generate an idea mindmap for the paper
+  3. problem           — reconstruct the problem formulation section
+  4. problem_method    — reconstruct problem formulation + methodology
+  5. full_guided       — reconstruct full paper using a provided skeleton
+  6. full_freestyle    — reconstruct full paper with free structure
+
+Teacher model (gpt-5.4): reads the full paper, extracts a problem-context hint
+  (no solution leakage). Has web search available for reference enrichment.
+Student model (gpt-4o): receives only the hint + provided reference texts.
+  NO web search, NO tools — pure reasoning from given context.
+
+Output: timestamped dispatch folder with per-paper, per-mode subfolders,
+each containing the student output (.md) and full audit trail (.json).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+IMPL_ID = "staged_reconstruct_v0_1_0"
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+RECONSTRUCTION_MODES = [
+    "abstract",
+    "mindmap",
+    "problem",
+    "problem_method",
+    "full_guided",
+    "full_freestyle",
+]
+
+PROMPT_FILES = {
+    "abstract": "student_abstract.txt",
+    "mindmap": "student_mindmap.txt",
+    "problem": "student_problem_formulation.txt",
+    "problem_method": "student_problem_and_method.txt",
+    "full_guided": "student_full_guided.txt",
+    "full_freestyle": "student_full_freestyle.txt",
+}
+
+# Token limits scale with reconstruction complexity
+MAX_TOKENS = {
+    "abstract": 1024,
+    "mindmap": 2048,
+    "problem": 3072,
+    "problem_method": 6144,
+    "full_guided": 8192,
+    "full_freestyle": 8192,
+}
+
+SCRIPT_DIR = Path(__file__).parent
+PROMPTS_DIR = SCRIPT_DIR / "prompts"
+DATA_DIR = SCRIPT_DIR / "data"
+
+DEFAULT_STUDENT_MODEL = "gpt-4o"
+DEFAULT_TEACHER_MODEL = "gpt-5.4"
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _import_openai():
+    try:
+        import openai
+        return openai
+    except ImportError:
+        print("ERROR: 'openai' package not installed. Run: pip install openai", file=sys.stderr)
+        sys.exit(1)
+
+
+def extract_paper_id(url: str) -> str:
+    """Extract a filesystem-safe paper ID from a URL."""
+    m = re.search(r"arxiv\.org/(?:abs|pdf)/([0-9]+\.[0-9]+)", url)
+    if m:
+        return m.group(1)
+    return url.rstrip("/").split("/")[-1].replace(".pdf", "")[:50]
+
+
+def load_test_papers() -> list[dict]:
+    """Load test papers from data/test_papers.ndjson."""
+    path = DATA_DIR / "test_papers.ndjson"
+    papers = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line:
+            papers.append(json.loads(line))
+    return papers
+
+
+def load_references() -> list[dict]:
+    """Load user-provided references from data/references.json."""
+    path = DATA_DIR / "references.json"
+    return json.loads(path.read_text())
+
+
+def _extract_json_block(text: str) -> Any:
+    """Try to extract a JSON object from LLM output."""
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except json.JSONDecodeError:
+            pass
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Teacher: extract problem context (full paper access, no solution leakage)
+# ---------------------------------------------------------------------------
+
+def run_teacher(client, model: str, paper_text: str, refs: list[dict],
+                audit) -> dict:
+    """Teacher reads the full paper and produces a problem-context hint.
+
+    The teacher has access to the paper and references. It extracts a
+    problem description that does NOT leak the solution approach.
+    """
+    from infra.llm import llm_call
+
+    prompt = (PROMPTS_DIR / "teacher_extract.txt").read_text()
+
+    # Build reference summary for teacher's awareness
+    ref_summary = "\n".join(
+        f"- {r.get('id', 'unknown')}: {r.get('title', 'untitled')} ({r.get('year', '?')})"
+        for r in refs
+    )
+
+    user_msg = (
+        f"## Paper full text (first 40k chars)\n\n"
+        f"{paper_text[:40_000]}\n\n"
+        f"## References the student will have access to\n\n{ref_summary}"
+    )
+
+    print(f"  [teacher] Extracting problem context with {model}...")
+    response = llm_call(
+        client, model,
+        system=prompt,
+        user=user_msg,
+        audit=audit,
+        step_name="teacher_extract",
+        max_tokens=2048,
+        temperature=0.3,  # Low temp for faithful extraction
+    )
+
+    hint = _extract_json_block(response)
+    if hint is None:
+        hint = {
+            "problem_context": response[:2000],
+            "reference_guidance": {},
+            "evaluation_criteria": "See problem context.",
+            "domain_keywords": [],
+        }
+
+    print(f"  [teacher] Problem context extracted ({hint.get('problem_context', '')[:80]}...)")
+    return hint
+
+
+# ---------------------------------------------------------------------------
+# Student: reconstruct from hint + references only (NO web search, NO tools)
+# ---------------------------------------------------------------------------
+
+def run_student(client, model: str, mode: str, hint: dict,
+                refs_text: str, audit) -> str:
+    """Student reconstructs a specific artifact from hint + references.
+
+    Student has NO access to the paper, NO web search, NO tools.
+    Pure reasoning from the provided context.
+    """
+    from infra.llm import llm_call
+
+    prompt_file = PROMPT_FILES[mode]
+    prompt_template = (PROMPTS_DIR / prompt_file).read_text()
+
+    # Fill template
+    filled = (
+        prompt_template
+        .replace("{problem_context}", hint.get("problem_context", ""))
+        .replace("{evaluation_criteria}", hint.get("evaluation_criteria", ""))
+        .replace("{refs_text}", refs_text)
+    )
+
+    print(f"  [student/{mode}] Generating with {model} (max {MAX_TOKENS[mode]} tokens)...")
+    response = llm_call(
+        client, model,
+        system=filled,
+        user="Begin your reconstruction now.",
+        audit=audit,
+        step_name=f"student_{mode}",
+        max_tokens=MAX_TOKENS[mode],
+        temperature=0.7,  # Creative but grounded
+    )
+
+    print(f"  [student/{mode}] Generated {len(response):,} chars")
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Reference text preparation
+# ---------------------------------------------------------------------------
+
+def prepare_refs_text(refs: list[dict], max_chars_per_ref: int = 20_000) -> str:
+    """Prepare reference texts for the student.
+
+    Uses abstracts from references.json. Full PDF fetching can be enabled
+    later — for now, abstracts provide the reference context without
+    introducing excessive noise or latency.
+    """
+    parts = []
+    for ref in refs:
+        ref_id = ref.get("id", "unknown")
+        title = ref.get("title", "untitled")
+        abstract = ref.get("abstract", "")
+        authors = ", ".join(ref.get("authors", []))
+        year = ref.get("year", "?")
+        venue = ref.get("venue", "")
+
+        block = (
+            f"--- Reference: {ref_id} ---\n"
+            f"Title: {title}\n"
+            f"Authors: {authors}\n"
+            f"Year: {year}\n"
+            f"Venue: {venue}\n"
+            f"Abstract: {abstract}\n"
+            f"--- End reference ---"
+        )
+        parts.append(block)
+
+    return "\n\n".join(parts) if parts else "No references provided."
+
+
+# ---------------------------------------------------------------------------
+# Single paper dispatch
+# ---------------------------------------------------------------------------
+
+def dispatch_paper(
+    client,
+    paper_url: str,
+    refs: list[dict],
+    student_model: str,
+    teacher_model: str,
+    modes: list[str],
+    output_dir: Path,
+) -> dict:
+    """Run all reconstruction modes for a single paper.
+
+    Returns a summary dict with paths to all outputs.
+    """
+    from infra.audit import AuditLog
+    from infra.pdf_utils import extract_text_from_pdf
+
+    paper_id = extract_paper_id(paper_url)
+    paper_dir = output_dir / paper_id
+    paper_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"\n{'='*60}")
+    print(f"Paper: {paper_id} ({paper_url})")
+    print(f"{'='*60}")
+
+    # Fetch paper text for teacher
+    print(f"  Fetching paper text...")
+    paper_text = extract_text_from_pdf(paper_url, max_chars=60_000)
+    if not paper_text:
+        print(f"  WARNING: Could not extract paper text for {paper_url}")
+        print(f"  Teacher will work with limited context.")
+
+    # Teacher pass (shared across all modes for this paper)
+    teacher_audit = AuditLog(
+        paper_id=paper_id,
+        paper_url=paper_url,
+        reconstruction_type="teacher_extract",
+        student_model=student_model,
+        teacher_model=teacher_model,
+        config={"modes": modes},
+    )
+    hint = run_teacher(client, teacher_model, paper_text, refs, teacher_audit)
+    teacher_audit.mark_finished()
+
+    # Save teacher output
+    teacher_dir = paper_dir / "_teacher"
+    teacher_dir.mkdir(exist_ok=True)
+    (teacher_dir / "hint.json").write_text(
+        json.dumps(hint, indent=2, default=str), encoding="utf-8"
+    )
+    teacher_audit.save(teacher_dir / "audit.json")
+
+    # Prepare reference text for student (same for all modes)
+    refs_text = prepare_refs_text(refs)
+
+    # Student passes — one per mode
+    results = {"paper_id": paper_id, "paper_url": paper_url, "modes": {}}
+
+    for mode in modes:
+        print(f"\n  --- Mode: {mode} ---")
+        mode_dir = paper_dir / mode
+        mode_dir.mkdir(exist_ok=True)
+
+        student_audit = AuditLog(
+            paper_id=paper_id,
+            paper_url=paper_url,
+            reconstruction_type=mode,
+            student_model=student_model,
+            teacher_model=teacher_model,
+        )
+
+        try:
+            output = run_student(
+                client, student_model, mode, hint, refs_text, student_audit
+            )
+            student_audit.mark_finished()
+
+            # Save student output
+            (mode_dir / "output.md").write_text(
+                f"# Reconstruction: {mode}\n"
+                f"**Paper:** {paper_id}  \n"
+                f"**Student model:** {student_model}  \n"
+                f"**Teacher model:** {teacher_model}  \n\n"
+                f"---\n\n"
+                f"{output}\n",
+                encoding="utf-8",
+            )
+            student_audit.save(mode_dir / "audit.json")
+
+            results["modes"][mode] = {
+                "status": "success",
+                "output_chars": len(output),
+                "output_path": str(mode_dir / "output.md"),
+                "input_tokens": student_audit.total_input_tokens(),
+                "output_tokens": student_audit.total_output_tokens(),
+                "duration_s": student_audit.total_duration(),
+            }
+
+        except Exception as exc:
+            student_audit.mark_finished()
+            student_audit.save(mode_dir / "audit.json")
+
+            error_msg = f"ERROR in {mode}: {exc}"
+            print(f"  {error_msg}")
+            (mode_dir / "error.txt").write_text(error_msg, encoding="utf-8")
+
+            results["modes"][mode] = {
+                "status": "error",
+                "error": str(exc),
+            }
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Dispatch summary
+# ---------------------------------------------------------------------------
+
+def write_dispatch_summary(results: list[dict], output_dir: Path,
+                           student_model: str, teacher_model: str) -> None:
+    """Write a human-readable dispatch summary."""
+    lines = [
+        f"# Reconstruction Dispatch Summary",
+        f"",
+        f"**Timestamp:** {output_dir.name}  ",
+        f"**Student model:** {student_model}  ",
+        f"**Teacher model:** {teacher_model}  ",
+        f"**Papers:** {len(results)}  ",
+        f"",
+    ]
+
+    for r in results:
+        lines.append(f"## Paper: {r['paper_id']}")
+        lines.append(f"URL: {r['paper_url']}")
+        lines.append("")
+        lines.append("| Mode | Status | Chars | Tokens (in/out) | Time |")
+        lines.append("|------|--------|-------|-----------------|------|")
+        for mode, info in r.get("modes", {}).items():
+            if info["status"] == "success":
+                lines.append(
+                    f"| {mode} | OK | {info['output_chars']:,} | "
+                    f"{info['input_tokens']:,}/{info['output_tokens']:,} | "
+                    f"{info['duration_s']:.1f}s |"
+                )
+            else:
+                lines.append(f"| {mode} | ERROR | — | — | — |")
+        lines.append("")
+
+    (output_dir / "SUMMARY.md").write_text("\n".join(lines), encoding="utf-8")
+    print(f"\nSummary written to {output_dir / 'SUMMARY.md'}")
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="agent-staged-reconstruct: multi-mode paper reconstruction"
+    )
+    parser.add_argument(
+        "--paper-url",
+        help="Single paper URL to reconstruct (overrides test_papers.ndjson)",
+    )
+    parser.add_argument(
+        "--modes", nargs="*", default=None,
+        choices=RECONSTRUCTION_MODES,
+        help=f"Reconstruction modes to run (default: all). Choices: {RECONSTRUCTION_MODES}",
+    )
+    parser.add_argument(
+        "--student-model", default=DEFAULT_STUDENT_MODEL,
+        help=f"Student LLM model (default: {DEFAULT_STUDENT_MODEL})",
+    )
+    parser.add_argument(
+        "--teacher-model", default=DEFAULT_TEACHER_MODEL,
+        help=f"Teacher LLM model (default: {DEFAULT_TEACHER_MODEL})",
+    )
+    parser.add_argument(
+        "--output-dir", default="reports",
+        help="Base output directory (default: reports/)",
+    )
+    parser.add_argument(
+        "--timestamp",
+        help="Override timestamp for output folder (ISO format). "
+             "Default: current UTC time.",
+    )
+    args = parser.parse_args()
+
+    modes = args.modes or RECONSTRUCTION_MODES
+
+    # Timestamp for this dispatch
+    if args.timestamp:
+        ts = args.timestamp
+    else:
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+
+    output_dir = Path(args.output_dir) / ts
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load data
+    refs = load_references()
+    if args.paper_url:
+        papers = [{"url": args.paper_url}]
+    else:
+        papers = load_test_papers()
+
+    print(f"Dispatch: {len(papers)} paper(s), {len(modes)} mode(s)")
+    print(f"Student: {args.student_model} | Teacher: {args.teacher_model}")
+    print(f"Output:  {output_dir}")
+    print(f"Modes:   {', '.join(modes)}")
+
+    # Initialize OpenAI client
+    openai = _import_openai()
+    client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+    # Dispatch each paper
+    all_results = []
+    for paper in papers:
+        result = dispatch_paper(
+            client=client,
+            paper_url=paper["url"],
+            refs=refs,
+            student_model=args.student_model,
+            teacher_model=args.teacher_model,
+            modes=modes,
+            output_dir=output_dir,
+        )
+        all_results.append(result)
+
+    # Write dispatch summary
+    write_dispatch_summary(all_results, output_dir, args.student_model, args.teacher_model)
+
+    # Save machine-readable results
+    (output_dir / "results.json").write_text(
+        json.dumps(all_results, indent=2, default=str), encoding="utf-8"
+    )
+
+    print(f"\nDone. All outputs in {output_dir}/")
+
+
+if __name__ == "__main__":
+    main()

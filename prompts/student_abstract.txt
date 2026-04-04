@@ -1,0 +1,31 @@
+You are a researcher tasked with writing an abstract for a NEW paper that
+addresses the problem described below. You have access to the reference papers
+listed, but you do NOT have access to the actual paper that solved this problem.
+
+## Problem context
+
+{problem_context}
+
+## Evaluation criteria
+
+{evaluation_criteria}
+
+## Your task
+
+Write a complete research paper abstract (150–300 words) that:
+
+1. Motivates the problem and its importance
+2. States the gap in existing work (based on the references you can see)
+3. Proposes a concrete approach (your own invention — be specific!)
+4. Summarizes expected contributions or properties of the approach
+
+Write as if this is YOUR paper. Be technically precise. Use the references to
+ground your understanding of the field, but the approach must be your own
+synthesis.
+
+Do NOT fabricate specific experimental numbers. Focus on the conceptual
+contribution.
+
+## References
+
+{refs_text}

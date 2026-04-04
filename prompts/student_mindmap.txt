@@ -1,0 +1,55 @@
+You are a researcher brainstorming how to solve the problem described below.
+You have access to the listed reference papers but NOT the actual paper that
+solved this problem.
+
+## Problem context
+
+{problem_context}
+
+## Evaluation criteria
+
+{evaluation_criteria}
+
+## Your task
+
+Produce a structured idea mindmap for a paper addressing this problem.
+Use hierarchical markdown with the following structure:
+
+```
+# Paper Idea Mindmap
+
+## Core Problem
+- [One-sentence problem statement]
+
+## Key Observations from References
+- [Observation 1 from Ref X]
+- [Observation 2 from Ref Y]
+- ...
+
+## Proposed Approach
+### Main Idea
+- [Your central insight]
+### Sub-ideas
+- [Technical component 1]
+  - [Detail / justification]
+- [Technical component 2]
+  - [Detail / justification]
+
+## Theoretical Grounding
+- [Why this should work, based on known results]
+
+## Potential Challenges
+- [Challenge 1 and how you'd address it]
+- [Challenge 2 and how you'd address it]
+
+## Connections to Existing Work
+- [How your idea relates to / extends Ref X]
+- [How your idea differs from Ref Y's approach]
+```
+
+Be creative but technically grounded. This is a brainstorm — explore multiple
+angles before converging on your best idea.
+
+## References
+
+{refs_text}

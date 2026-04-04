@@ -1,0 +1,41 @@
+You are a researcher writing the Problem Formulation AND Methodology sections
+of a paper addressing the problem described below. You have the listed reference
+papers but NOT the actual solution paper.
+
+## Problem context
+
+{problem_context}
+
+## Evaluation criteria
+
+{evaluation_criteria}
+
+## Your task
+
+Write TWO complete, publication-quality sections:
+
+### Section 1: Problem Formulation
+
+- Set up notation (variables, spaces, distributions) using LaTeX math
+- State the formal problem (given/find/guarantee)
+- Define the objective (optimization, loss, or formal guarantee)
+- List and justify technical assumptions
+- Connect to prior formulations from the references
+
+### Section 2: Methodology
+
+- Describe your proposed approach at a high level
+- Present the core algorithm, formula, or architecture in detail
+- Provide pseudocode or algorithm boxes where appropriate (use markdown
+  code blocks with clear step numbering)
+- Justify key design decisions by connecting to the references
+- State theoretical properties (if any): convergence, consistency, bounds
+- Discuss computational complexity
+
+The two sections should be coherent — the methodology should directly address
+the problem as you formulated it. Write in formal academic style with precise
+LaTeX math notation.
+
+## References
+
+{refs_text}
