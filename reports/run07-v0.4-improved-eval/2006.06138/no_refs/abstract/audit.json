@@ -1,0 +1,13 @@
+{
+  "paper_id": "2006.06138",
+  "paper_url": "https://arxiv.org/abs/2006.06138",
+  "reconstruction_type": "no_refs/abstract",
+  "student_model": "claude-sonnet-4-20250514",
+  "teacher_model": "claude-opus-4-20250514",
+  "start_time": "2026-04-04T20:56:31.839728+00:00",
+  "finish_time": "2026-04-04T20:56:33.577712+00:00",
+  "steps": [],
+  "config": {
+    "condition": "no_refs"
+  }
+}
