@@ -128,8 +128,10 @@ or pre-extracted text in `data/pdfs/<arxiv_id>.txt`.
 
 1. **v0.1**: One-off generation, 6 modes, full audit trail
 2. **v0.2**: Dual backend, with_refs/no_refs conditions
-3. **v0.3** (current): Teacher evaluation scoring, cross-condition comparison,
+3. **v0.3**: Teacher evaluation scoring, cross-condition comparison,
    pymupdf + arxiv HTML extraction, 3rd test paper
-4. **v0.4**: Iterative teacher-student game with feedback loops
-5. **v0.5**: Loop termination criteria (convergence detection, max rounds)
-6. **v0.6**: Cross-paper comparison and novelty ranking
+4. **v0.3.1** (current): Full 3-paper evaluation run with novelty gap analysis,
+   cached PDF text extraction for Lei-Candès paper
+5. **v0.4**: Iterative teacher-student game with feedback loops
+6. **v0.5**: Loop termination criteria (convergence detection, max rounds)
+7. **v0.6**: Cross-paper comparison and novelty ranking

@@ -1,0 +1,20 @@
+{
+  "problem_context": "Machine learning systems often need to output sets of predictions rather than single predictions \u2014 for example, in multi-label classification where multiple labels may apply to one instance, or in object detection where multiple objects must be identified. A critical challenge is controlling the risk or expected loss of these prediction sets in a principled way. Practitioners need methods that can provide formal guarantees about the expected loss of prediction sets, regardless of the specific model architecture or loss function being used. The key difficulty is achieving such guarantees in finite samples without making strong distributional assumptions, while remaining computationally tractable. The method should work under the realistic assumption that calibration and test data are merely exchangeable (not necessarily i.i.d.), which is important for real-world deployment where data distributions may shift over time.",
+  "reference_guidance": {
+    "arxiv-1904.06019": "This paper addresses conformal prediction methods under covariate shift, which is relevant because it deals with distribution-free prediction intervals and how to maintain validity guarantees when the data distribution changes between training and deployment. Understanding how conformal methods handle exchangeability and achieve finite-sample guarantees will be important background."
+  },
+  "evaluation_criteria": "A successful solution must: (1) provide finite-sample guarantees on expected loss without distributional assumptions beyond exchangeability, (2) work with arbitrary underlying models and loss functions, (3) be computationally efficient enough for practical use, (4) demonstrate effectiveness across diverse domains like computer vision and NLP, (5) handle various set-prediction tasks including multi-label classification, segmentation, and detection, (6) use a simple, interpretable mechanism for controlling the risk level, and (7) require only a holdout calibration set rather than retraining models.",
+  "domain_keywords": [
+    "prediction sets",
+    "risk control",
+    "distribution-free inference",
+    "exchangeability",
+    "finite-sample guarantees",
+    "calibration",
+    "multi-label classification",
+    "object detection",
+    "expected loss",
+    "holdout validation",
+    "threshold calibration"
+  ]
+}

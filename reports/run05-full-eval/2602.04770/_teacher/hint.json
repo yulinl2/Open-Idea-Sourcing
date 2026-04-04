@@ -1,0 +1,19 @@
+{
+  "problem_context": "In many prediction tasks, we need not just point estimates but prediction intervals that capture uncertainty. The key challenge is constructing intervals that achieve valid coverage (contain the true value with specified probability) while being as short as possible. Conformal prediction offers a framework for achieving finite-sample marginal coverage guarantees, but the efficiency of these intervals depends critically on the choice of score function used to measure conformity. Current approaches typically use fixed score functions (e.g., absolute residuals) that may not be optimal for the specific data distribution at hand. The fundamental question is: can we learn better score functions from data while still maintaining the finite-sample coverage guarantees that make conformal prediction attractive? This requires balancing two competing objectives: optimizing for shorter intervals while ensuring the validity guarantee is preserved regardless of how well the learning procedure performs.",
+  "reference_guidance": {
+    "arxiv-1904.06019": "This paper addresses conformal prediction when the test distribution differs from the training distribution (covariate shift). Understanding how conformal methods handle distribution shift is relevant because any learned score function must maintain validity even when the learning process may not perfectly capture the data distribution. The paper's treatment of coverage guarantees under model misspecification provides important context for thinking about robustness."
+  },
+  "evaluation_criteria": "A successful solution must satisfy two critical requirements: (1) Finite-sample marginal coverage - the prediction intervals must contain the true value with at least the specified probability (e.g., 90%) regardless of the sample size or data distribution, and this guarantee must hold even if any learning component fails or performs poorly. (2) Interval efficiency - among all methods satisfying the coverage guarantee, we want intervals that are as short as possible on average. The method should be evaluated on both synthetic data (where optimal intervals may be known) and real datasets across different domains. Key metrics include empirical coverage rates, average interval length, and comparison to standard conformal methods using fixed score functions.",
+  "domain_keywords": [
+    "conformal prediction",
+    "prediction intervals",
+    "coverage guarantee",
+    "finite-sample validity",
+    "score function",
+    "nonconformity measure",
+    "marginal coverage",
+    "interval length",
+    "uncertainty quantification",
+    "distribution-free inference"
+  ]
+}
