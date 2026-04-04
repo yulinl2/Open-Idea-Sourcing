@@ -6,7 +6,7 @@ listed, but you do NOT have access to the actual paper that solved this problem.
 
 {problem_context}
 
-## Evaluation criteria
+## Desirable solution properties
 
 {evaluation_criteria}
 
