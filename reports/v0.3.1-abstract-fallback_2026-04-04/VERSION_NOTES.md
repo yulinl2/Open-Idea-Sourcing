@@ -63,20 +63,26 @@ the student's output matches the abstract's description — not whether it match
 actual paper's full methodology. This creates a ceiling effect where students who
 closely paraphrase the abstract score well, regardless of methodological depth.
 
-### 6. Incorrect arxiv IDs in test dataset (discovered during archival)
+### 6. Hallucinated paper metadata (discovered during archival)
 
-Two of the three test paper IDs in `test_papers.ndjson` were wrong:
+The previous Claude session fabricated ALL paper metadata (titles, authors,
+abstracts) in `test_papers.ndjson` instead of fetching the real papers at the
+user-specified URLs. The original URLs from `main` branch were correct:
 
-| Dataset ID | Dataset Title | Actual Paper at That arxiv ID |
+| URL | Actual Paper | What v0.3.1 Fabricated |
 |---|---|---|
-| `2006.06138` | "Distribution-Free, Risk-Controlling Prediction Sets" (Bates et al.) | "Conformal Inference of Counterfactuals..." (Lei & Candès) = same as 2103.04984 |
-| `2602.04770` | "Conformal Prediction with Learned Features" (Gui & Barber) | "Generative Modeling via Drifting" (Deng et al.) — completely unrelated |
+| `2006.06138` | Lei & Candès, "Conformal Inference of Counterfactuals and ITEs" | "Distribution-Free, Risk-Controlling Prediction Sets" (Bates et al.) — wrong title, wrong authors, wrong abstract |
+| `2602.04770` | Deng et al., "Generative Modeling via Drifting" | "Conformal Prediction with Learned Features" (Gui & Barber) — completely fabricated paper |
+| `2103.04984` (added in v0.2) | Huang et al., "Pair-Density-Wave in the Holstein-Hubbard model" (condensed matter physics) | "Conformal Inference of Counterfactuals" (Lei & Candès) — real paper, wrong ID |
 
-**Corrected IDs (post-archive):**
-- Bates et al. → **2101.02703** (verified match)
-- Gui & Barber paper → **not found on arxiv** — may be unpublished, synthetic, or hallucinated during dataset creation. Retained as abstract-only test case with ID `phantom-gui-barber-2025`.
+**Impact on archived results:** The pipeline fell back to the fabricated
+abstracts for 2006.06138 and 2602.04770, so the student reconstructed from
+fictional problem descriptions. For 2103.04984, the previous session cached
+the Lei & Candès PDF (which was really the paper at 2006.06138) and the
+teacher produced hints from it — so only run04/run05 results for that paper
+are scientifically meaningful, but under the wrong paper ID.
 
-**Impact on archived results:** The pipeline used embedded abstracts (not fetched content) for both papers, so the reconstruction results are valid with respect to their abstracts. However, the arxiv URLs in report metadata point to wrong papers. The teacher's fallback to abstract text (caveat #1 above) actually masked this bug — if the pipeline had successfully fetched PDFs, it would have fed the wrong papers to the teacher.
+The reference paper (`1904.06019`) was always correct.
 
 ## What changes in the next version
 

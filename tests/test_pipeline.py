@@ -30,11 +30,8 @@ class TestDataFiles:
         papers = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
         assert len(papers) >= 1
         for p in papers:
-            assert "paper_id" in p
-            assert "abstract" in p
-            # URL may be null for phantom/unverified papers
-            if p.get("url"):
-                assert p["url"].startswith("https://")
+            assert "url" in p
+            assert p["url"].startswith("https://")
 
     def test_references_json_exists(self):
         path = ROOT / "data" / "references.json"
@@ -98,8 +95,8 @@ class TestAuditLog:
         from infra.audit import AuditLog, StepRecord
 
         log = AuditLog(
-            paper_id="2101.02703",
-            paper_url="https://arxiv.org/abs/2101.02703",
+            paper_id="2006.06138",
+            paper_url="https://arxiv.org/abs/2006.06138",
             reconstruction_type="abstract",
             student_model="gpt-4o",
             teacher_model="gpt-5.4",
@@ -127,7 +124,7 @@ class TestAuditLog:
         assert path.exists()
 
         loaded = AuditLog.load(path)
-        assert loaded.paper_id == "2101.02703"
+        assert loaded.paper_id == "2006.06138"
         assert len(loaded.steps) == 1
         assert loaded.steps[0].step_name == "test_step"
         assert loaded.total_input_tokens() == 100
@@ -151,7 +148,7 @@ class TestAuditLog:
 class TestAgentHelpers:
     def test_extract_paper_id_arxiv_abs(self):
         from agent import extract_paper_id
-        assert extract_paper_id("https://arxiv.org/abs/2101.02703") == "2101.02703"
+        assert extract_paper_id("https://arxiv.org/abs/2006.06138") == "2006.06138"
 
     def test_extract_paper_id_arxiv_pdf(self):
         from agent import extract_paper_id
@@ -185,6 +182,21 @@ class TestAgentHelpers:
         assert "Test Paper" in text
         assert "An abstract." in text
         assert "A. Author" in text
+
+    def test_prepare_refs_text_full_text_from_cache(self):
+        """When a .txt file exists in data/pdfs/, it should be loaded as full text."""
+        from agent import prepare_refs_text
+        refs = [
+            {"id": "arxiv-1904.06019", "title": "Conformal Prediction Under Covariate Shift",
+             "abstract": "Short abstract.", "authors": ["R. Tibshirani"],
+             "year": 2020, "venue": "NeurIPS"},
+        ]
+        text = prepare_refs_text(refs)
+        # Should contain full text, not just the short abstract
+        if (ROOT / "data" / "pdfs" / "1904.06019.txt").exists():
+            assert len(text) > 1000  # Full text is ~52K chars
+            assert "Full text:" in text
+            assert "Short abstract." not in text  # Full text replaces abstract
 
     def test_prepare_refs_text_empty(self):
         from agent import prepare_refs_text
@@ -283,7 +295,7 @@ class TestDispatchMocked:
         with patch("infra.pdf_utils.extract_text_from_pdf", return_value="Mock paper text."):
             result = dispatch_paper(
                 client=client,
-                paper_url="https://arxiv.org/abs/2101.02703",
+                paper_url="https://arxiv.org/abs/2006.06138",
                 refs=refs,
                 student_model="gpt-4o",
                 teacher_model="gpt-5.4",
@@ -292,13 +304,13 @@ class TestDispatchMocked:
                 conditions=["with_refs"],
             )
 
-        assert result["paper_id"] == "2101.02703"
+        assert result["paper_id"] == "2006.06138"
         assert "with_refs" in result["conditions"]
         assert "abstract" in result["conditions"]["with_refs"]
         assert result["conditions"]["with_refs"]["abstract"]["status"] == "success"
 
         # Check output files exist
-        paper_dir = tmp_path / "2101.02703"
+        paper_dir = tmp_path / "2006.06138"
         assert (paper_dir / "_teacher" / "hint.json").exists()
         assert (paper_dir / "_teacher" / "audit.json").exists()
         assert (paper_dir / "with_refs" / "abstract" / "output.md").exists()
@@ -319,7 +331,7 @@ class TestDispatchMocked:
         with patch("infra.pdf_utils.extract_text_from_pdf", return_value="Mock paper text."):
             result = dispatch_paper(
                 client=client,
-                paper_url="https://arxiv.org/abs/2101.02703",
+                paper_url="https://arxiv.org/abs/2006.06138",
                 refs=refs,
                 student_model="gpt-4o",
                 teacher_model="gpt-5.4",
@@ -331,7 +343,7 @@ class TestDispatchMocked:
         for cond in ["with_refs", "no_refs"]:
             assert cond in result["conditions"]
             assert result["conditions"][cond]["abstract"]["status"] == "success"
-            assert (tmp_path / "2101.02703" / cond / "abstract" / "output.md").exists()
+            assert (tmp_path / "2006.06138" / cond / "abstract" / "output.md").exists()
 
     def test_all_modes(self, tmp_path):
         from agent import dispatch_paper, load_references, RECONSTRUCTION_MODES
@@ -342,7 +354,7 @@ class TestDispatchMocked:
         with patch("infra.pdf_utils.extract_text_from_pdf", return_value="Mock paper text."):
             result = dispatch_paper(
                 client=client,
-                paper_url="https://arxiv.org/abs/2101.02703",
+                paper_url="https://arxiv.org/abs/2006.06138",
                 refs=refs,
                 student_model="gpt-4o",
                 teacher_model="gpt-5.4",
@@ -354,7 +366,7 @@ class TestDispatchMocked:
         for mode in RECONSTRUCTION_MODES:
             assert mode in result["conditions"]["with_refs"]
             assert result["conditions"]["with_refs"][mode]["status"] == "success"
-            assert (tmp_path / "2101.02703" / "with_refs" / mode / "output.md").exists()
+            assert (tmp_path / "2006.06138" / "with_refs" / mode / "output.md").exists()
 
     def test_dispatch_summary(self, tmp_path):
         from agent import dispatch_paper, write_dispatch_summary, load_references
@@ -365,7 +377,7 @@ class TestDispatchMocked:
         with patch("infra.pdf_utils.extract_text_from_pdf", return_value="Mock paper text."):
             result = dispatch_paper(
                 client=client,
-                paper_url="https://arxiv.org/abs/2101.02703",
+                paper_url="https://arxiv.org/abs/2006.06138",
                 refs=refs,
                 student_model="gpt-4o",
                 teacher_model="gpt-5.4",
@@ -378,7 +390,7 @@ class TestDispatchMocked:
         summary_path = tmp_path / "SUMMARY.md"
         assert summary_path.exists()
         text = summary_path.read_text()
-        assert "2101.02703" in text
+        assert "2006.06138" in text
         assert "abstract" in text
         assert "with_refs" in text
 
@@ -403,7 +415,7 @@ class TestDispatchMocked:
         with patch("infra.pdf_utils.extract_text_from_pdf", return_value="Mock paper text."):
             result = dispatch_paper(
                 client=client,
-                paper_url="https://arxiv.org/abs/2101.02703",
+                paper_url="https://arxiv.org/abs/2006.06138",
                 refs=refs,
                 student_model="gpt-4o",
                 teacher_model="gpt-5.4",
@@ -413,7 +425,7 @@ class TestDispatchMocked:
             )
 
         assert result["conditions"]["with_refs"]["abstract"]["status"] == "error"
-        assert (tmp_path / "2101.02703" / "with_refs" / "abstract" / "error.txt").exists()
+        assert (tmp_path / "2006.06138" / "with_refs" / "abstract" / "error.txt").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -451,16 +463,16 @@ class TestPdfUtils:
     def test_local_pdf_cache_lookup(self):
         """PDF cache finds locally stored PDFs by arxiv ID."""
         from infra.pdf_utils import _resolve_source, _PDF_CACHE
-        # If the 2103.04984 PDF is in the cache, it should be found
-        cached = _PDF_CACHE / "2103.04984.pdf"
+        # If the 2006.06138 PDF is in the cache, it should be found
+        cached = _PDF_CACHE / "2006.06138.pdf"
         if cached.exists():
-            path, tmp = _resolve_source("https://arxiv.org/abs/2103.04984")
+            path, tmp = _resolve_source("https://arxiv.org/abs/2006.06138")
             assert path == cached
             assert tmp is None
 
     def test_extract_arxiv_id(self):
         from infra.pdf_utils import _extract_arxiv_id
-        assert _extract_arxiv_id("https://arxiv.org/abs/2101.02703") == "2101.02703"
+        assert _extract_arxiv_id("https://arxiv.org/abs/2006.06138") == "2006.06138"
         assert _extract_arxiv_id("https://arxiv.org/pdf/2602.04770") == "2602.04770"
         assert _extract_arxiv_id("https://example.com/other") is None
 
