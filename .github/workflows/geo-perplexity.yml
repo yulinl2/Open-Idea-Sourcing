@@ -45,7 +45,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          MODELS="${{ inputs.models || 'gpt-5.4 gpt-4o' }}"
+          MODELS="${{ inputs.models || 'gpt-4o' }}"
 
           if [ -n "${{ inputs.paper_url }}" ]; then
             python run_analysis.py "${{ inputs.paper_url }}" --models $MODELS
