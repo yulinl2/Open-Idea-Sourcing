@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - claude/add-report-timestamp-*
+    paths-ignore:
+      - tests/results/**
   workflow_dispatch:
 
 jobs:
@@ -34,13 +36,13 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          python tests/smoke_test.py || true
+          python tests/smoke_test.py
 
       - name: Run scale tests
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          python tests/scale_test.py || true
+          python tests/scale_test.py
 
       - name: Upload test results
         uses: actions/upload-artifact@v4

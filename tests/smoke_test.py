@@ -222,15 +222,13 @@ def test_mini_perplexity():
     if all_finite:
         ppls = {k: results[k]["perplexity"] for k in results}
         ordering_correct = (
-            ppls["self"] < ppls["closely_related"] < ppls["unrelated"]
+            ppls["self"] < ppls["closely_related"] < ppls["somewhat_related"] < ppls["unrelated"]
         )
         results["ordering_check"] = {
             "self < closely_related": ppls["self"] < ppls["closely_related"],
             "closely_related < somewhat_related": ppls["closely_related"] < ppls["somewhat_related"],
             "somewhat_related < unrelated": ppls["somewhat_related"] < ppls["unrelated"],
-            "self < closely_related < unrelated (key test)": (
-                ppls["self"] < ppls["closely_related"] < ppls["unrelated"]
-            ),
+            "full ordering (self < closely < somewhat < unrelated)": ordering_correct,
         }
 
     results["all_finite"] = all_finite
@@ -313,7 +311,7 @@ def test_text_extraction():
         except Exception as exc:
             result["llm_extraction_ok"] = False
             result["llm_error"] = str(exc)
-            result["llm_traceback"] = traceback.format_exc()
+            result["llm_traceback"] = _sanitize_traceback(traceback.format_exc())
             print(f"  LLM extraction failed: {exc}")
 
     result["pass"] = result["raw_extraction_ok"]
@@ -359,7 +357,7 @@ def test_reference_collection():
     except Exception as exc:
         result["pass"] = False
         result["error"] = str(exc)
-        result["traceback"] = traceback.format_exc()
+        result["traceback"] = _sanitize_traceback(traceback.format_exc())
         print(f"  FAIL: {exc}")
 
     _save("05_reference_collection", result)
@@ -388,7 +386,7 @@ def main():
             results[name] = fn()
         except Exception as exc:
             print(f"  UNEXPECTED ERROR in {name}: {exc}")
-            traceback.print_exc()
+            print(_sanitize_traceback(traceback.format_exc()))
             results[name] = False
 
     print("\n" + "=" * 60)

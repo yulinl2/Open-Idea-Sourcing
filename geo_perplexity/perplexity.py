@@ -269,9 +269,9 @@ def compute_all_perplexities(
     done = 0
 
     for ctx_text, ctx_id, ctx_title, ctx_type, ctx_source in contexts:
-        enc = _get_encoding(models[0])
-        ctx_tok_count = len(enc.encode(ctx_text))
         for model in models:
+            enc = _get_encoding(model)
+            ctx_tok_count = min(len(enc.encode(ctx_text)), _MAX_CONTEXT_TOKENS)
             result = estimate_perplexity(
                 context_text=ctx_text,
                 target_text=target_text,

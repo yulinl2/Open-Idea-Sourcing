@@ -295,8 +295,7 @@ def batch_extract_full_text(
             cached = _load_cached(cache_id)
             if cached:
                 paper.full_text = cached
-                if not paper.content_source:
-                    paper.content_source = "full_text_llm"
+                paper.content_source = "full_text_llm"
                 stats["extracted_llm"] += 1
                 continue
 

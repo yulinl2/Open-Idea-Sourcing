@@ -264,7 +264,7 @@ def main():
             results[name] = fn()
         except Exception as exc:
             print(f"  UNEXPECTED ERROR in {name}: {exc}")
-            traceback.print_exc()
+            print(_sanitize_traceback(traceback.format_exc()))
             results[name] = False
 
     print("\n" + "=" * 60)
