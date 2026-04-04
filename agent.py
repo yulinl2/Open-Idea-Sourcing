@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-IMPL_ID = "staged_reconstruct_v0_3_1"
+IMPL_ID = "staged_reconstruct_v0_4_0"
 
 # ---------------------------------------------------------------------------
 # Configuration

@@ -1,0 +1,13 @@
+{
+  "problem_context": "Current generative modeling approaches face fundamental challenges in mapping from one distribution to another efficiently. While discriminative models simply map individual samples to labels, generative models must learn mappings between entire distributions - a significantly more complex task. Existing approaches typically decompose this complex mapping into multiple simpler transformations that must be applied sequentially during generation, leading to computational inefficiency at inference time. There is a need for generative models that can produce high-quality samples without requiring iterative procedures during generation, while still maintaining the flexibility to learn complex distribution mappings. The challenge is to find a training paradigm that can handle the complexity of distribution-to-distribution learning without relegating that complexity to inference time.",
+  "desirable_properties": [
+    "Should generate samples in a single forward pass without iterative refinement",
+    "Should achieve high-quality generation comparable to multi-step methods",
+    "Should work across different data modalities and domains",
+    "Should scale effectively to high-resolution data",
+    "Should support conditional generation with flexible conditioning mechanisms",
+    "Should avoid mode collapse and capture the full data distribution",
+    "Should not require adversarial training or unstable optimization procedures"
+  ],
+  "field_context": "Generative modeling seeks to learn mappings from simple prior distributions to complex data distributions, enabling synthesis of new samples. This field encompasses various approaches including iterative methods that refine samples progressively and direct methods that generate in a single pass. A key challenge is balancing generation quality with computational efficiency at inference time."
+}

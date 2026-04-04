@@ -1,0 +1,29 @@
+{
+  "paper_id": "2602.04770",
+  "paper_url": "https://arxiv.org/abs/2602.04770",
+  "reconstruction_type": "no_refs/abstract",
+  "student_model": "claude-sonnet-4-20250514",
+  "teacher_model": "claude-opus-4-20250514",
+  "start_time": "2026-04-04T13:06:42.147536+00:00",
+  "finish_time": "2026-04-04T13:06:51.189457+00:00",
+  "steps": [
+    {
+      "step_name": "student_abstract",
+      "model": "claude-sonnet-4-20250514",
+      "system_prompt": "You are a researcher tasked with writing an abstract for a NEW paper that\naddresses the problem described below. You have access to the reference papers\nlisted, but you do NOT have access to the actual paper that solved this problem.\n\n## Problem context\n\nCurrent generative modeling approaches face fundamental challenges in mapping from one distribution to another efficiently. While discriminative models simply map individual samples to labels, generative models must learn mappings between entire distributions - a significantly more complex task. Existing approaches typically decompose this complex mapping into multiple simpler transformations that must be applied sequentially during generation, leading to computational inefficiency at inference time. There is a need for generative models that can produce high-quality samples without requiring iterative procedures during generation, while still maintaining the flexibility to learn complex distribution mappings. The challenge is to find a training paradigm that can handle the complexity of distribution-to-distribution learning without relegating that complexity to inference time.\n\n**Field context:** Generative modeling seeks to learn mappings from simple prior distributions to complex data distributions, enabling synthesis of new samples. This field encompasses various approaches including iterative methods that refine samples progressively and direct methods that generate in a single pass. A key challenge is balancing generation quality with computational efficiency at inference time.\n\n## Desirable solution properties\n\n- Should generate samples in a single forward pass without iterative refinement\n- Should achieve high-quality generation comparable to multi-step methods\n- Should work across different data modalities and domains\n- Should scale effectively to high-resolution data\n- Should support conditional generation with flexible conditioning mechanisms\n- Should avoid mode collapse and capture the full data distribution\n- Should not require adversarial training or unstable optimization procedures\n\n## Your task\n\nWrite a complete research paper abstract (150\u2013300 words) that:\n\n1. Motivates the problem and its importance\n2. States the gap in existing work (based on the references you can see)\n3. Proposes a concrete approach (your own invention \u2014 be specific!)\n4. Summarizes expected contributions or properties of the approach\n\nWrite as if this is YOUR paper. Be technically precise. Use the references to\nground your understanding of the field, but the approach must be your own\nsynthesis.\n\nDo NOT fabricate specific experimental numbers. Focus on the conceptual\ncontribution.\n\n## References\n\nNo references provided. Rely on your own knowledge of the field.\n",
+      "user_prompt": "Begin your reconstruction now.",
+      "response": "# Abstract\n\nGenerative modeling faces a fundamental trade-off between generation quality and computational efficiency. While iterative approaches like diffusion models achieve high-quality synthesis through progressive refinement, they require multiple forward passes at inference time. Conversely, single-step methods like GANs offer fast generation but suffer from training instability and mode collapse. We propose **Flow-Guided Consistency Training (FGCT)**, a novel framework that combines the stability of continuous normalizing flows with consistency regularization to enable high-quality single-step generation.\n\nOur approach trains a neural network to directly map noise to data by leveraging a pre-trained continuous normalizing flow as a teacher model. During training, we sample random timesteps along the flow's trajectory and enforce consistency: the student network's output from noise should match the flow's output at that timestep when both are evolved to the data distribution. This consistency loss, combined with a reconstruction objective, allows the student to distill the multi-step flow dynamics into a single forward pass while avoiding adversarial training altogether.\n\nFGCT addresses key limitations of existing methods by providing stable training through the flow teacher, maintaining distribution coverage through consistency regularization, and achieving computational efficiency through single-step inference. The framework naturally extends to conditional generation by conditioning both teacher and student networks. We demonstrate that FGCT enables fast, high-quality synthesis across image, audio, and molecular domains while maintaining the theoretical guarantees of normalizing flows and eliminating the computational overhead of iterative generation.",
+      "input_tokens": 518,
+      "output_tokens": 321,
+      "duration_seconds": 9.04,
+      "timestamp": "2026-04-04T13:06:51.189405+00:00",
+      "metadata": {
+        "response_id": "msg_01VVtbwpYHEAGoSW8tZs3pzA",
+        "backend": "anthropic"
+      }
+    }
+  ],
+  "config": {
+    "condition": "no_refs"
+  }
+}

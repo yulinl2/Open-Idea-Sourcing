@@ -17,6 +17,13 @@ EVAL_PROMPT = """\
 You are the Teacher evaluating a Student's attempt to reconstruct part of a
 research paper. You have access to the ORIGINAL paper and the Student's output.
 
+## Context
+
+The Student was given only a problem description (no solution details) and
+possibly some reference papers. They were NOT shown the original paper. Your
+job is to evaluate how close their reconstruction came to the actual paper's
+contribution.
+
 ## Scoring rubric
 
 Rate each dimension from 1 (poor) to 5 (excellent):
@@ -28,24 +35,29 @@ Rate each dimension from 1 (poor) to 5 (excellent):
    proofs) at a publishable level of rigor?
 
 3. **novelty_alignment** (1-5): How well does the student's proposed approach
-   align with the actual paper's key insight? (5 = very close conceptually,
-   1 = completely different direction)
+   align with the actual paper's KEY INSIGHT — the core mechanism or idea
+   that makes the paper's contribution non-obvious? Focus on conceptual
+   alignment, not surface similarity.
+   - 5 = independently arrived at essentially the same core mechanism
+   - 4 = captured the main direction but missed important specifics
+   - 3 = related approach in the right subfield but different mechanism
+   - 2 = generic approach that doesn't capture what's novel about the paper
+   - 1 = completely different direction or fundamentally misunderstands
 
-4. **reference_usage** (1-5): Does the student effectively leverage the
-   available references to build their argument? (Rate N/A as 3 if no
-   references were provided.)
-
-5. **writing_quality** (1-5): Is the output well-organized, clearly written,
+4. **writing_quality** (1-5): Is the output well-organized, clearly written,
    and at the level expected for the reconstruction type?
 
-6. **completeness** (1-5): Does the output cover all aspects expected for
+5. **completeness** (1-5): Does the output cover all aspects expected for
    this reconstruction type?
 
 ## Also provide
 
-- **novelty_gap**: A brief explanation of what the student missed about the
-  paper's actual contribution — the "delta" between what references suggest
-  and what the paper actually does.
+- **novelty_gap**: The specific delta between the student's approach and the
+  paper's actual contribution. What did the paper do that the student's
+  reconstruction does NOT capture? Be precise about the mechanism or insight.
+- **reconstruction_difficulty**: Rate 1-5 how much GENUINE INSIGHT was required
+  to go from the problem statement + available references to the paper's actual
+  approach. (1 = trivially derivable, 5 = highly non-obvious creative leap)
 - **strongest_aspect**: What the student did best.
 - **weakest_aspect**: Where the student fell most short.
 
@@ -57,15 +69,15 @@ Rate each dimension from 1 (poor) to 5 (excellent):
     "problem_understanding": <1-5>,
     "technical_depth": <1-5>,
     "novelty_alignment": <1-5>,
-    "reference_usage": <1-5>,
     "writing_quality": <1-5>,
     "completeness": <1-5>
   },
-  "composite_score": <average of all scores, 1 decimal>,
+  "composite_score": <average of the 5 scores above, 1 decimal>,
+  "novelty_alignment_rationale": "1-2 sentences explaining the novelty_alignment score",
   "novelty_gap": "...",
+  "reconstruction_difficulty": <1-5>,
   "strongest_aspect": "...",
-  "weakest_aspect": "...",
-  "brief_rationale": "1-2 sentence overall assessment"
+  "weakest_aspect": "..."
 }
 ```
 """
