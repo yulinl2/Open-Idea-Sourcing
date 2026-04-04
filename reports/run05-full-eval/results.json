@@ -1,0 +1,863 @@
+[
+  {
+    "paper_id": "2006.06138",
+    "paper_url": "https://arxiv.org/abs/2006.06138",
+    "text_source": "abstract_fallback",
+    "conditions": {
+      "with_refs": {
+        "abstract": {
+          "status": "success",
+          "output_chars": 2032,
+          "output_path": "reports/run05-full-eval/2006.06138/with_refs/abstract/output.md",
+          "input_tokens": 655,
+          "output_tokens": 376,
+          "duration_s": 10.19,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 2,
+              "reference_usage": 4,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 3.7,
+            "novelty_gap": "The student incorrectly frames this as extending conformal prediction to loss control, when the actual paper develops a simpler threshold-based calibration method that directly controls expected loss without using conformal prediction machinery. The paper adjusts prediction sets via a single threshold parameter calibrated on holdout data, not through conformity scores and conformal quantiles.",
+            "strongest_aspect": "Excellent abstract writing quality - clear problem motivation, well-structured presentation, and appropriate scope for the venues mentioned.",
+            "weakest_aspect": "Misidentifies the core technical approach by assuming it builds on conformal prediction, when the actual method is more direct and doesn't use conformal machinery.",
+            "brief_rationale": "The student demonstrates strong understanding of the problem domain and writes professionally, but fundamentally misinterprets the technical approach as conformal-based rather than the simpler threshold calibration method actually proposed."
+          }
+        },
+        "mindmap": {
+          "status": "success",
+          "output_chars": 3540,
+          "output_path": "reports/run05-full-eval/2006.06138/with_refs/mindmap/output.md",
+          "input_tokens": 777,
+          "output_tokens": 743,
+          "duration_s": 17.93,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 3,
+              "reference_usage": 4,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 4.0,
+            "novelty_gap": "The student correctly identifies extending conformal prediction to loss control, but misses the paper's key insight of using a single threshold parameter calibrated on holdout data. The actual paper's approach is simpler and more elegant - it doesn't require complex loss quantile estimation or adaptive weighting, just threshold calibration to control expected loss directly.",
+            "strongest_aspect": "Excellent mindmap structure with clear logical flow from problem identification through theoretical grounding to practical challenges. The writing is exceptionally clear and well-organized.",
+            "weakest_aspect": "The proposed approach is overly complex compared to the paper's actual elegant solution. The student imagines sophisticated extensions (adaptive weighting, loss quantiles) when the paper's contribution is a simple threshold-based method.",
+            "brief_rationale": "Strong conceptual grasp and excellent presentation, but the student overengineers the solution, missing the paper's elegantly simple threshold-based approach to risk control."
+          }
+        },
+        "problem": {
+          "status": "success",
+          "output_chars": 4839,
+          "output_path": "reports/run05-full-eval/2006.06138/with_refs/problem/output.md",
+          "input_tokens": 709,
+          "output_tokens": 1458,
+          "duration_s": 26.76,
+          "eval": {
+            "scores": {
+              "problem_understanding": 5,
+              "technical_depth": 5,
+              "novelty_alignment": 4,
+              "reference_usage": 4,
+              "writing_quality": 5,
+              "completeness": 5
+            },
+            "composite_score": 4.7,
+            "novelty_gap": "The student correctly identifies the core innovation of moving from coverage to general risk control, but doesn't fully capture that the key insight is using a single threshold parameter calibrated on holdout data to adjust prediction sets. The abstract emphasizes this threshold-based approach as the central mechanism, which the student's formulation doesn't explicitly highlight.",
+            "strongest_aspect": "Exceptional mathematical rigor and problem formulation. The student provides a comprehensive setup with clear notation, formal objectives, and well-articulated assumptions that perfectly capture the distribution-free nature of the problem.",
+            "weakest_aspect": "While the technical setup is excellent, the student misses the specific mechanism mentioned in the abstract - that prediction sets are adjusted via a single threshold parameter. This is the paper's key algorithmic contribution that distinguishes it from general risk control frameworks.",
+            "brief_rationale": "The student demonstrates deep understanding of the problem space and produces a publication-quality problem formulation, though slightly missing the paper's specific threshold-based approach mentioned in the abstract."
+          }
+        },
+        "problem_method": {
+          "status": "success",
+          "output_chars": 8214,
+          "output_path": "reports/run05-full-eval/2006.06138/with_refs/problem_method/output.md",
+          "input_tokens": 726,
+          "output_tokens": 2658,
+          "duration_s": 47.76,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 5,
+              "novelty_alignment": 4,
+              "reference_usage": 4,
+              "writing_quality": 5,
+              "completeness": 5
+            },
+            "composite_score": 4.5,
+            "novelty_gap": "The student correctly identifies the core innovation of controlling expected loss rather than just coverage, but may have over-specified the threshold-based approach. The original paper likely presents a more general framework that works for 'any underlying model' without necessarily requiring a specific threshold parameterization.",
+            "strongest_aspect": "The technical rigor and mathematical formalization is exceptional - the student provides detailed notation, formal problem statements, a complete algorithm with pseudocode, and theoretical guarantees with appropriate complexity analysis.",
+            "weakest_aspect": "The reconstruction may be overly specific in assuming a threshold-based family of predictors {f_\u03bb}, whereas the original paper claims to work for 'any underlying model.' This suggests the student may have narrowed the scope unnecessarily.",
+            "brief_rationale": "This is a high-quality reconstruction that demonstrates deep understanding of the problem space and excellent technical writing, though it may have made the approach more specific than the original paper's general framework."
+          }
+        },
+        "full_guided": {
+          "status": "success",
+          "output_chars": 18907,
+          "output_path": "reports/run05-full-eval/2006.06138/with_refs/full_guided/output.md",
+          "input_tokens": 857,
+          "output_tokens": 5216,
+          "duration_s": 93.14,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 3,
+              "reference_usage": 4,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 4.0,
+            "novelty_gap": "The student correctly identifies the core concept of controlling expected loss for prediction sets but misses the paper's key insight about adjusting sets via a single threshold parameter calibrated on holdout data. The student's 'Conformal Risk Control' framing and algorithm are more complex than the actual paper's elegant single-threshold approach. The actual paper likely uses a simpler threshold adjustment mechanism rather than the student's threshold selection over all possible score values.",
+            "strongest_aspect": "Exceptional writing quality and paper structure - the student produces a highly professional, well-organized paper with clear mathematical notation, comprehensive sections, and excellent flow that reads like a genuine ML conference paper.",
+            "weakest_aspect": "Novelty alignment - while capturing the general idea of risk-controlling prediction sets, the student's proposed method differs conceptually from what appears to be a simpler, more elegant solution in the actual paper. The student over-engineers the solution with unnecessary complexity.",
+            "brief_rationale": "The student demonstrates strong understanding of the problem space and produces a technically sound paper, but likely overcomplicates the actual method while maintaining excellent presentation quality."
+          }
+        },
+        "full_freestyle": {
+          "status": "success",
+          "output_chars": 20277,
+          "output_path": "reports/run05-full-eval/2006.06138/with_refs/full_freestyle/output.md",
+          "input_tokens": 723,
+          "output_tokens": 4933,
+          "duration_s": 90.55,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 3,
+              "reference_usage": 4,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 4.0,
+            "novelty_gap": "The student correctly identifies the core concept of controlling expected loss for prediction sets, but misses the key simplicity of the original approach. The actual paper uses a single threshold parameter calibrated on a holdout set, while the student develops a more complex conformal framework with quantile-based methods. The original's elegance lies in its directness - adjusting one threshold to control loss - rather than the elaborate conformal machinery the student constructs.",
+            "strongest_aspect": "The writing quality is exceptional - the paper is well-structured, clearly written, and reads like a genuine research paper with proper motivation, technical development, and comprehensive coverage of related work and extensions.",
+            "weakest_aspect": "The novelty alignment suffers because the student over-engineers the solution. While the original paper emphasizes simplicity and generality through a single threshold parameter, the student builds an unnecessarily complex conformal framework that obscures the core insight.",
+            "brief_rationale": "This is a high-quality reconstruction that demonstrates strong understanding of the problem space and excellent technical writing, but diverges from the original paper's key contribution by proposing a more complex solution than what was actually developed."
+          }
+        }
+      },
+      "no_refs": {
+        "abstract": {
+          "status": "success",
+          "output_chars": 2025,
+          "output_path": "reports/run05-full-eval/2006.06138/no_refs/abstract/output.md",
+          "input_tokens": 503,
+          "output_tokens": 399,
+          "duration_s": 10.11,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 2,
+              "reference_usage": 3,
+              "writing_quality": 4,
+              "completeness": 4
+            },
+            "composite_score": 3.3,
+            "novelty_gap": "The student invented a 'weighted conformal prediction mechanism' with 'instance-specific risk estimates' and 'heteroscedastic uncertainty', while the actual paper uses a simple single threshold parameter calibrated on holdout data. The student overcomplicated the method significantly.",
+            "strongest_aspect": "Clear problem motivation and well-structured abstract that correctly identifies the core challenge of controlling risk in set-valued predictions.",
+            "weakest_aspect": "Misalignment with the actual technical approach - the student proposed a much more complex weighted scheme when the paper's key insight is the simplicity of using a single calibrated threshold.",
+            "brief_rationale": "The student demonstrates good understanding of the problem domain but significantly overengineers the solution, missing the paper's elegant simplicity in favor of unnecessary complexity."
+          }
+        },
+        "mindmap": {
+          "status": "success",
+          "output_chars": 4445,
+          "output_path": "reports/run05-full-eval/2006.06138/no_refs/mindmap/output.md",
+          "input_tokens": 625,
+          "output_tokens": 916,
+          "duration_s": 23.04,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 3,
+              "reference_usage": 3,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 3.8,
+            "novelty_gap": "The student proposed a complex multi-parameter threshold optimization approach ('Conformal Risk Control'), while the actual paper uses a simpler single-threshold calibration method. The student overcomplicated the solution by suggesting coordinate descent and branch-and-bound optimization over a threshold vector, missing the elegance of the paper's single-parameter approach.",
+            "strongest_aspect": "Excellent mindmap structure with clear logical flow, comprehensive coverage of theoretical foundations, challenges, and connections to existing work. The writing is exceptionally clear and well-organized.",
+            "weakest_aspect": "Misaligned on the core novelty - the student proposed a significantly more complex approach than the paper's elegant single-threshold solution, suggesting they missed the key insight about simplicity being sufficient for the risk control guarantee.",
+            "brief_rationale": "The student demonstrates strong understanding of the problem space and relevant theory, but proposes an unnecessarily complex solution compared to the paper's elegant single-threshold approach, though the mindmap is exceptionally well-structured."
+          }
+        },
+        "problem": {
+          "status": "success",
+          "output_chars": 4447,
+          "output_path": "reports/run05-full-eval/2006.06138/no_refs/problem/output.md",
+          "input_tokens": 557,
+          "output_tokens": 1295,
+          "duration_s": 23.07,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 3,
+              "reference_usage": 3,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 3.8,
+            "novelty_gap": "The student correctly identifies the core problem of controlling expected loss for prediction sets, but misses the key insight that the paper uses a single threshold parameter for calibration. The student's formulation is more general/abstract, while the actual paper proposes a specific algorithmic approach using threshold-based set construction.",
+            "strongest_aspect": "The mathematical formulation is rigorous and well-structured, with clear notation, formal problem statement, and reasonable assumptions. The writing quality is excellent with proper mathematical typesetting.",
+            "weakest_aspect": "The reconstruction lacks the specific algorithmic insight of using a single threshold parameter for calibration, which is central to the paper's contribution. The connection to prior work section is generic without specific references.",
+            "brief_rationale": "The student demonstrates strong technical writing and problem formulation skills, correctly identifying the core challenge of distribution-free risk control for prediction sets, but misses the paper's key algorithmic contribution of threshold-based calibration."
+          }
+        },
+        "problem_method": {
+          "status": "success",
+          "output_chars": 7593,
+          "output_path": "reports/run05-full-eval/2006.06138/no_refs/problem_method/output.md",
+          "input_tokens": 574,
+          "output_tokens": 2625,
+          "duration_s": 43.63,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 5,
+              "novelty_alignment": 4,
+              "reference_usage": 3,
+              "writing_quality": 5,
+              "completeness": 5
+            },
+            "composite_score": 4.3,
+            "novelty_gap": "The student correctly identifies the core idea of threshold-based risk control but may have oversimplified the method. The original paper likely has more sophisticated calibration techniques beyond simple Hoeffding bounds, and the 'Learn Then Test' framework connection might be the student's interpretation rather than the paper's actual approach.",
+            "strongest_aspect": "The technical presentation is exceptionally rigorous with clear mathematical formulation, detailed algorithm pseudocode, theoretical guarantees with proof sketches, and computational complexity analysis - all at a publishable level.",
+            "weakest_aspect": "Without references, the student had to guess at connections to prior work (e.g., Learn Then Test framework, conformal prediction) which may not accurately reflect the paper's actual positioning in the literature.",
+            "brief_rationale": "This is an excellent reconstruction that captures the essence of distribution-free risk control for prediction sets with impressive technical depth, though some specific methodological details may differ from the original paper."
+          }
+        },
+        "full_guided": {
+          "status": "success",
+          "output_chars": 17931,
+          "output_path": "reports/run05-full-eval/2006.06138/no_refs/full_guided/output.md",
+          "input_tokens": 705,
+          "output_tokens": 4650,
+          "duration_s": 88.08,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 3,
+              "reference_usage": 3,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 3.8,
+            "novelty_gap": "The student's 'Calibrated Loss Control' focuses on a Hoeffding-based confidence bound approach with threshold selection from a discrete set, while the actual paper likely uses a more sophisticated calibration procedure that adjusts a single continuous threshold parameter. The student missed that the original emphasizes 'adjusts prediction sets via a single threshold parameter' rather than selecting from multiple candidates.",
+            "strongest_aspect": "Exceptional writing quality and paper structure - the student produced a highly professional, well-organized paper with clear mathematical notation, comprehensive sections, and excellent flow that reads like a genuine ML conference paper.",
+            "weakest_aspect": "The core algorithmic approach diverges from the original's emphasis on calibrating a single threshold parameter, instead proposing a more complex union-bound approach over multiple threshold candidates that may be unnecessarily conservative.",
+            "brief_rationale": "While the student demonstrates strong understanding of the problem domain and produces technically sound work, the proposed method appears to be a reasonable but different approach than what the original paper likely presents, particularly in the threshold calibration mechanism."
+          }
+        },
+        "full_freestyle": {
+          "status": "success",
+          "output_chars": 18168,
+          "output_path": "reports/run05-full-eval/2006.06138/no_refs/full_freestyle/output.md",
+          "input_tokens": 571,
+          "output_tokens": 4587,
+          "duration_s": 86.72,
+          "eval": {
+            "scores": {
+              "problem_understanding": 5,
+              "technical_depth": 4,
+              "novelty_alignment": 4,
+              "reference_usage": 3,
+              "writing_quality": 5,
+              "completeness": 5
+            },
+            "composite_score": 4.3,
+            "novelty_gap": "The student correctly identifies the core innovation of controlling expected loss rather than coverage, but may have invented some technical details around the threshold optimization and martingale analysis that could differ from the actual paper's approach. The connection to conformal prediction is well-understood but the specific algorithmic details are speculative.",
+            "strongest_aspect": "Exceptional writing quality and comprehensive treatment of the topic, with clear motivation, thorough experimental design, and thoughtful discussion of limitations and extensions.",
+            "weakest_aspect": "Some technical details, particularly in the algorithm and proof sketch, appear to be reasonable inventions rather than necessarily matching the original paper's approach, though they are mathematically sound.",
+            "brief_rationale": "The student demonstrates excellent understanding of the core contribution and produces a highly polished, comprehensive paper that could plausibly be the original work, with only minor uncertainty about specific technical implementation details."
+          }
+        }
+      }
+    }
+  },
+  {
+    "paper_id": "2602.04770",
+    "paper_url": "https://arxiv.org/abs/2602.04770",
+    "text_source": "abstract_fallback",
+    "conditions": {
+      "with_refs": {
+        "abstract": {
+          "status": "success",
+          "output_chars": 1997,
+          "output_path": "reports/run05-full-eval/2602.04770/with_refs/abstract/output.md",
+          "input_tokens": 684,
+          "output_tokens": 367,
+          "duration_s": 8.95,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 3,
+              "reference_usage": 3,
+              "writing_quality": 4,
+              "completeness": 3
+            },
+            "composite_score": 3.3,
+            "novelty_gap": "The student missed the key insight of jointly training a regression model and score function by minimizing a differentiable approximation to interval length. Instead, they proposed a bi-level optimization with coverage constraints and a safety fallback mechanism, which differs from the paper's approach of maintaining coverage through a conformal calibration step after optimization.",
+            "strongest_aspect": "Clear articulation of the core problem (score function quality affects interval efficiency) and well-written abstract with good structure and motivation.",
+            "weakest_aspect": "Technical approach diverges from the actual paper's method - the student's bi-level optimization and safety mechanism are conceptually different from the joint training with soft surrogate loss described in the original.",
+            "brief_rationale": "The student demonstrates good understanding of conformal prediction fundamentals but proposes a different technical solution than the actual paper, missing the key insight about joint training with differentiable approximations."
+          }
+        },
+        "mindmap": {
+          "status": "success",
+          "output_chars": 3616,
+          "output_path": "reports/run05-full-eval/2602.04770/with_refs/mindmap/output.md",
+          "input_tokens": 806,
+          "output_tokens": 724,
+          "duration_s": 17.53,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 2,
+              "reference_usage": 4,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 3.7,
+            "novelty_gap": "The student proposes a meta-learning framework with fallback mechanisms and ensemble approaches, while the actual paper directly optimizes a differentiable approximation to interval length jointly with the regression model. The student missed the key insight of using a soft surrogate loss for interval length that enables end-to-end training.",
+            "strongest_aspect": "Excellent mindmap structure with clear problem identification, well-organized sub-ideas, and thoughtful consideration of challenges and solutions. The writing is clear and the connections to existing work are well-articulated.",
+            "weakest_aspect": "The proposed approach diverges significantly from the paper's actual method. The student's meta-learning/ensemble/fallback approach is more conservative and complex than the paper's elegant joint optimization of regression and score functions.",
+            "brief_rationale": "While the student demonstrates strong understanding of conformal prediction and creates a well-structured mindmap, they miss the paper's core contribution of joint optimization through differentiable surrogates, instead proposing a more complex meta-learning framework."
+          }
+        },
+        "problem": {
+          "status": "success",
+          "output_chars": 5303,
+          "output_path": "reports/run05-full-eval/2602.04770/with_refs/problem/output.md",
+          "input_tokens": 738,
+          "output_tokens": 1676,
+          "duration_s": 31.83,
+          "eval": {
+            "scores": {
+              "problem_understanding": 5,
+              "technical_depth": 5,
+              "novelty_alignment": 4,
+              "reference_usage": 4,
+              "writing_quality": 5,
+              "completeness": 5
+            },
+            "composite_score": 4.7,
+            "novelty_gap": "The student correctly identifies learning score functions as the key innovation but doesn't capture the specific approach of 'optimizing a differentiable approximation to interval length' or the joint training of regression model and score function mentioned in the abstract. The formulation is more general than the paper's specific method.",
+            "strongest_aspect": "Exceptional technical rigor and clarity in formalizing the problem, with precise mathematical notation and well-structured assumptions that capture the essence of conformal prediction with learned features.",
+            "weakest_aspect": "The optimization objective (Section 2.3) is somewhat vague compared to the abstract's specific mention of a 'soft surrogate for prediction interval length' - the student provides a general framework but misses the paper's particular approach.",
+            "brief_rationale": "The student demonstrates deep understanding of conformal prediction and correctly identifies the core innovation of learning score functions while maintaining coverage guarantees, presenting it with publication-quality mathematical rigor."
+          }
+        },
+        "problem_method": {
+          "status": "success",
+          "output_chars": 8234,
+          "output_path": "reports/run05-full-eval/2602.04770/with_refs/problem_method/output.md",
+          "input_tokens": 755,
+          "output_tokens": 2747,
+          "duration_s": 49.09,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 3,
+              "reference_usage": 4,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 4.0,
+            "novelty_gap": "The student proposes a data-splitting approach for score learning, while the actual paper optimizes a differentiable approximation to interval length and jointly trains the regression model and score function. The student missed the key insight about joint optimization and the soft surrogate for prediction interval length.",
+            "strongest_aspect": "Excellent technical writing with clear mathematical formulation, rigorous notation, and well-structured presentation of the conformal prediction framework and proposed methodology.",
+            "weakest_aspect": "The proposed method diverges from the paper's actual approach by using data splitting rather than joint optimization with differentiable surrogates, missing the paper's core technical contribution.",
+            "brief_rationale": "The student demonstrates strong understanding of conformal prediction and produces a technically sound alternative approach, but misses the paper's key innovation of joint training with differentiable interval length approximation."
+          }
+        },
+        "full_guided": {
+          "status": "success",
+          "output_chars": 25518,
+          "output_path": "reports/run05-full-eval/2602.04770/with_refs/full_guided/output.md",
+          "input_tokens": 886,
+          "output_tokens": 6475,
+          "duration_s": 121.03,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 2,
+              "reference_usage": 4,
+              "writing_quality": 5,
+              "completeness": 5
+            },
+            "composite_score": 4.0,
+            "novelty_gap": "The student proposes a two-stage meta-learning approach with separate auxiliary data for learning score functions, while the original paper jointly trains regression and score functions by optimizing a differentiable approximation to interval length. The student missed the key insight of joint training and soft surrogate optimization, instead proposing a more conservative approach that separates score learning from the main task.",
+            "strongest_aspect": "Exceptional writing quality and comprehensive coverage - the paper is well-structured with thorough theoretical analysis, clear methodology, and detailed experimental design that reads like a complete research paper.",
+            "weakest_aspect": "The proposed approach diverges significantly from the original paper's core contribution of joint training with differentiable surrogates, instead proposing a more standard meta-learning framework that doesn't capture the paper's actual novelty.",
+            "brief_rationale": "While the student demonstrates strong understanding of conformal prediction and produces a high-quality, complete paper, they miss the original's key innovation of joint training with soft surrogates, proposing instead a more conventional two-stage approach."
+          }
+        },
+        "full_freestyle": {
+          "status": "success",
+          "output_chars": 23764,
+          "output_path": "reports/run05-full-eval/2602.04770/with_refs/full_freestyle/output.md",
+          "input_tokens": 752,
+          "output_tokens": 5577,
+          "duration_s": 107.88,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 3,
+              "reference_usage": 4,
+              "writing_quality": 5,
+              "completeness": 5
+            },
+            "composite_score": 4.2,
+            "novelty_gap": "The student's bi-level optimization framework with separate validation/calibration sets differs from the original's joint training of regression model and score function. The original optimizes a differentiable approximation to interval length, while the student proposes a more complex two-phase approach that may not capture the paper's actual unified optimization strategy.",
+            "strongest_aspect": "Exceptional writing quality and comprehensive treatment - the paper is well-structured with clear theoretical development, thorough experimental design, and thoughtful discussion of limitations and extensions.",
+            "weakest_aspect": "The proposed approach diverges from the original's key insight of jointly training the regression model and score function, instead proposing a sequential bi-level framework that adds unnecessary complexity.",
+            "brief_rationale": "While the reconstruction demonstrates strong technical understanding and excellent presentation, it misses the original paper's core contribution of joint optimization, proposing instead a more conventional sequential approach."
+          }
+        }
+      },
+      "no_refs": {
+        "abstract": {
+          "status": "success",
+          "output_chars": 1997,
+          "output_path": "reports/run05-full-eval/2602.04770/no_refs/abstract/output.md",
+          "input_tokens": 532,
+          "output_tokens": 363,
+          "duration_s": 8.98,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 3,
+              "reference_usage": 3,
+              "writing_quality": 4,
+              "completeness": 3
+            },
+            "composite_score": 3.3,
+            "novelty_gap": "The student proposes a bilevel optimization with a fallback mechanism, while the actual paper jointly trains regression and score functions using a differentiable soft surrogate for interval length. The student missed the key insight of simultaneous training and the specific use of a differentiable approximation.",
+            "strongest_aspect": "Clear articulation of the core problem - that conformal prediction efficiency depends on score function quality, and the motivation for learning better score functions.",
+            "weakest_aspect": "Technical approach diverges from the paper's actual method - the student's bilevel optimization with fallback is conceptually different from the joint training approach with soft surrogates described in the original.",
+            "brief_rationale": "The student demonstrates good understanding of conformal prediction fundamentals but proposes a different technical solution than the paper's joint training approach with differentiable surrogates."
+          }
+        },
+        "mindmap": {
+          "status": "success",
+          "output_chars": 3819,
+          "output_path": "reports/run05-full-eval/2602.04770/no_refs/mindmap/output.md",
+          "input_tokens": 654,
+          "output_tokens": 781,
+          "duration_s": 20.73,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 2,
+              "reference_usage": 3,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 3.5,
+            "novelty_gap": "The student proposes a meta-learning approach using auxiliary datasets to learn score functions, while the actual paper jointly trains the regression model and score function by directly optimizing a differentiable approximation to interval length on the target data itself. The key insight of end-to-end optimization with a soft surrogate for interval length is completely missed.",
+            "strongest_aspect": "The mindmap is exceptionally well-structured and clearly articulates the problem space, showing strong understanding of conformal prediction fundamentals and presenting ideas in a logical, hierarchical manner.",
+            "weakest_aspect": "The proposed approach diverges significantly from the paper's actual contribution - missing the core innovation of jointly training models with differentiable interval length approximations, instead proposing a more complex meta-learning framework.",
+            "brief_rationale": "While the student demonstrates solid understanding of conformal prediction and produces a well-organized mindmap, they miss the paper's key insight about direct optimization of interval length through differentiable surrogates, instead proposing an orthogonal meta-learning approach."
+          }
+        },
+        "problem": {
+          "status": "success",
+          "output_chars": 5970,
+          "output_path": "reports/run05-full-eval/2602.04770/no_refs/problem/output.md",
+          "input_tokens": 586,
+          "output_tokens": 1884,
+          "duration_s": 33.09,
+          "eval": {
+            "scores": {
+              "problem_understanding": 5,
+              "technical_depth": 5,
+              "novelty_alignment": 4,
+              "reference_usage": 3,
+              "writing_quality": 5,
+              "completeness": 5
+            },
+            "composite_score": 4.5,
+            "novelty_gap": "The student correctly identifies the core challenge of learning score functions while maintaining coverage, but doesn't capture the paper's specific approach of 'optimizing a differentiable approximation to the interval length' or the joint training of regression model and score function mentioned in the abstract.",
+            "strongest_aspect": "Exceptional technical rigor and clarity in formalizing the problem, with precise mathematical notation and clear identification of the fundamental tension between learning efficiency and maintaining finite-sample guarantees.",
+            "weakest_aspect": "Missing the specific methodological hints from the abstract about differentiable approximations and joint training, instead presenting a more generic formulation of the score learning problem.",
+            "brief_rationale": "The student demonstrates deep understanding of conformal prediction and articulates the core challenge brilliantly, but doesn't fully capture the paper's specific approach to solving it."
+          }
+        },
+        "problem_method": {
+          "status": "success",
+          "output_chars": 8214,
+          "output_path": "reports/run05-full-eval/2602.04770/no_refs/problem_method/output.md",
+          "input_tokens": 603,
+          "output_tokens": 2756,
+          "duration_s": 47.63,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 3,
+              "reference_usage": 3,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 3.8,
+            "novelty_gap": "The student proposes a cross-validation approach (ACP-CV) to preserve exchangeability, while the actual paper jointly trains a regression model and score function by minimizing a differentiable approximation to interval length. The paper's key insight is the joint optimization with a soft surrogate loss, not data splitting for score learning.",
+            "strongest_aspect": "Exceptionally clear mathematical exposition and problem formulation, with rigorous notation and well-structured presentation that reads like a publishable paper.",
+            "weakest_aspect": "The proposed methodology diverges from the paper's actual approach of joint training with differentiable surrogates, instead proposing a more conservative cross-validation scheme that may not capture the paper's innovation.",
+            "brief_rationale": "The student demonstrates strong technical understanding of conformal prediction but proposes a different solution (cross-validation for score learning) than the paper's joint optimization approach with differentiable surrogates."
+          }
+        },
+        "full_guided": {
+          "status": "success",
+          "output_chars": 29832,
+          "output_path": "reports/run05-full-eval/2602.04770/no_refs/full_guided/output.md",
+          "input_tokens": 734,
+          "output_tokens": 7036,
+          "duration_s": 137.7,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 2,
+              "reference_usage": 3,
+              "writing_quality": 5,
+              "completeness": 5
+            },
+            "composite_score": 3.8,
+            "novelty_gap": "The student proposed meta-learning across auxiliary datasets and a regularization scheme that blends learned and baseline score functions. However, the actual paper jointly trains a regression model and score function by minimizing a differentiable approximation to interval length - a fundamentally different approach that doesn't require auxiliary data or meta-learning.",
+            "strongest_aspect": "The writing quality and completeness are exceptional - the paper is well-structured, clearly written, and covers all expected sections with appropriate depth and mathematical rigor.",
+            "weakest_aspect": "The core technical approach is misaligned with the actual paper. The student's meta-learning framework with auxiliary datasets is conceptually different from the joint optimization of regression and score functions described in the abstract.",
+            "brief_rationale": "While the student demonstrates strong understanding of conformal prediction and produces a technically sound paper, they missed the key insight about joint training through differentiable interval length approximation, instead proposing a plausible but different meta-learning approach."
+          }
+        },
+        "full_freestyle": {
+          "status": "success",
+          "output_chars": 19827,
+          "output_path": "reports/run05-full-eval/2602.04770/no_refs/full_freestyle/output.md",
+          "input_tokens": 600,
+          "output_tokens": 4757,
+          "duration_s": 87.24,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 2,
+              "reference_usage": 3,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 3.7,
+            "novelty_gap": "The original paper learns score functions by optimizing a differentiable approximation to interval length with a soft surrogate. The student instead proposes a meta-learning approach with 'coverage-preserving regularization' and data splitting strategies, missing the key insight about differentiable optimization of interval length.",
+            "strongest_aspect": "Exceptional writing quality and paper structure - the student produced a complete, well-organized paper with clear exposition, proper mathematical notation, and comprehensive experimental design that reads like a genuine research paper.",
+            "weakest_aspect": "The core technical approach diverges significantly from the original - while both papers address learning score functions for conformal prediction, the student's meta-learning framework with conservative quantiles and regularization is conceptually different from the original's differentiable optimization approach.",
+            "brief_rationale": "The student demonstrates strong understanding of conformal prediction and produces high-quality academic writing, but proposes a substantially different technical solution than the original paper's differentiable interval length optimization."
+          }
+        }
+      }
+    }
+  },
+  {
+    "paper_id": "2103.04984",
+    "paper_url": "https://arxiv.org/abs/2103.04984",
+    "text_source": "pdf",
+    "conditions": {
+      "with_refs": {
+        "abstract": {
+          "status": "success",
+          "output_chars": 1975,
+          "output_path": "reports/run05-full-eval/2103.04984/with_refs/abstract/output.md",
+          "input_tokens": 707,
+          "output_tokens": 370,
+          "duration_s": 8.05,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 4,
+              "reference_usage": 3,
+              "writing_quality": 4,
+              "completeness": 3
+            },
+            "composite_score": 3.5,
+            "novelty_gap": "The student correctly identifies the doubly robust property and conformal inference combination, but misses the paper's specific contribution of using conformal quantile regression (CQR) rather than generic conformal prediction. The original paper's key insight is adapting weighted split-CQR specifically for counterfactual inference, with careful treatment of the likelihood ratio weighting scheme for different inferential targets.",
+            "strongest_aspect": "Clear articulation of the core problem - the need for reliable uncertainty quantification in ITE estimation - and correct identification of the doubly robust property as a key contribution.",
+            "weakest_aspect": "Lack of technical specificity about the conformal quantile regression approach and the mathematical details of how the weighted conformal inference achieves the doubly robust property.",
+            "brief_rationale": "The student demonstrates good understanding of the paper's motivation and main ideas but lacks the technical precision expected for a research abstract, particularly missing the specific CQR methodology."
+          }
+        },
+        "mindmap": {
+          "status": "success",
+          "output_chars": 3689,
+          "output_path": "reports/run05-full-eval/2103.04984/with_refs/mindmap/output.md",
+          "input_tokens": 829,
+          "output_tokens": 827,
+          "duration_s": 17.25,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 2,
+              "reference_usage": 4,
+              "writing_quality": 4,
+              "completeness": 4
+            },
+            "composite_score": 3.5,
+            "novelty_gap": "The student correctly identifies the need for conformal prediction in causal inference but misses the paper's actual key insight: using weighted conformal inference to handle the covariate shift between treated/control groups (not between factual/counterfactual). The paper doesn't frame counterfactual inference as a covariate shift problem in the way the student suggests, but rather recognizes that observing Y(1) requires reweighting from P(X|T=1) to the target distribution.",
+            "strongest_aspect": "The mindmap structure is well-organized and the student demonstrates strong understanding of both conformal prediction and causal inference challenges, correctly identifying the need for finite-sample guarantees and the role of propensity scores.",
+            "weakest_aspect": "The novelty alignment - the student invents a 'Causal Conformal Prediction' framework that differs conceptually from the paper's actual approach of applying existing weighted conformal methods to the counterfactual setting with proper propensity score weighting.",
+            "brief_rationale": "While the student shows good grasp of the problem space and relevant techniques, they propose a different conceptual approach than what the paper actually develops, missing the elegance of the paper's insight about propensity score weighting in conformal inference."
+          }
+        },
+        "problem": {
+          "status": "success",
+          "output_chars": 5778,
+          "output_path": "reports/run05-full-eval/2103.04984/with_refs/problem/output.md",
+          "input_tokens": 761,
+          "output_tokens": 1732,
+          "duration_s": 34.14,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 3,
+              "reference_usage": 4,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 4.0,
+            "novelty_gap": "The student correctly identifies the need for distribution-free prediction intervals but misses the paper's key insight about using weighted conformal inference to handle propensity score weighting. They also don't capture the doubly robust property - that coverage holds if either the outcome model OR propensity score is well-estimated, not requiring both.",
+            "strongest_aspect": "Exceptionally clear mathematical notation and problem setup, with well-structured presentation that systematically builds from basic definitions to the full problem statement. The writing quality and organization exceed typical research paper standards.",
+            "weakest_aspect": "The novelty alignment - while the student grasps the general direction, they miss the specific technical innovation of weighted conformal inference and its connection to inverse propensity weighting that makes the method work for causal inference.",
+            "brief_rationale": "Strong technical reconstruction that captures the problem's essence but misses the paper's specific methodological innovation of adapting weighted conformal inference to handle the causal inference setting."
+          }
+        },
+        "problem_method": {
+          "status": "success",
+          "output_chars": 8796,
+          "output_path": "reports/run05-full-eval/2103.04984/with_refs/problem_method/output.md",
+          "input_tokens": 778,
+          "output_tokens": 2770,
+          "duration_s": 48.75,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 2,
+              "reference_usage": 3,
+              "writing_quality": 4,
+              "completeness": 4
+            },
+            "composite_score": 3.3,
+            "novelty_gap": "The student proposes doubly robust pseudo-outcomes as the core innovation, but the actual paper's key insight is applying weighted conformal quantile regression (CQR) directly to observed outcomes in treated/control groups. The paper doesn't construct pseudo-outcomes but rather uses weighted CQR with propensity score-based weights to handle covariate shift between treatment groups and target populations. The student missed that the 'doubly robust' property refers to coverage validity when either propensity scores OR conditional quantiles are well-estimated, not to constructing doubly robust estimators.",
+            "strongest_aspect": "Clear problem formulation with well-structured assumptions and notation. The student demonstrates good understanding of the causal inference setup and covariate shift challenges.",
+            "weakest_aspect": "Misalignment with the paper's actual methodology. The proposed doubly robust pseudo-outcome approach is conceptually different from the paper's weighted CQR approach, suggesting the student didn't fully grasp the paper's core contribution.",
+            "brief_rationale": "While technically competent and well-written, the reconstruction diverges significantly from the paper's actual approach, proposing a different solution that misses the elegance of directly applying weighted conformal inference to counterfactuals."
+          }
+        },
+        "full_guided": {
+          "status": "success",
+          "output_chars": 18928,
+          "output_path": "reports/run05-full-eval/2103.04984/with_refs/full_guided/output.md",
+          "input_tokens": 909,
+          "output_tokens": 4871,
+          "duration_s": 90.67,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 2,
+              "reference_usage": 3,
+              "writing_quality": 4,
+              "completeness": 3
+            },
+            "composite_score": 3.2,
+            "novelty_gap": "The student missed the paper's core innovation: using conformal inference to construct prediction intervals for counterfactuals and ITEs with finite-sample coverage guarantees. Instead, they proposed a doubly robust estimation approach in Stage 1, which is standard in causal inference. The original paper's key insight is applying weighted conformal quantile regression (CQR) directly to the counterfactual inference problem, not combining doubly robust estimation with conformal prediction.",
+            "strongest_aspect": "Clear problem formulation and understanding of the dual challenges (within-study counterfactual prediction and out-of-study generalization). The writing is well-organized and the motivation is compelling.",
+            "weakest_aspect": "The proposed methodology fundamentally diverges from the paper's actual approach. The student's two-stage procedure with doubly robust estimation followed by conformal prediction is conceptually different from the original's direct application of weighted CQR to counterfactuals.",
+            "brief_rationale": "While the student demonstrates good understanding of the problem and writes clearly, they propose a substantially different technical approach that misses the paper's key contribution of directly applying conformal inference to counterfactual prediction."
+          }
+        },
+        "full_freestyle": {
+          "status": "success",
+          "output_chars": 31565,
+          "output_path": "reports/run05-full-eval/2103.04984/with_refs/full_freestyle/output.md",
+          "input_tokens": 775,
+          "output_tokens": 8095,
+          "duration_s": 139.29,
+          "eval": {
+            "scores": {
+              "problem_understanding": 5,
+              "technical_depth": 4,
+              "novelty_alignment": 4,
+              "reference_usage": 4,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 4.3,
+            "novelty_gap": "The student correctly identifies the core innovation of applying conformal prediction to causal inference, but misses some key technical details from the original paper: (1) the specific formulation of weighted split-CQR for handling propensity scores, (2) the precise doubly robust property that provides coverage (not just consistency) when either model is correct, and (3) the theoretical analysis showing near-exact coverage under bounded likelihood ratios. The student's 'pseudo-outcome approach' is conceptually similar but less sophisticated than the original's direct application of weighted conformal quantile regression.",
+            "strongest_aspect": "Exceptional clarity in exposition and problem framing. The student provides a comprehensive, well-structured paper that clearly articulates the challenges of ITE uncertainty quantification and how conformal prediction addresses them. The writing is publication-quality with excellent flow between sections.",
+            "weakest_aspect": "Technical depth in the theoretical analysis. While the student provides theorem statements and proof sketches, they lack the mathematical rigor of the original paper's results (e.g., Proposition 1's precise coverage bounds, the detailed analysis of weighted conformal inference). The pseudo-outcome approach for Task 2 is less developed than the original's methodology.",
+            "brief_rationale": "This is a high-quality reconstruction that captures the essence of applying conformal prediction to causal inference, with excellent presentation and good technical understanding, though it simplifies some of the more sophisticated theoretical contributions of the original work."
+          }
+        }
+      },
+      "no_refs": {
+        "abstract": {
+          "status": "success",
+          "output_chars": 2037,
+          "output_path": "reports/run05-full-eval/2103.04984/no_refs/abstract/output.md",
+          "input_tokens": 555,
+          "output_tokens": 380,
+          "duration_s": 9.96,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 3,
+              "reference_usage": 3,
+              "writing_quality": 4,
+              "completeness": 3
+            },
+            "composite_score": 3.3,
+            "novelty_gap": "The student correctly identifies conformal prediction for ITE but misses the paper's specific focus on weighted conformal quantile regression (CQR) for handling covariate shifts. The original emphasizes prediction intervals for counterfactuals themselves, while the student jumps to a doubly robust AIPW-based approach that wasn't the paper's main contribution.",
+            "strongest_aspect": "Clear articulation of the core problem - the gap between ML flexibility and reliable uncertainty quantification for treatment effects. The writing is professional and the motivation is well-established.",
+            "weakest_aspect": "Technical specificity - the student invents a different method (DR-CTE with AIPW residuals) rather than capturing the original's weighted split-CQR approach for counterfactual inference under covariate shift.",
+            "brief_rationale": "The student demonstrates good understanding of the problem space but reconstructs a plausible alternative method rather than the actual approach, missing key technical details about weighted conformal inference."
+          }
+        },
+        "mindmap": {
+          "status": "success",
+          "output_chars": 4114,
+          "output_path": "reports/run05-full-eval/2103.04984/no_refs/mindmap/output.md",
+          "input_tokens": 677,
+          "output_tokens": 893,
+          "duration_s": 19.3,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 2,
+              "reference_usage": 3,
+              "writing_quality": 4,
+              "completeness": 4
+            },
+            "composite_score": 3.3,
+            "novelty_gap": "The student proposes using AIPW scores and doubly robust CATE estimation as the foundation, but the actual paper uses weighted conformal quantile regression (CQR) applied directly to potential outcomes. The paper's key insight is that counterfactual inference reduces to a covariate shift problem under strong ignorability, which can be handled by weighted conformal inference with propensity score-based weights. The student misses this elegant reduction and instead proposes a more complex framework combining multiple techniques.",
+            "strongest_aspect": "The mindmap demonstrates excellent understanding of the general problem space and relevant techniques. The structure is clear, the challenges are well-identified, and the connections to existing work show good field knowledge.",
+            "weakest_aspect": "The proposed approach significantly diverges from the paper's actual method. The student suggests a complex combination of AIPW, cross-fitting, and custom conformity scores, while the paper's innovation is the direct application of weighted conformal inference to counterfactuals using propensity score weights.",
+            "brief_rationale": "While the student shows strong understanding of causal inference and conformal prediction separately, they miss the paper's key insight about reducing counterfactual inference to weighted conformal prediction with propensity-based weights."
+          }
+        },
+        "problem": {
+          "status": "success",
+          "output_chars": 5187,
+          "output_path": "reports/run05-full-eval/2103.04984/no_refs/problem/output.md",
+          "input_tokens": 609,
+          "output_tokens": 1469,
+          "duration_s": 29.71,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 3,
+              "reference_usage": 3,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 3.8,
+            "novelty_gap": "The student correctly identifies the need for prediction intervals for counterfactuals but misses the paper's specific emphasis on weighted conformal inference as the key innovation. The original paper's main contribution is adapting conformal inference to handle covariate shifts through propensity score weighting, which enables exact finite-sample coverage for randomized trials and doubly robust coverage for observational studies. The student presents this more as a general problem of constructing intervals rather than highlighting the weighted conformal approach.",
+            "strongest_aspect": "The writing is exceptionally clear and well-organized, with a logical flow from setup to formal problem statement to assumptions. The mathematical notation is precise and the distinction between within-study and out-of-study inference is articulated better than in the original paper.",
+            "weakest_aspect": "The novelty alignment - while the student identifies the right problem space, they don't capture that the paper's key insight is using weighted conformal inference with propensity scores to handle the covariate shift inherent in causal inference. The formulation reads more like a general causal inference problem rather than specifically motivating why weighted conformal methods are the solution.",
+            "brief_rationale": "Strong technical formulation that captures the core causal inference problem but misses the specific methodological innovation of weighted conformal inference that makes the paper novel."
+          }
+        },
+        "problem_method": {
+          "status": "success",
+          "output_chars": 8683,
+          "output_path": "reports/run05-full-eval/2103.04984/no_refs/problem_method/output.md",
+          "input_tokens": 626,
+          "output_tokens": 3070,
+          "duration_s": 52.59,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 2,
+              "reference_usage": 3,
+              "writing_quality": 4,
+              "completeness": 3
+            },
+            "composite_score": 3.2,
+            "novelty_gap": "The student missed the paper's key innovation of using weighted conformal quantile regression (CQR) specifically for counterfactual inference. While they propose a doubly robust conformal score approach, the original paper's core contribution is adapting weighted split-CQR from Tibshirani et al. (2019b) to handle covariate shifts induced by treatment assignment, with the crucial insight that the weights correspond to inverse propensity scores. The student's generic doubly robust estimator approach differs conceptually from the paper's focus on conformalized quantile regression.",
+            "strongest_aspect": "Clear problem formulation with well-structured notation and assumptions. The student demonstrates good understanding of the causal inference setup and the challenges of constructing prediction intervals for counterfactuals and ITEs.",
+            "weakest_aspect": "The proposed methodology diverges significantly from the paper's actual approach. The student invents a generic doubly robust conformal method rather than recognizing the paper's specific use of weighted conformal quantile regression, missing the connection between covariate shift weights and propensity scores.",
+            "brief_rationale": "While the student shows solid understanding of the problem and writes clearly, they propose a different technical solution that misses the paper's core innovation of adapting weighted CQR to causal inference."
+          }
+        },
+        "full_guided": {
+          "status": "success",
+          "output_chars": 17008,
+          "output_path": "reports/run05-full-eval/2103.04984/no_refs/full_guided/output.md",
+          "input_tokens": 757,
+          "output_tokens": 4030,
+          "duration_s": 75.16,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 3,
+              "reference_usage": 3,
+              "writing_quality": 4,
+              "completeness": 3
+            },
+            "composite_score": 3.3,
+            "novelty_gap": "The student missed the paper's key innovation of using weighted conformal quantile regression (CQR) specifically for counterfactual inference. The original paper introduces weighted split-CQR with specific algorithms and theoretical guarantees about coverage under covariate shift, while the student presents a more generic conformal prediction approach without capturing the nuanced weighting scheme based on propensity scores.",
+            "strongest_aspect": "Clear problem articulation and well-structured presentation that correctly identifies the core challenge of uncertainty quantification for ITEs in finite samples.",
+            "weakest_aspect": "Technical depth - the algorithms presented are oversimplified compared to the original's weighted split-CQR approach, missing crucial details about the weighting scheme and the specific conformity scores used.",
+            "brief_rationale": "The reconstruction demonstrates good understanding of the problem and motivation but falls short in capturing the paper's specific technical contributions around weighted conformal inference and its connection to propensity score methods."
+          }
+        },
+        "full_freestyle": {
+          "status": "success",
+          "output_chars": 30009,
+          "output_path": "reports/run05-full-eval/2103.04984/no_refs/full_freestyle/output.md",
+          "input_tokens": 623,
+          "output_tokens": 8192,
+          "duration_s": 146.33,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 3,
+              "reference_usage": 3,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 3.8,
+            "novelty_gap": "The student correctly identifies the combination of conformal prediction with causal inference but misses the specific weighted conformal inference approach for handling covariate shift. The original paper's key innovation is using weighted split-CQR with propensity score weighting to achieve exact finite-sample coverage in randomized trials and doubly robust coverage in observational studies. The student's 'doubly robust conformity scores' using pseudo-outcomes is a reasonable but different approach than the paper's actual method.",
+            "strongest_aspect": "Excellent writing quality and clear exposition. The student provides a well-structured paper with comprehensive coverage of the problem space, including thoughtful extensions and a thorough experimental design section.",
+            "weakest_aspect": "The core technical approach diverges from the original paper's weighted conformal inference methodology. The student's doubly robust pseudo-outcome approach, while creative, doesn't capture the paper's actual use of weighted quantiles and the specific Algorithm 1 (Weighted split-CQR) that forms the methodological core.",
+            "brief_rationale": "The reconstruction demonstrates strong understanding of the causal inference problem and conformal prediction principles, but proposes a different technical solution than the original paper's weighted conformal approach."
+          }
+        }
+      }
+    }
+  }
+]

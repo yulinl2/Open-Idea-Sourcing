@@ -1,0 +1,23 @@
+{
+  "problem_context": "In causal inference, researchers need to estimate not just average treatment effects (ATE) but individual treatment effects (ITE) to support personalized decision-making. The fundamental challenge is that for any individual, only one potential outcome is observed (either treated or control), making the other counterfactual. Existing methods that estimate conditional average treatment effects (CATE) using machine learning often fail to provide reliable uncertainty quantification - their confidence/prediction intervals frequently have poor coverage in finite samples. This is problematic for high-stakes decisions in medicine, policy, and other domains where understanding risk is crucial. The problem is compounded by two distinct inferential tasks: (1) constructing intervals for subjects in the study where one potential outcome is observed, and (2) constructing intervals for new subjects where both potential outcomes are missing. Additionally, there may be covariate shifts between study and target populations.",
+  "reference_guidance": {
+    "arxiv-1904.06019": "This paper introduces weighted conformal prediction methods that can handle covariate shift - when the distribution of covariates differs between training and test data. This is directly relevant because in causal inference, the treated and control groups often have different covariate distributions due to selection bias, and researchers may want to generalize from a study population to a different target population."
+  },
+  "evaluation_criteria": "A good solution should provide prediction intervals with guaranteed marginal coverage P(Y \u2208 C(X)) \u2265 1-\u03b1 in finite samples, ideally without strong modeling assumptions. For randomized experiments, coverage should hold exactly. For observational studies, the method should be robust to misspecification of either the propensity score or outcome models (doubly robust property). The intervals should maintain coverage even when machine learning methods are used for nuisance parameter estimation. Coverage should hold for both within-study counterfactual inference and out-of-study generalization. The method should handle different inferential targets (ATE, ATT, ATC) and covariate shifts between populations.",
+  "domain_keywords": [
+    "potential outcomes",
+    "counterfactual inference",
+    "individual treatment effects",
+    "CATE",
+    "propensity score",
+    "strong ignorability",
+    "covariate shift",
+    "coverage probability",
+    "prediction intervals",
+    "double robustness",
+    "conformal inference",
+    "SUTVA",
+    "overlap condition",
+    "inverse propensity weighting"
+  ]
+}

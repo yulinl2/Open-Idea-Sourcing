@@ -1,0 +1,29 @@
+{
+  "paper_id": "2006.06138",
+  "paper_url": "https://arxiv.org/abs/2006.06138",
+  "reconstruction_type": "no_refs/abstract",
+  "student_model": "claude-sonnet-4-20250514",
+  "teacher_model": "claude-opus-4-20250514",
+  "start_time": "2026-04-04T06:35:19.325820+00:00",
+  "finish_time": "2026-04-04T06:35:29.436609+00:00",
+  "steps": [
+    {
+      "step_name": "student_abstract",
+      "model": "claude-sonnet-4-20250514",
+      "system_prompt": "You are a researcher tasked with writing an abstract for a NEW paper that\naddresses the problem described below. You have access to the reference papers\nlisted, but you do NOT have access to the actual paper that solved this problem.\n\n## Problem context\n\nMachine learning systems often need to output sets of predictions rather than single predictions \u2014 for example, in multi-label classification where multiple labels may apply to one instance, or in object detection where multiple objects must be identified. A critical challenge is controlling the risk or expected loss of these prediction sets in a principled way. Practitioners need methods that can provide formal guarantees about the expected loss of prediction sets, regardless of the specific model architecture or loss function being used. The key difficulty is achieving such guarantees in finite samples without making strong distributional assumptions, while remaining computationally tractable. The method should work under the realistic assumption that calibration and test data are merely exchangeable (not necessarily i.i.d.), which is important for real-world deployment where data distributions may shift over time.\n\n## Evaluation criteria\n\nA successful solution must: (1) provide finite-sample guarantees on expected loss without distributional assumptions beyond exchangeability, (2) work with arbitrary underlying models and loss functions, (3) be computationally efficient enough for practical use, (4) demonstrate effectiveness across diverse domains like computer vision and NLP, (5) handle various set-prediction tasks including multi-label classification, segmentation, and detection, (6) use a simple, interpretable mechanism for controlling the risk level, and (7) require only a holdout calibration set rather than retraining models.\n\n## Your task\n\nWrite a complete research paper abstract (150\u2013300 words) that:\n\n1. Motivates the problem and its importance\n2. States the gap in existing work (based on the references you can see)\n3. Proposes a concrete approach (your own invention \u2014 be specific!)\n4. Summarizes expected contributions or properties of the approach\n\nWrite as if this is YOUR paper. Be technically precise. Use the references to\nground your understanding of the field, but the approach must be your own\nsynthesis.\n\nDo NOT fabricate specific experimental numbers. Focus on the conceptual\ncontribution.\n\n## References\n\nNo references provided. Rely on your own knowledge of the field.\n",
+      "user_prompt": "Begin your reconstruction now.",
+      "response": "# Set-Valued Prediction with Finite-Sample Risk Control via Weighted Conformal Methods\n\nModern machine learning applications increasingly require prediction of sets rather than single outputs\u2014from multi-label classification in medical diagnosis to object detection in autonomous systems. While existing approaches focus on optimizing set-based metrics during training, they provide no formal guarantees about the expected loss of prediction sets at test time. This gap is particularly problematic in safety-critical applications where practitioners need principled control over risk levels.\n\nWe introduce **Weighted Risk-Controlled Prediction Sets (W-RCPS)**, a post-hoc calibration framework that provides finite-sample guarantees on the expected loss of arbitrary set-valued predictions. Our approach leverages a novel weighted conformal prediction mechanism that adaptively adjusts prediction set inclusion thresholds based on instance-specific risk estimates derived from a holdout calibration set. Unlike standard conformal methods that control coverage, W-RCPS directly controls expected loss through a risk-aware weighting scheme that accounts for heteroscedastic uncertainty across different regions of the input space.\n\nThe method requires only: (1) a pre-trained model producing set-valued predictions, (2) a user-specified risk tolerance level \u03b1, and (3) a calibration set with true labels. Under the mild assumption of exchangeability between calibration and test data, W-RCPS guarantees that the expected loss remains below \u03b1 with high probability. The approach is model-agnostic, computationally efficient (requiring only threshold selection), and handles arbitrary loss functions including Hamming loss, Jaccard loss, and custom domain-specific metrics.\n\nWe demonstrate the effectiveness of W-RCPS across multi-label classification, semantic segmentation, and multi-object detection tasks, showing consistent risk control while maintaining competitive predictive performance compared to uncalibrated baselines.",
+      "input_tokens": 503,
+      "output_tokens": 399,
+      "duration_seconds": 10.11,
+      "timestamp": "2026-04-04T06:35:29.436563+00:00",
+      "metadata": {
+        "response_id": "msg_012t5SCFXHVEUb5JE4SFbinD",
+        "backend": "anthropic"
+      }
+    }
+  ],
+  "config": {
+    "condition": "no_refs"
+  }
+}
