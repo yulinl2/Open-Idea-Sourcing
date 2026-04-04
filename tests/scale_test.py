@@ -26,8 +26,8 @@ RESULTS_DIR.mkdir(exist_ok=True)
 
 MODEL = "gpt-4o"
 TARGET_ARXIV = "2006.06138"
-# All refs with abstracts — full scale test
-MAX_REFS = 100
+# Keep scale test fast (full coverage is done by the geo-perplexity workflow)
+MAX_REFS = 10
 
 
 def _save(name: str, result: dict) -> None:
