@@ -77,7 +77,7 @@ reports/
 python agent.py --evaluate
 
 # Single paper, specific modes
-python agent.py --paper-url https://arxiv.org/abs/2006.06138 --modes abstract mindmap
+python agent.py --paper-url https://arxiv.org/abs/2101.02703 --modes abstract mindmap
 
 # Override models
 python agent.py --student-model gpt-4o --teacher-model gpt-5.4
@@ -120,8 +120,8 @@ or pre-extracted text in `data/pdfs/<arxiv_id>.txt`.
 
 | Paper | Domain | Full Text |
 |-------|--------|-----------|
-| 2006.06138 — Distribution-Free Risk-Controlling Prediction Sets | Conformal prediction | Abstract only |
-| 2602.04770 — Conformal Prediction with Learned Features | Conformal prediction | Abstract only |
+| 2101.02703 — Distribution-Free Risk-Controlling Prediction Sets | Conformal prediction | Full PDF |
+| phantom-gui-barber-2025 — Conformal Prediction with Learned Features | Conformal prediction | Abstract only (no arxiv match) |
 | 2103.04984 — Conformal Inference of Counterfactuals and ITEs | Causal inference | Full PDF |
 
 ## Development Roadmap
