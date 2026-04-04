@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-IMPL_ID = "staged_reconstruct_v0_1_0"
+IMPL_ID = "staged_reconstruct_v0_3_1"
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -309,6 +309,7 @@ def dispatch_paper(
     output_dir: Path,
     paper_metadata: dict | None = None,
     conditions: list[str] | None = None,
+    evaluate: bool = False,
 ) -> dict:
     """Run all reconstruction modes for a single paper under each condition.
 
@@ -320,6 +321,7 @@ def dispatch_paper(
             ["with_refs", "no_refs"]. Each condition gets its own subfolder.
             - "with_refs": student receives hint + reference texts
             - "no_refs":   student receives hint only (baseline)
+        evaluate: If True, teacher evaluates each student output after generation.
 
     Returns a summary dict with paths to all outputs.
     """
@@ -336,11 +338,13 @@ def dispatch_paper(
     print(f"\n{'='*60}")
     print(f"Paper: {paper_id} ({paper_url})")
     print(f"Conditions: {', '.join(conditions)}")
+    print(f"Evaluate: {evaluate}")
     print(f"{'='*60}")
 
     # Fetch paper text for teacher — try PDF first, fall back to embedded abstract
     print(f"  Fetching paper text...")
     paper_text = extract_text_from_pdf(paper_url, max_chars=60_000)
+    text_source = "pdf"
     if not paper_text and paper_metadata:
         title = paper_metadata.get("title", "")
         abstract = paper_metadata.get("abstract", "")
@@ -353,10 +357,14 @@ def dispatch_paper(
             f"Abstract:\n{abstract}\n\n"
             f"[Note: Full text unavailable — teacher is working from abstract only.]"
         )
+        text_source = "abstract_fallback"
         print(f"  Using embedded abstract ({len(abstract)} chars) as fallback.")
     elif not paper_text:
+        text_source = "none"
         print(f"  WARNING: No paper text available for {paper_url}")
         print(f"  Teacher will work with limited context.")
+    else:
+        print(f"  Loaded {len(paper_text):,} chars from PDF.")
 
     # Teacher pass (shared across all conditions and modes for this paper)
     teacher_audit = AuditLog(
@@ -365,7 +373,8 @@ def dispatch_paper(
         reconstruction_type="teacher_extract",
         student_model=student_model,
         teacher_model=teacher_model,
-        config={"modes": modes, "conditions": conditions},
+        config={"modes": modes, "conditions": conditions,
+                "text_source": text_source},
     )
     hint = run_teacher(client, teacher_model, paper_text, refs, teacher_audit)
     teacher_audit.mark_finished()
@@ -382,7 +391,8 @@ def dispatch_paper(
     refs_text_with = prepare_refs_text(refs)
     refs_text_none = "No references provided. Rely on your own knowledge of the field."
 
-    results = {"paper_id": paper_id, "paper_url": paper_url, "conditions": {}}
+    results = {"paper_id": paper_id, "paper_url": paper_url,
+               "text_source": text_source, "conditions": {}}
 
     for condition in conditions:
         refs_text = refs_text_with if condition == "with_refs" else refs_text_none
@@ -425,7 +435,7 @@ def dispatch_paper(
                 )
                 student_audit.save(mode_dir / "audit.json")
 
-                cond_results[mode] = {
+                mode_result = {
                     "status": "success",
                     "output_chars": len(output),
                     "output_path": str(mode_dir / "output.md"),
@@ -433,6 +443,34 @@ def dispatch_paper(
                     "output_tokens": student_audit.total_output_tokens(),
                     "duration_s": student_audit.total_duration(),
                 }
+
+                # Teacher evaluation
+                if evaluate and paper_text:
+                    from infra.evaluate import evaluate_reconstruction
+                    eval_audit = AuditLog(
+                        paper_id=paper_id,
+                        paper_url=paper_url,
+                        reconstruction_type=f"eval/{condition}/{mode}",
+                        student_model=student_model,
+                        teacher_model=teacher_model,
+                        config={"condition": condition},
+                    )
+                    print(f"  [eval] Scoring {condition}/{mode}...")
+                    eval_result = evaluate_reconstruction(
+                        client, teacher_model, paper_text, output,
+                        mode, condition, eval_audit,
+                    )
+                    eval_audit.mark_finished()
+                    eval_audit.save(mode_dir / "eval_audit.json")
+                    (mode_dir / "eval.json").write_text(
+                        json.dumps(eval_result, indent=2, default=str),
+                        encoding="utf-8",
+                    )
+                    mode_result["eval"] = eval_result
+                    score = eval_result.get("composite_score", "?")
+                    print(f"  [eval] Score: {score}")
+
+                cond_results[mode] = mode_result
 
             except Exception as exc:
                 student_audit.mark_finished()
@@ -458,7 +496,7 @@ def dispatch_paper(
 
 def write_dispatch_summary(results: list[dict], output_dir: Path,
                            student_model: str, teacher_model: str) -> None:
-    """Write a human-readable dispatch summary."""
+    """Write a human-readable dispatch summary with evaluation scores and comparison."""
     lines = [
         f"# Reconstruction Dispatch Summary",
         f"",
@@ -466,29 +504,79 @@ def write_dispatch_summary(results: list[dict], output_dir: Path,
         f"**Student model:** {student_model}  ",
         f"**Teacher model:** {teacher_model}  ",
         f"**Papers:** {len(results)}  ",
+        f"**Version:** {IMPL_ID}  ",
         f"",
     ]
 
+    has_eval = any(
+        info.get("eval") is not None
+        for r in results
+        for cond in r.get("conditions", {}).values()
+        for info in cond.values()
+    )
+
     for r in results:
         lines.append(f"## Paper: {r['paper_id']}")
-        lines.append(f"URL: {r['paper_url']}")
+        lines.append(f"URL: {r['paper_url']}  ")
+        lines.append(f"Text source: {r.get('text_source', 'unknown')}")
         lines.append("")
 
         for condition, modes in r.get("conditions", {}).items():
             lines.append(f"### Condition: `{condition}`")
             lines.append("")
-            lines.append("| Mode | Status | Chars | Tokens (in/out) | Time |")
-            lines.append("|------|--------|-------|-----------------|------|")
+            if has_eval:
+                lines.append("| Mode | Status | Chars | Tokens (in/out) | Time | Score |")
+                lines.append("|------|--------|-------|-----------------|------|-------|")
+            else:
+                lines.append("| Mode | Status | Chars | Tokens (in/out) | Time |")
+                lines.append("|------|--------|-------|-----------------|------|")
             for mode, info in modes.items():
                 if info["status"] == "success":
+                    score_str = ""
+                    if has_eval:
+                        ev = info.get("eval", {})
+                        score = ev.get("composite_score", "—")
+                        score_str = f" {score} |"
                     lines.append(
                         f"| {mode} | OK | {info['output_chars']:,} | "
                         f"{info['input_tokens']:,}/{info['output_tokens']:,} | "
-                        f"{info['duration_s']:.1f}s |"
+                        f"{info['duration_s']:.1f}s |{score_str}"
                     )
                 else:
-                    lines.append(f"| {mode} | ERROR | — | — | — |")
+                    err_cols = " — |" if has_eval else ""
+                    lines.append(f"| {mode} | ERROR | — | — | — |{err_cols}")
             lines.append("")
+
+        # Cross-condition comparison
+        conds = list(r.get("conditions", {}).keys())
+        if len(conds) == 2 and has_eval:
+            c1, c2 = conds
+            lines.append(f"### Comparison: `{c1}` vs `{c2}`")
+            lines.append("")
+            lines.append("| Mode | Score ({}) | Score ({}) | Delta | Ref Impact |".format(c1, c2))
+            lines.append("|------|-----------|-----------|-------|------------|")
+            for mode in r["conditions"][c1]:
+                e1 = r["conditions"][c1].get(mode, {}).get("eval", {})
+                e2 = r["conditions"][c2].get(mode, {}).get("eval", {})
+                s1 = e1.get("composite_score", 0)
+                s2 = e2.get("composite_score", 0)
+                try:
+                    delta = float(s1) - float(s2)
+                    impact = "+" if delta > 0.3 else ("−" if delta < -0.3 else "≈")
+                    lines.append(f"| {mode} | {s1} | {s2} | {delta:+.1f} | {impact} |")
+                except (TypeError, ValueError):
+                    lines.append(f"| {mode} | {s1} | {s2} | ? | ? |")
+            lines.append("")
+
+            # Novelty gap summary
+            lines.append(f"### Novelty Gap Analysis")
+            lines.append("")
+            for mode in r["conditions"][c1]:
+                ev = r["conditions"][c1].get(mode, {}).get("eval", {})
+                gap = ev.get("novelty_gap", "")
+                if gap:
+                    lines.append(f"**{mode}:** {gap}")
+                    lines.append("")
 
     (output_dir / "SUMMARY.md").write_text("\n".join(lines), encoding="utf-8")
     print(f"\nSummary written to {output_dir / 'SUMMARY.md'}")
@@ -528,6 +616,10 @@ def main() -> None:
     parser.add_argument(
         "--backend", default="auto", choices=["auto", "openai", "anthropic"],
         help="LLM backend (default: auto — tries OpenAI, falls back to Anthropic)",
+    )
+    parser.add_argument(
+        "--evaluate", action="store_true",
+        help="Run teacher evaluation scoring on each student output",
     )
     parser.add_argument(
         "--output-dir", default="reports",
@@ -584,6 +676,7 @@ def main() -> None:
     print(f"Output:  {output_dir}")
     print(f"Modes:   {', '.join(modes)}")
     print(f"Conditions: {', '.join(conditions)}")
+    print(f"Evaluate:   {args.evaluate}")
 
     # Dispatch each paper
     all_results = []
@@ -598,6 +691,7 @@ def main() -> None:
             output_dir=output_dir,
             paper_metadata=paper,
             conditions=conditions,
+            evaluate=args.evaluate,
         )
         all_results.append(result)
 

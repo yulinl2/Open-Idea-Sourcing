@@ -1,0 +1,105 @@
+[
+  {
+    "paper_id": "2103.04984",
+    "paper_url": "https://arxiv.org/abs/2103.04984",
+    "text_source": "pdf",
+    "conditions": {
+      "with_refs": {
+        "abstract": {
+          "status": "success",
+          "output_chars": 2260,
+          "output_path": "reports/run04-lei-candes-quick/2103.04984/with_refs/abstract/output.md",
+          "input_tokens": 754,
+          "output_tokens": 434,
+          "duration_s": 9.51,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 2,
+              "reference_usage": 3,
+              "writing_quality": 4,
+              "completeness": 3
+            },
+            "composite_score": 3.2,
+            "novelty_gap": "The student misses the paper's actual contribution: using conformal inference directly for counterfactual and ITE prediction intervals, not creating a new 'doubly robust conformal' method. The original paper applies weighted conformal inference to handle covariate shift and shows this naturally inherits doubly robust properties through the weighting scheme, rather than proposing a novel combination of doubly robust estimation with conformal prediction.",
+            "strongest_aspect": "Clear articulation of the problem - the need for reliable uncertainty quantification for individual treatment effects and the limitations of existing CATE-focused methods.",
+            "weakest_aspect": "Misunderstanding of the core methodology - the student invents a 'Doubly Robust Conformal Causal Inference' framework that doesn't exist in the paper, missing that the authors use standard weighted conformal inference applied to the causal setting.",
+            "brief_rationale": "While the student demonstrates good understanding of the problem and writes clearly, they fundamentally misinterpret the paper's approach, creating a hybrid method that conflates doubly robust estimation with conformal prediction rather than recognizing the elegant application of existing conformal methods to causal inference."
+          }
+        },
+        "mindmap": {
+          "status": "success",
+          "output_chars": 4038,
+          "output_path": "reports/run04-lei-candes-quick/2103.04984/with_refs/mindmap/output.md",
+          "input_tokens": 876,
+          "output_tokens": 863,
+          "duration_s": 20.23,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 3,
+              "reference_usage": 4,
+              "writing_quality": 4,
+              "completeness": 4
+            },
+            "composite_score": 3.7,
+            "novelty_gap": "The student correctly identifies the use of weighted conformal prediction for causal inference but misses the paper's specific innovation: using weighted split-CQR (conformal quantile regression) rather than general conformal prediction, and the particular way the paper handles the two distinct challenges of counterfactual inference for in-study vs out-of-study subjects. The paper's actual contribution is more nuanced than just 'combining weighted conformal with causal inference.'",
+            "strongest_aspect": "The student demonstrates excellent understanding of how weighted conformal prediction from the reference can be adapted to handle covariate shift in causal settings, correctly identifying the need for inverse propensity weighting and doubly robust properties.",
+            "weakest_aspect": "The technical depth lacks specificity about the actual algorithmic innovations - the paper uses split-CQR with specific weight functions for different inferential targets (ATE/ATT/ATC), which the student's generic 'dual conformal score' approach doesn't capture.",
+            "brief_rationale": "The student shows strong conceptual grasp of combining conformal prediction with causal inference and effectively uses the reference, but misses some of the paper's specific technical contributions and algorithmic details."
+          }
+        }
+      },
+      "no_refs": {
+        "abstract": {
+          "status": "success",
+          "output_chars": 2050,
+          "output_path": "reports/run04-lei-candes-quick/2103.04984/no_refs/abstract/output.md",
+          "input_tokens": 602,
+          "output_tokens": 388,
+          "duration_s": 9.54,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 3,
+              "reference_usage": 3,
+              "writing_quality": 4,
+              "completeness": 4
+            },
+            "composite_score": 3.5,
+            "novelty_gap": "The student missed the key insight that the paper uses weighted conformal quantile regression (CQR) specifically, not just generic conformal prediction with AIPW. The original paper's innovation is adapting Romano et al.'s CQR method to handle covariate shift via Tibshirani et al.'s weighted conformal inference, creating prediction intervals of the form [q\u0302_lo(x) - \u03b7, q\u0302_hi(x) + \u03b7] where \u03b7 is calibrated using weighted conformity scores. The student's AIPW-based approach is conceptually different.",
+            "strongest_aspect": "Clear articulation of the core problem - the need for reliable uncertainty quantification for ITE beyond point estimates, and good understanding of the finite-sample coverage guarantee motivation.",
+            "weakest_aspect": "Technical depth - the proposed DR-CTEP method with AIPW residuals is too generic and doesn't capture the specific weighted split-CQR algorithm that is central to the original paper's contribution.",
+            "brief_rationale": "The student demonstrates solid understanding of the ITE uncertainty quantification problem but proposes a different technical approach than the original paper's weighted conformal quantile regression method."
+          }
+        },
+        "mindmap": {
+          "status": "success",
+          "output_chars": 4881,
+          "output_path": "reports/run04-lei-candes-quick/2103.04984/no_refs/mindmap/output.md",
+          "input_tokens": 724,
+          "output_tokens": 1001,
+          "duration_s": 22.82,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 2,
+              "reference_usage": 3,
+              "writing_quality": 4,
+              "completeness": 4
+            },
+            "composite_score": 3.3,
+            "novelty_gap": "The student proposes creating 'pseudo-outcomes' through doubly robust imputation and then applying conformal prediction, but the actual paper directly applies weighted conformal inference to the observed data without imputation. The paper's key insight is that counterfactual inference reduces to a covariate shift problem that can be handled by weighted conformal prediction, not that we need to impute missing outcomes first.",
+            "strongest_aspect": "Clear problem understanding and well-structured mindmap that correctly identifies the core challenges of uncertainty quantification for individual treatment effects and the need for finite-sample guarantees.",
+            "weakest_aspect": "Misalignment with the paper's actual approach - the student invents a more complex method involving pseudo-outcome imputation that isn't present in the original work, missing the elegance of directly applying weighted conformal to handle the covariate shift.",
+            "brief_rationale": "The student demonstrates good grasp of the problem and relevant concepts but proposes a fundamentally different solution than the paper's elegant weighted conformal approach."
+          }
+        }
+      }
+    }
+  }
+]

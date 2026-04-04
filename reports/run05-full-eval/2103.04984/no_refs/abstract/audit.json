@@ -1,0 +1,29 @@
+{
+  "paper_id": "2103.04984",
+  "paper_url": "https://arxiv.org/abs/2103.04984",
+  "reconstruction_type": "no_refs/abstract",
+  "student_model": "claude-sonnet-4-20250514",
+  "teacher_model": "claude-opus-4-20250514",
+  "start_time": "2026-04-04T07:02:13.956418+00:00",
+  "finish_time": "2026-04-04T07:02:23.913078+00:00",
+  "steps": [
+    {
+      "step_name": "student_abstract",
+      "model": "claude-sonnet-4-20250514",
+      "system_prompt": "You are a researcher tasked with writing an abstract for a NEW paper that\naddresses the problem described below. You have access to the reference papers\nlisted, but you do NOT have access to the actual paper that solved this problem.\n\n## Problem context\n\nIn causal inference, researchers need to estimate not just average treatment effects (ATE) but individual treatment effects (ITE) to support personalized decision-making. The fundamental challenge is that for any individual, only one potential outcome is observed (either treated or control), making the other counterfactual. Existing methods that estimate conditional average treatment effects (CATE) using machine learning often fail to provide reliable uncertainty quantification - their confidence/prediction intervals frequently have poor coverage in finite samples. This is problematic for high-stakes decisions in medicine, policy, and other domains where understanding risk is crucial. The problem is compounded by two distinct inferential tasks: (1) constructing intervals for subjects in the study where one potential outcome is observed, and (2) constructing intervals for new subjects where both potential outcomes are missing. Additionally, there may be covariate shifts between study and target populations.\n\n## Evaluation criteria\n\nA good solution should provide prediction intervals with guaranteed marginal coverage P(Y \u2208 C(X)) \u2265 1-\u03b1 in finite samples, ideally without strong modeling assumptions. For randomized experiments, coverage should hold exactly. For observational studies, the method should be robust to misspecification of either the propensity score or outcome models (doubly robust property). The intervals should maintain coverage even when machine learning methods are used for nuisance parameter estimation. Coverage should hold for both within-study counterfactual inference and out-of-study generalization. The method should handle different inferential targets (ATE, ATT, ATC) and covariate shifts between populations.\n\n## Your task\n\nWrite a complete research paper abstract (150\u2013300 words) that:\n\n1. Motivates the problem and its importance\n2. States the gap in existing work (based on the references you can see)\n3. Proposes a concrete approach (your own invention \u2014 be specific!)\n4. Summarizes expected contributions or properties of the approach\n\nWrite as if this is YOUR paper. Be technically precise. Use the references to\nground your understanding of the field, but the approach must be your own\nsynthesis.\n\nDo NOT fabricate specific experimental numbers. Focus on the conceptual\ncontribution.\n\n## References\n\nNo references provided. Rely on your own knowledge of the field.\n",
+      "user_prompt": "Begin your reconstruction now.",
+      "response": "**Conformal Prediction for Individual Treatment Effects with Doubly Robust Coverage Guarantees**\n\nPersonalized treatment decisions require reliable estimates of individual treatment effects (ITEs) with valid uncertainty quantification. While machine learning methods excel at estimating conditional average treatment effects (CATE), they typically provide poorly calibrated confidence intervals that fail to achieve nominal coverage in finite samples. This limitation is particularly concerning in high-stakes applications like precision medicine, where understanding the uncertainty around treatment benefit is crucial for safe decision-making.\n\nWe propose **Doubly Robust Conformal Treatment Effects (DR-CTE)**, a novel framework that combines conformal prediction with doubly robust estimation to provide finite-sample marginal coverage guarantees for individual treatment effect intervals. Our approach constructs separate conformal predictors for treated and control potential outcomes using augmented inverse propensity weighting (AIPW) residuals as conformity scores. The key innovation is a cross-fitted procedure that ensures coverage holds even when both propensity score and outcome models are misspecified, as long as one is correctly specified.\n\nFor within-study subjects, we provide counterfactual intervals for the unobserved potential outcome that achieve exact 1-\u03b1 coverage in randomized trials and maintain doubly robust coverage in observational studies. For out-of-study prediction, we extend the framework using covariate shift correction via importance weighting of conformity scores, enabling valid inference on new populations with different covariate distributions.\n\nOur method provides the first finite-sample coverage guarantees for ITE prediction that are simultaneously model-agnostic, doubly robust, and applicable to both experimental and observational data. This addresses a critical gap between the flexibility of modern machine learning and the reliability requirements of causal inference applications.",
+      "input_tokens": 555,
+      "output_tokens": 380,
+      "duration_seconds": 9.96,
+      "timestamp": "2026-04-04T07:02:23.913028+00:00",
+      "metadata": {
+        "response_id": "msg_0195N4DN5MdJGB6TTUWcsuHM",
+        "backend": "anthropic"
+      }
+    }
+  ],
+  "config": {
+    "condition": "no_refs"
+  }
+}

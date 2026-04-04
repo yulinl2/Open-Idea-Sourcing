@@ -1,0 +1,29 @@
+{
+  "paper_id": "2602.04770",
+  "paper_url": "https://arxiv.org/abs/2602.04770",
+  "reconstruction_type": "no_refs/abstract",
+  "student_model": "claude-sonnet-4-20250514",
+  "teacher_model": "claude-opus-4-20250514",
+  "start_time": "2026-04-04T06:48:06.268006+00:00",
+  "finish_time": "2026-04-04T06:48:15.252260+00:00",
+  "steps": [
+    {
+      "step_name": "student_abstract",
+      "model": "claude-sonnet-4-20250514",
+      "system_prompt": "You are a researcher tasked with writing an abstract for a NEW paper that\naddresses the problem described below. You have access to the reference papers\nlisted, but you do NOT have access to the actual paper that solved this problem.\n\n## Problem context\n\nIn many prediction tasks, we need not just point estimates but prediction intervals that capture uncertainty. The key challenge is constructing intervals that achieve valid coverage (contain the true value with specified probability) while being as short as possible. Conformal prediction offers a framework for achieving finite-sample marginal coverage guarantees, but the efficiency of these intervals depends critically on the choice of score function used to measure conformity. Current approaches typically use fixed score functions (e.g., absolute residuals) that may not be optimal for the specific data distribution at hand. The fundamental question is: can we learn better score functions from data while still maintaining the finite-sample coverage guarantees that make conformal prediction attractive? This requires balancing two competing objectives: optimizing for shorter intervals while ensuring the validity guarantee is preserved regardless of how well the learning procedure performs.\n\n## Evaluation criteria\n\nA successful solution must satisfy two critical requirements: (1) Finite-sample marginal coverage - the prediction intervals must contain the true value with at least the specified probability (e.g., 90%) regardless of the sample size or data distribution, and this guarantee must hold even if any learning component fails or performs poorly. (2) Interval efficiency - among all methods satisfying the coverage guarantee, we want intervals that are as short as possible on average. The method should be evaluated on both synthetic data (where optimal intervals may be known) and real datasets across different domains. Key metrics include empirical coverage rates, average interval length, and comparison to standard conformal methods using fixed score functions.\n\n## Your task\n\nWrite a complete research paper abstract (150\u2013300 words) that:\n\n1. Motivates the problem and its importance\n2. States the gap in existing work (based on the references you can see)\n3. Proposes a concrete approach (your own invention \u2014 be specific!)\n4. Summarizes expected contributions or properties of the approach\n\nWrite as if this is YOUR paper. Be technically precise. Use the references to\nground your understanding of the field, but the approach must be your own\nsynthesis.\n\nDo NOT fabricate specific experimental numbers. Focus on the conceptual\ncontribution.\n\n## References\n\nNo references provided. Rely on your own knowledge of the field.\n",
+      "user_prompt": "Begin your reconstruction now.",
+      "response": "**Learning Adaptive Score Functions for Efficient Conformal Prediction**\n\nConformal prediction provides finite-sample marginal coverage guarantees for prediction intervals, making it invaluable for uncertainty quantification in high-stakes applications. However, the efficiency of conformal intervals\u2014their ability to be as narrow as possible while maintaining coverage\u2014depends critically on the choice of score function that measures how \"unusual\" a prediction is. Current methods typically employ fixed, heuristic score functions such as absolute residuals or quantile-based scores, which may be suboptimal for the underlying data distribution and can result in unnecessarily wide intervals.\n\nWe propose **Adaptive Conformal Prediction (ACP)**, a framework that learns data-driven score functions while preserving conformal prediction's finite-sample coverage guarantees. Our key insight is to formulate score function learning as a constrained optimization problem: minimize expected interval length subject to maintaining valid conformal coverage on a held-out calibration set. We introduce a neural network-based score function parameterization and develop a bilevel optimization algorithm that alternates between updating score function parameters and recomputing conformal quantiles.\n\nCrucially, our method includes a **coverage-preserving fallback mechanism**: if the learned score function fails to achieve valid coverage during calibration, we automatically revert to a provably valid baseline score function. This ensures that ACP maintains conformal prediction's finite-sample guarantees regardless of optimization performance, while potentially achieving significant efficiency gains when learning succeeds.\n\nOur approach promises to advance conformal prediction by making it both more efficient and more adaptive to data characteristics, with applications spanning regression, classification, and structured prediction tasks where tight, reliable uncertainty estimates are essential.",
+      "input_tokens": 532,
+      "output_tokens": 363,
+      "duration_seconds": 8.98,
+      "timestamp": "2026-04-04T06:48:15.252219+00:00",
+      "metadata": {
+        "response_id": "msg_01JDeis2ggDkbR6X42rgq9wG",
+        "backend": "anthropic"
+      }
+    }
+  ],
+  "config": {
+    "condition": "no_refs"
+  }
+}

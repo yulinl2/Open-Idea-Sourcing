@@ -14,64 +14,94 @@ closely reconstruct a paper's methodology, that suggests the contribution was
 genuine novelty. By running 6 reconstruction modes (from abstract to full
 paper), we get a granular signal about *which aspects* of a paper are novel.
 
+Two experimental conditions enable controlled measurement:
+- **with_refs**: student receives hint + reference abstracts
+- **no_refs**: student receives hint only (baseline)
+
+The delta between conditions isolates the information contribution of references.
+
 ## Architecture
 
 ```
-Teacher (gpt-5.4)          Student (gpt-4o)
-──────────────────         ─────────────────
-Reads full paper  ──┐     Has NO paper access
-                    │     Has NO web search
-                    ▼     Has NO tools
-            Problem hint
-            (no solution   ───► Reconstructs from:
-             leakage)           - Problem hint
-                                - Reference abstracts
-                                ─────────────────────
-                                6 reconstruction modes:
-                                1. Abstract
-                                2. Idea mindmap
-                                3. Problem formulation
-                                4. Problem + methodology
-                                5. Full paper (guided)
-                                6. Full paper (freestyle)
+Teacher (gpt-5.4 / claude-opus)          Student (gpt-4o / claude-sonnet)
+──────────────────────────────           ────────────────────────────────
+Reads full paper  ──┐                    Has NO paper access
+Scores outputs   ──┐│                    Has NO web search
+                   ││                    Has NO tools
+                   ▼▼
+           Problem hint
+           (no solution   ───► Reconstructs from:
+            leakage)           - Problem hint
+                               - Reference abstracts (or none)
+                               ─────────────────────
+                               6 reconstruction modes:
+                               1. Abstract
+           Evaluation ◄────    2. Idea mindmap
+           scores (1-5)        3. Problem formulation
+           + novelty gap       4. Problem + methodology
+                               5. Full paper (guided skeleton)
+                               6. Full paper (freestyle)
 ```
 
 ## Output Structure
 
 ```
 reports/
-  2026-04-04T12-00-00Z/          # timestamped dispatch
-    SUMMARY.md                    # human-readable summary table
-    results.json                  # machine-readable results
-    2006.06138/                   # paper ID
+  <timestamp>/                         # timestamped dispatch
+    SUMMARY.md                         # summary with scores + comparison
+    results.json                       # machine-readable results
+    <paper_id>/
       _teacher/
-        hint.json                 # teacher's problem-context extraction
-        audit.json                # full LLM call audit trail
-      abstract/
-        output.md                 # student reconstruction
-        audit.json                # full audit trail
-      mindmap/
-        output.md
-        audit.json
-      ...
-    2602.04770/
-      ...
+        hint.json                      # teacher's problem-context extraction
+        audit.json                     # full LLM call audit trail
+      with_refs/                       # condition: student has references
+        abstract/
+          output.md                    # student reconstruction
+          audit.json                   # full audit trail
+          eval.json                    # teacher evaluation scores
+          eval_audit.json              # evaluation audit trail
+        mindmap/
+        problem/
+        problem_method/
+        full_guided/
+        full_freestyle/
+      no_refs/                         # condition: baseline without refs
+        abstract/
+        ...
 ```
 
 ## Usage
 
 ```bash
-# Run all modes on all test papers
-python agent.py
+# Run all modes on all test papers with evaluation
+python agent.py --evaluate
 
 # Single paper, specific modes
 python agent.py --paper-url https://arxiv.org/abs/2006.06138 --modes abstract mindmap
 
 # Override models
 python agent.py --student-model gpt-4o --teacher-model gpt-5.4
+
+# Choose backend: auto (default), openai, anthropic
+python agent.py --backend anthropic --evaluate
+
+# Specific conditions only
+python agent.py --conditions with_refs
 ```
 
-Requires `OPENAI_API_KEY` environment variable.
+Requires `OPENAI_API_KEY` or Anthropic auth (auto-detected).
+
+## Paper Text Extraction
+
+Resolution priority for arxiv papers:
+1. `data/pdfs/<id>.txt` — pre-extracted text (highest quality)
+2. `data/pdfs/<id>.pdf` — local PDF + pymupdf extraction
+3. ar5iv HTML — preserves LaTeX math (when network available)
+4. PDF download — last resort
+5. Embedded abstract from `test_papers.ndjson` — minimal fallback
+
+To add a paper's full text, place the PDF in `data/pdfs/<arxiv_id>.pdf`
+or pre-extracted text in `data/pdfs/<arxiv_id>.txt`.
 
 ## Design Decisions
 
@@ -83,11 +113,25 @@ Requires `OPENAI_API_KEY` environment variable.
   renders in most viewers. Can be upgraded to PDF later with generic tooling.
 - **Audit-first**: every LLM call is recorded with full prompts, responses,
   token counts, and timing for scientific reproducibility.
+- **Dual backend**: supports both OpenAI (gpt-4o/gpt-5.4) and Anthropic
+  (claude-sonnet/claude-opus) with auto-detection.
+
+## Test Papers
+
+| Paper | Domain | Full Text |
+|-------|--------|-----------|
+| 2006.06138 — Distribution-Free Risk-Controlling Prediction Sets | Conformal prediction | Abstract only |
+| 2602.04770 — Conformal Prediction with Learned Features | Conformal prediction | Abstract only |
+| 2103.04984 — Conformal Inference of Counterfactuals and ITEs | Causal inference | Full PDF |
 
 ## Development Roadmap
 
-1. **v0.1** (current): One-off generation, 6 modes, full audit trail
-2. **v0.2**: Teacher evaluation of reconstruction quality (scoring rubric)
-3. **v0.3**: Iterative teacher-student game with feedback loops
-4. **v0.4**: Loop termination criteria (convergence detection, max rounds)
-5. **v0.5**: Cross-paper comparison and novelty ranking
+1. **v0.1**: One-off generation, 6 modes, full audit trail
+2. **v0.2**: Dual backend, with_refs/no_refs conditions
+3. **v0.3**: Teacher evaluation scoring, cross-condition comparison,
+   pymupdf + arxiv HTML extraction, 3rd test paper
+4. **v0.3.1** (current): Full 3-paper evaluation run with novelty gap analysis,
+   cached PDF text extraction for Lei-Candès paper
+5. **v0.4**: Iterative teacher-student game with feedback loops
+6. **v0.5**: Loop termination criteria (convergence detection, max rounds)
+7. **v0.6**: Cross-paper comparison and novelty ranking

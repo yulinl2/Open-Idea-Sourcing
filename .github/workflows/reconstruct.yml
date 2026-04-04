@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent-staged-reconstruct
+      - claude/agent-staged-reconstruct-*
   workflow_dispatch:
     inputs:
       paper_url:
@@ -22,6 +23,15 @@ on:
         description: "Teacher model"
         required: false
         default: "gpt-5.4"
+      evaluate:
+        description: "Run teacher evaluation scoring"
+        type: boolean
+        required: false
+        default: true
+      conditions:
+        description: "Conditions (comma-separated: with_refs,no_refs)"
+        required: false
+        default: "with_refs,no_refs"
 
 concurrency:
   group: "staged-reconstruct"
@@ -91,6 +101,13 @@ jobs:
           fi
           ARGS="$ARGS --student-model ${{ inputs.student_model }}"
           ARGS="$ARGS --teacher-model ${{ inputs.teacher_model }}"
+          if [ "${{ inputs.evaluate }}" = "true" ]; then
+            ARGS="$ARGS --evaluate"
+          fi
+          if [ -n "${{ inputs.conditions }}" ]; then
+            CONDITIONS=$(echo "${{ inputs.conditions }}" | tr ',' ' ')
+            ARGS="$ARGS --conditions $CONDITIONS"
+          fi
 
           eval python agent.py $ARGS
 

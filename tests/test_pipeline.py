@@ -418,8 +418,60 @@ class TestDispatchMocked:
 # ---------------------------------------------------------------------------
 
 
+class TestEvaluation:
+    def test_parse_eval_json(self):
+        from infra.evaluate import _parse_eval
+        raw = """Here is my evaluation:
+```json
+{
+  "scores": {"problem_understanding": 4, "technical_depth": 3},
+  "composite_score": 3.5,
+  "novelty_gap": "Missed the key insight.",
+  "strongest_aspect": "Good writing.",
+  "weakest_aspect": "Wrong method."
+}
+```"""
+        result = _parse_eval(raw)
+        assert result["composite_score"] == 3.5
+        assert "Missed" in result["novelty_gap"]
+
+    def test_parse_eval_fallback(self):
+        from infra.evaluate import _parse_eval
+        result = _parse_eval("This is not JSON at all.")
+        assert "parse_error" in result
+
+    def test_evaluate_importable(self):
+        from infra.evaluate import evaluate_reconstruction  # noqa: F401
+
+
+class TestPdfUtils:
+    def test_local_pdf_cache_lookup(self):
+        """PDF cache finds locally stored PDFs by arxiv ID."""
+        from infra.pdf_utils import _resolve_source, _PDF_CACHE
+        # If the 2103.04984 PDF is in the cache, it should be found
+        cached = _PDF_CACHE / "2103.04984.pdf"
+        if cached.exists():
+            path, tmp = _resolve_source("https://arxiv.org/abs/2103.04984")
+            assert path == cached
+            assert tmp is None
+
+    def test_extract_arxiv_id(self):
+        from infra.pdf_utils import _extract_arxiv_id
+        assert _extract_arxiv_id("https://arxiv.org/abs/2006.06138") == "2006.06138"
+        assert _extract_arxiv_id("https://arxiv.org/pdf/2602.04770") == "2602.04770"
+        assert _extract_arxiv_id("https://example.com/other") is None
+
+    def test_html_to_text(self):
+        from infra.pdf_utils import _html_to_text
+        html = '<p>We define <math alttext="f(x)">...</math> as follows.</p>'
+        text = _html_to_text(html, 1000)
+        assert "$f(x)$" in text
+        assert "We define" in text
+
+
 class TestInfraImports:
     def test_all_importable(self):
         from infra import extract_text_from_pdf, AuditLog, StepRecord  # noqa: F401
+        from infra import evaluate_reconstruction  # noqa: F401
         from infra.llm import llm_call  # noqa: F401
         from infra.pdf_utils import extract_text_from_pdf  # noqa: F401

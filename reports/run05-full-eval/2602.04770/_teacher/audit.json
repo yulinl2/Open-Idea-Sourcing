@@ -1,0 +1,41 @@
+{
+  "paper_id": "2602.04770",
+  "paper_url": "https://arxiv.org/abs/2602.04770",
+  "reconstruction_type": "teacher_extract",
+  "student_model": "claude-sonnet-4-20250514",
+  "teacher_model": "claude-opus-4-20250514",
+  "start_time": "2026-04-04T06:41:05.020827+00:00",
+  "finish_time": "2026-04-04T06:41:21.382346+00:00",
+  "steps": [
+    {
+      "step_name": "teacher_extract",
+      "model": "claude-opus-4-20250514",
+      "system_prompt": "You are the Teacher in a scientific reconstruction experiment.\n\nYou have access to the FULL TEXT of a research paper. Your job is to prepare\ncontext for a Student model that will attempt to reconstruct various parts of\nthis paper from scratch \u2014 given ONLY the paper's cited references (not the paper\nitself).\n\n## Your task\n\nRead the paper carefully and extract:\n\n1. **problem_context**: A precise description of the research problem, the gap\n   in existing work, and the motivation \u2014 written as a researcher would frame it\n   BEFORE having a solution. Do NOT reveal the approach, method, or results.\n\n2. **reference_guidance**: For each cited reference that the Student will have\n   access to, briefly note what is relevant about it for this problem. This\n   helps the Student focus on the right parts of each reference. Do NOT reveal\n   how the paper under review uses or combines these references.\n\n3. **evaluation_criteria**: What would a good solution look like? What\n   properties must it satisfy? What metrics or guarantees matter?\n\n4. **domain_keywords**: Key technical terms the Student should understand.\n\n## Critical rules\n\n- You must NOT reveal the paper's approach, algorithm, architecture, or results.\n- You must NOT hint at specific design choices the authors made.\n- Frame everything as the PROBLEM, never the SOLUTION.\n- The Student should feel like a researcher reading a call-for-papers, not\n  a student reading a textbook with the answer on the next page.\n\n## Output format\n\nRespond with a JSON object:\n```json\n{\n  \"problem_context\": \"...\",\n  \"reference_guidance\": {\n    \"<ref_id_or_title>\": \"why this reference is relevant to the problem\"\n  },\n  \"evaluation_criteria\": \"...\",\n  \"domain_keywords\": [\"...\", \"...\"]\n}\n```\n",
+      "user_prompt": "## Paper full text (first 40k chars)\n\nTitle: Conformal Prediction with Learned Features\nAuthors: Yu Gui, Rina Foygel Barber\nYear: 2025\n\nAbstract:\nWe study the problem of constructing prediction intervals that attain valid coverage in finite samples while being as short as possible. Conformal prediction provides a general methodology for achieving marginal coverage, but the efficiency of the resulting intervals depends critically on the quality of the underlying score function. We propose a method for learning the score function by optimizing a differentiable approximation to the interval length, while maintaining the finite-sample coverage guarantee through a conformal calibration step. Our approach jointly trains a regression model and a score function by minimizing a soft surrogate for the prediction interval length. We prove that the resulting prediction intervals maintain finite-sample marginal coverage regardless of the quality of the learned score function, and we establish excess length bounds showing consistency under standard regularity conditions. Experiments on real and synthetic datasets show that our approach produces substantially shorter intervals than existing methods.\n\n[Note: Full text unavailable \u2014 teacher is working from abstract only.]\n\n## References the student will have access to\n\n- arxiv-1904.06019: Conformal Prediction Under Covariate Shift (2020)",
+      "response": "```json\n{\n  \"problem_context\": \"In many prediction tasks, we need not just point estimates but prediction intervals that capture uncertainty. The key challenge is constructing intervals that achieve valid coverage (contain the true value with specified probability) while being as short as possible. Conformal prediction offers a framework for achieving finite-sample marginal coverage guarantees, but the efficiency of these intervals depends critically on the choice of score function used to measure conformity. Current approaches typically use fixed score functions (e.g., absolute residuals) that may not be optimal for the specific data distribution at hand. The fundamental question is: can we learn better score functions from data while still maintaining the finite-sample coverage guarantees that make conformal prediction attractive? This requires balancing two competing objectives: optimizing for shorter intervals while ensuring the validity guarantee is preserved regardless of how well the learning procedure performs.\",\n  \"reference_guidance\": {\n    \"arxiv-1904.06019\": \"This paper addresses conformal prediction when the test distribution differs from the training distribution (covariate shift). Understanding how conformal methods handle distribution shift is relevant because any learned score function must maintain validity even when the learning process may not perfectly capture the data distribution. The paper's treatment of coverage guarantees under model misspecification provides important context for thinking about robustness.\"\n  },\n  \"evaluation_criteria\": \"A successful solution must satisfy two critical requirements: (1) Finite-sample marginal coverage - the prediction intervals must contain the true value with at least the specified probability (e.g., 90%) regardless of the sample size or data distribution, and this guarantee must hold even if any learning component fails or performs poorly. (2) Interval efficiency - among all methods satisfying the coverage guarantee, we want intervals that are as short as possible on average. The method should be evaluated on both synthetic data (where optimal intervals may be known) and real datasets across different domains. Key metrics include empirical coverage rates, average interval length, and comparison to standard conformal methods using fixed score functions.\",\n  \"domain_keywords\": [\"conformal prediction\", \"prediction intervals\", \"coverage guarantee\", \"finite-sample validity\", \"score function\", \"nonconformity measure\", \"marginal coverage\", \"interval length\", \"uncertainty quantification\", \"distribution-free inference\"]\n}\n```",
+      "input_tokens": 698,
+      "output_tokens": 496,
+      "duration_seconds": 16.36,
+      "timestamp": "2026-04-04T06:41:21.382254+00:00",
+      "metadata": {
+        "response_id": "msg_01N3c5Bmcaz95wPhx2VywWeE",
+        "backend": "anthropic"
+      }
+    }
+  ],
+  "config": {
+    "modes": [
+      "abstract",
+      "mindmap",
+      "problem",
+      "problem_method",
+      "full_guided",
+      "full_freestyle"
+    ],
+    "conditions": [
+      "with_refs",
+      "no_refs"
+    ],
+    "text_source": "abstract_fallback"
+  }
+}
