@@ -1,0 +1,40 @@
+{
+  "closely_related": {
+    "perplexity": 1.000001350649281,
+    "avg_logprob": -1.3506483689466662e-06,
+    "n_tokens": 31,
+    "n_chunks": 1,
+    "error": ""
+  },
+  "somewhat_related": {
+    "perplexity": 1.0000026912096507,
+    "avg_logprob": -2.691206029409489e-06,
+    "n_tokens": 31,
+    "n_chunks": 1,
+    "error": ""
+  },
+  "unrelated": {
+    "perplexity": 1.000002099035123,
+    "avg_logprob": -2.099032920180053e-06,
+    "n_tokens": 31,
+    "n_chunks": 1,
+    "error": ""
+  },
+  "self": {
+    "perplexity": 1.0000014208197217,
+    "avg_logprob": -1.4208187122317066e-06,
+    "n_tokens": 31,
+    "n_chunks": 1,
+    "error": ""
+  },
+  "ordering_check": {
+    "self < closely_related": false,
+    "closely_related < somewhat_related": true,
+    "somewhat_related < unrelated": false,
+    "full ordering (self < closely < somewhat < unrelated)": false
+  },
+  "all_finite": true,
+  "pass": true,
+  "ordering_sensible": false,
+  "timestamp": "2026-04-04T04:38:13.612803+00:00"
+}

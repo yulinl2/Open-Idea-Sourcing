@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import re
+from datetime import datetime, timezone
 import sys
 import tempfile
 import urllib.request
@@ -33,7 +34,7 @@ def _get_openai_client():
     """Create an OpenAI client from environment."""
     import openai
 
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not api_key:
         print(
             "ERROR: OPENAI_API_KEY not set. "
@@ -217,9 +218,10 @@ def run_single_paper(
         n_extracted=n_with_text,
     )
 
-    # Determine output filename
+    # Determine output filename (with timestamp to preserve all versions)
     slug = arxiv_id or re.sub(r"[^\w]", "_", target["title"][:40])
-    report_path = save_report(report, output_dir, f"perplexity_{slug}.md")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    report_path = save_report(report, output_dir, f"perplexity_{slug}_{timestamp}.md")
     print(f"\nReport saved: {report_path}")
 
     return report_path
@@ -241,8 +243,8 @@ def main() -> None:
     parser.add_argument(
         "--models",
         nargs="+",
-        default=["gpt-5.4", "gpt-4o"],
-        help="OpenAI models to evaluate (default: gpt-5.4 gpt-4o)",
+        default=["gpt-4o"],
+        help="OpenAI models to evaluate (default: gpt-4o)",
     )
     parser.add_argument(
         "--output",

@@ -41,6 +41,7 @@ class CitedPaper:
     arxiv_id: str = ""
     url: str = ""
     full_text: str = ""  # populated later by text extractor
+    content_source: str = ""  # "abstract", "tldr", "full_text_llm", "full_text_raw"
 
     @property
     def has_content(self) -> bool:
@@ -110,14 +111,16 @@ def _parse_s2_paper(raw: dict) -> Optional[CitedPaper]:
         if name:
             authors.append(name)
 
+    abstract = raw.get("abstract") or ""
     return CitedPaper(
         paper_id=paper_id,
         title=raw.get("title", ""),
-        abstract=raw.get("abstract") or "",
+        abstract=abstract,
         authors=authors,
         year=raw.get("year"),
         arxiv_id=arxiv_id,
         url=raw.get("url") or "",
+        content_source="abstract" if abstract else "",
     )
 
 
@@ -184,11 +187,65 @@ def fetch_all_citations(
             break
         offset = next_offset
 
+    papers = list(results.values())
     print(
-        f"  [ref_collector] fetched {len(results)} cited references",
+        f"  [ref_collector] fetched {len(papers)} cited references",
         file=sys.stderr,
     )
-    return list(results.values())
+
+    # Back-fill abstracts from TLDR for papers that lack one
+    _backfill_tldr(papers)
+
+    return papers
+
+
+def _backfill_tldr(papers: list[CitedPaper]) -> None:
+    """Fetch TLDR summaries for papers missing abstracts."""
+    missing = [p for p in papers if not p.abstract and p.paper_id]
+    if not missing:
+        return
+
+    # Batch lookup via S2 /paper/batch endpoint (up to 500 per call)
+    batch_url = f"{_S2_BASE}/batch"
+    ids = [p.paper_id for p in missing]
+
+    for chunk_start in range(0, len(ids), 500):
+        chunk_ids = ids[chunk_start : chunk_start + 500]
+        payload = json.dumps({"ids": chunk_ids}).encode()
+        req = urllib.request.Request(
+            f"{batch_url}?fields=paperId,tldr",
+            data=payload,
+            headers={
+                "User-Agent": _USER_AGENT,
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+                results = json.loads(resp.read().decode())
+        except Exception as exc:
+            print(f"  [ref_collector] TLDR batch lookup failed: {exc}", file=sys.stderr)
+            continue
+
+        id_to_tldr = {}
+        for item in results:
+            if item and item.get("tldr"):
+                tldr_text = item["tldr"].get("text", "")
+                if tldr_text:
+                    id_to_tldr[item["paperId"]] = tldr_text
+
+        filled = 0
+        for p in missing:
+            if p.paper_id in id_to_tldr:
+                p.abstract = id_to_tldr[p.paper_id]
+                p.content_source = "tldr"
+                filled += 1
+
+        print(
+            f"  [ref_collector] TLDR backfill: {filled}/{len(chunk_ids)} papers got summaries",
+            file=sys.stderr,
+        )
 
 
 def _lookup_by_title(title: str) -> str:

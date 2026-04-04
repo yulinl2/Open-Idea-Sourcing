@@ -108,6 +108,8 @@ class PerplexityResult:
     n_chunks: int
     context_type: str  # "cited", "self", "random"
     error: str = ""
+    context_source: str = ""  # "abstract", "tldr", "full_text_llm", "full_text_raw"
+    context_tokens: int = 0  # token count of the context text used
 
 
 def _echo_one_chunk(
@@ -236,10 +238,11 @@ def compute_all_perplexities(
     """
     results: list[PerplexityResult] = []
 
-    contexts: list[tuple[str, str, str, str]] = []  # (text, id, title, type)
+    # (text, id, title, type, source)
+    contexts: list[tuple[str, str, str, str, str]] = []
 
     # Self-perplexity
-    contexts.append((target_text, "self", "Target paper (self)", "self"))
+    contexts.append((target_text, "self", "Target paper (self)", "self", "self"))
 
     # Each cited paper
     for paper in cited_papers:
@@ -249,6 +252,7 @@ def compute_all_perplexities(
                 paper.paper_id or paper.arxiv_id,
                 paper.title,
                 "cited",
+                getattr(paper, "content_source", "") or "",
             ))
 
     # Random reference
@@ -258,13 +262,16 @@ def compute_all_perplexities(
             random_ref.paper_id or random_ref.arxiv_id,
             random_ref.title,
             "random",
+            getattr(random_ref, "content_source", "") or "",
         ))
 
     total = len(contexts) * len(models)
     done = 0
 
-    for ctx_text, ctx_id, ctx_title, ctx_type in contexts:
+    for ctx_text, ctx_id, ctx_title, ctx_type, ctx_source in contexts:
         for model in models:
+            enc = _get_encoding(model)
+            ctx_tok_count = min(len(enc.encode(ctx_text)), _MAX_CONTEXT_TOKENS)
             result = estimate_perplexity(
                 context_text=ctx_text,
                 target_text=target_text,
@@ -274,6 +281,8 @@ def compute_all_perplexities(
                 context_title=ctx_title,
                 context_type=ctx_type,
             )
+            result.context_source = ctx_source
+            result.context_tokens = ctx_tok_count
             results.append(result)
             done += 1
 

@@ -295,6 +295,7 @@ def batch_extract_full_text(
             cached = _load_cached(cache_id)
             if cached:
                 paper.full_text = cached
+                paper.content_source = "full_text_llm"
                 stats["extracted_llm"] += 1
                 continue
 
@@ -304,6 +305,7 @@ def batch_extract_full_text(
                     paper.full_text = paper.abstract
                     _save_cache(cache_id, paper.abstract)
                     stats["abstract_only"] += 1
+                    # content_source already set by reference_collector
                 else:
                     stats["skipped"] += 1
                 continue
@@ -336,8 +338,10 @@ def batch_extract_full_text(
             _save_cache(cache_id, full_text)
 
             if full_text == _clean_raw_fallback(raw_text):
+                paper.content_source = "full_text_raw"
                 stats["extracted_raw"] += 1
             else:
+                paper.content_source = "full_text_llm"
                 stats["extracted_llm"] += 1
 
         done = min(batch_start + batch_size, total)
