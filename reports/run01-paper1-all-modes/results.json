@@ -1,0 +1,56 @@
+[
+  {
+    "paper_id": "2006.06138",
+    "paper_url": "https://arxiv.org/abs/2006.06138",
+    "modes": {
+      "abstract": {
+        "status": "success",
+        "output_chars": 2103,
+        "output_path": "reports/run01-paper1-all-modes/2006.06138/abstract/output.md",
+        "input_tokens": 679,
+        "output_tokens": 382,
+        "duration_s": 10.14
+      },
+      "mindmap": {
+        "status": "success",
+        "output_chars": 4216,
+        "output_path": "reports/run01-paper1-all-modes/2006.06138/mindmap/output.md",
+        "input_tokens": 801,
+        "output_tokens": 856,
+        "duration_s": 20.51
+      },
+      "problem": {
+        "status": "success",
+        "output_chars": 5712,
+        "output_path": "reports/run01-paper1-all-modes/2006.06138/problem/output.md",
+        "input_tokens": 733,
+        "output_tokens": 1842,
+        "duration_s": 31.77
+      },
+      "problem_method": {
+        "status": "success",
+        "output_chars": 8269,
+        "output_path": "reports/run01-paper1-all-modes/2006.06138/problem_method/output.md",
+        "input_tokens": 750,
+        "output_tokens": 2594,
+        "duration_s": 44.59
+      },
+      "full_guided": {
+        "status": "success",
+        "output_chars": 24288,
+        "output_path": "reports/run01-paper1-all-modes/2006.06138/full_guided/output.md",
+        "input_tokens": 881,
+        "output_tokens": 5495,
+        "duration_s": 105.75
+      },
+      "full_freestyle": {
+        "status": "success",
+        "output_chars": 17229,
+        "output_path": "reports/run01-paper1-all-modes/2006.06138/full_freestyle/output.md",
+        "input_tokens": 747,
+        "output_tokens": 4462,
+        "duration_s": 80.78
+      }
+    }
+  }
+]

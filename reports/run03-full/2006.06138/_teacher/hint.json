@@ -1,0 +1,19 @@
+{
+  "problem_context": "In many machine learning applications, algorithms must output sets of predictions rather than single predictions. Examples include multi-label classification (where an instance may belong to multiple classes), object detection (where multiple objects may be present), image segmentation (where multiple regions must be identified), and protein structure prediction (where multiple conformations may be valid). The fundamental challenge is: how can we construct these prediction sets with formal guarantees about their performance? Specifically, given any pre-trained model and any loss function of interest, we need a principled method to generate prediction sets that control the expected loss at a user-specified level. This control must hold in finite samples without making strong distributional assumptions about the data. The key difficulty is that we need this guarantee to hold for the test data, using only a finite calibration dataset, under minimal assumptions about the relationship between calibration and test data.",
+  "reference_guidance": {
+    "arxiv-1904.06019": "This paper addresses conformal prediction methods when the test distribution differs from the training distribution (covariate shift). Understanding how prediction intervals can be constructed with coverage guarantees under distributional changes is relevant because any practical method for prediction sets must handle the relationship between calibration and test data."
+  },
+  "evaluation_criteria": "A successful solution must: (1) work with any underlying predictive model without requiring retraining, (2) accommodate any user-specified loss function, (3) provide finite-sample guarantees on the expected loss, (4) make minimal assumptions about the data distribution, (5) be computationally efficient enough for practical use, (6) demonstrate effectiveness across diverse domains including computer vision and natural language processing tasks. The method should provide formal theoretical guarantees while remaining practically useful.",
+  "domain_keywords": [
+    "prediction sets",
+    "risk control",
+    "finite-sample guarantees",
+    "exchangeability",
+    "calibration",
+    "expected loss",
+    "distribution-free inference",
+    "multi-label classification",
+    "object detection",
+    "coverage guarantees"
+  ]
+}

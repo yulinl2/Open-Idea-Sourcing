@@ -1,7 +1,9 @@
 """Thin LLM call wrapper with audit recording.
 
-Supports the OpenAI Responses API (openai>=1.0). All calls are recorded
-into the AuditLog for full reproducibility.
+Supports both OpenAI Responses API and Anthropic Messages API.
+All calls are recorded into the AuditLog for full reproducibility.
+
+Backend is auto-detected from the client type.
 """
 
 from __future__ import annotations
@@ -24,27 +26,21 @@ def llm_call(
 ) -> str:
     """Make a single LLM call and record it in the audit log.
 
-    Uses the OpenAI Responses API. Returns the text output.
+    Auto-detects whether client is OpenAI or Anthropic.
     """
+    backend = _detect_backend(client)
     t0 = time.time()
-    response = client.responses.create(
-        model=model,
-        instructions=system,
-        input=user,
-        max_output_tokens=max_tokens,
-        temperature=temperature,
-    )
+
+    if backend == "anthropic":
+        text, input_tokens, output_tokens, resp_id = _call_anthropic(
+            client, model, system, user, max_tokens, temperature
+        )
+    else:
+        text, input_tokens, output_tokens, resp_id = _call_openai(
+            client, model, system, user, max_tokens, temperature
+        )
+
     duration = time.time() - t0
-
-    # Extract text from response
-    text = _extract_text(response)
-
-    # Extract token counts from usage
-    input_tokens = 0
-    output_tokens = 0
-    if hasattr(response, "usage") and response.usage:
-        input_tokens = getattr(response.usage, "input_tokens", 0) or 0
-        output_tokens = getattr(response.usage, "output_tokens", 0) or 0
 
     step = StepRecord(
         step_name=step_name,
@@ -55,18 +51,71 @@ def llm_call(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         duration_seconds=round(duration, 2),
-        metadata={"response_id": getattr(response, "id", "")},
+        metadata={"response_id": resp_id, "backend": backend},
     )
     audit.add_step(step)
     return text
 
 
-def _extract_text(response: Any) -> str:
-    """Extract text from an OpenAI Responses API response object."""
-    # Try output_text shorthand first
+def _detect_backend(client) -> str:
+    """Detect whether client is OpenAI or Anthropic."""
+    module = type(client).__module__
+    if "anthropic" in module:
+        return "anthropic"
+    return "openai"
+
+
+def _call_anthropic(
+    client, model: str, system: str, user: str,
+    max_tokens: int, temperature: float,
+) -> tuple[str, int, int, str]:
+    """Call the Anthropic Messages API."""
+    response = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        system=system,
+        messages=[{"role": "user", "content": user}],
+    )
+    text = ""
+    for block in response.content:
+        if hasattr(block, "text"):
+            text += block.text
+
+    input_tokens = getattr(response.usage, "input_tokens", 0) or 0
+    output_tokens = getattr(response.usage, "output_tokens", 0) or 0
+    resp_id = getattr(response, "id", "")
+    return text, input_tokens, output_tokens, resp_id
+
+
+def _call_openai(
+    client, model: str, system: str, user: str,
+    max_tokens: int, temperature: float,
+) -> tuple[str, int, int, str]:
+    """Call the OpenAI Responses API."""
+    response = client.responses.create(
+        model=model,
+        instructions=system,
+        input=user,
+        max_output_tokens=max_tokens,
+        temperature=temperature,
+    )
+    text = _extract_openai_text(response)
+
+    input_tokens = 0
+    output_tokens = 0
+    if hasattr(response, "usage") and response.usage:
+        input_tokens = getattr(response.usage, "input_tokens", 0) or 0
+        output_tokens = getattr(response.usage, "output_tokens", 0) or 0
+
+    resp_id = getattr(response, "id", "")
+    return text, input_tokens, output_tokens, resp_id
+
+
+def _extract_openai_text(response: Any) -> str:
+    """Extract text from an OpenAI Responses API response."""
     if hasattr(response, "output_text") and response.output_text:
         return str(response.output_text)
-    # Walk output items
     if hasattr(response, "output"):
         for item in response.output:
             if hasattr(item, "type") and item.type == "message":

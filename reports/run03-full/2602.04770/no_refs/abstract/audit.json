@@ -1,0 +1,29 @@
+{
+  "paper_id": "2602.04770",
+  "paper_url": "https://arxiv.org/abs/2602.04770",
+  "reconstruction_type": "no_refs/abstract",
+  "student_model": "claude-sonnet-4-20250514",
+  "teacher_model": "claude-opus-4-20250514",
+  "start_time": "2026-04-04T04:56:14.850321+00:00",
+  "finish_time": "2026-04-04T04:56:23.549096+00:00",
+  "steps": [
+    {
+      "step_name": "student_abstract",
+      "model": "claude-sonnet-4-20250514",
+      "system_prompt": "You are a researcher tasked with writing an abstract for a NEW paper that\naddresses the problem described below. You have access to the reference papers\nlisted, but you do NOT have access to the actual paper that solved this problem.\n\n## Problem context\n\nIn many prediction tasks, we need not just point estimates but prediction intervals that contain the true outcome with high probability. The key challenge is constructing intervals that achieve valid coverage (contain the true value with the specified probability) while being as narrow as possible. Conformal prediction offers a framework for achieving finite-sample marginal coverage guarantees, but the efficiency of these intervals depends heavily on the choice of score function used to measure prediction uncertainty. The fundamental problem is: how can we learn an optimal score function that produces the shortest possible prediction intervals while maintaining the finite-sample coverage guarantee? This requires balancing two competing objectives: maintaining statistical validity and minimizing interval width.\n\n## Evaluation criteria\n\nA good solution must satisfy two key properties: (1) Finite-sample marginal coverage - the prediction intervals must contain the true outcome with at least the specified probability (e.g., 90%) regardless of the data distribution, and this guarantee must hold in finite samples, not just asymptotically. (2) Interval efficiency - among all methods that achieve valid coverage, we want the shortest possible intervals on average. The method should also be practical, meaning it can be implemented efficiently and scales to real datasets. Theoretical guarantees about consistency (intervals becoming optimally short as sample size grows) would strengthen the solution.\n\n## Your task\n\nWrite a complete research paper abstract (150\u2013300 words) that:\n\n1. Motivates the problem and its importance\n2. States the gap in existing work (based on the references you can see)\n3. Proposes a concrete approach (your own invention \u2014 be specific!)\n4. Summarizes expected contributions or properties of the approach\n\nWrite as if this is YOUR paper. Be technically precise. Use the references to\nground your understanding of the field, but the approach must be your own\nsynthesis.\n\nDo NOT fabricate specific experimental numbers. Focus on the conceptual\ncontribution.\n\n## References\n\nNo references provided. Rely on your own knowledge of the field.\n",
+      "user_prompt": "Begin your reconstruction now.",
+      "response": "# Learning Optimal Score Functions for Efficient Conformal Prediction\n\n**Abstract**\n\nConformal prediction provides distribution-free finite-sample coverage guarantees for prediction intervals, but the efficiency of these intervals critically depends on the choice of score function used to quantify prediction uncertainty. Existing approaches either rely on heuristic score functions that may be suboptimal, or use fixed scoring rules that cannot adapt to the specific characteristics of the prediction problem. This leads to unnecessarily wide intervals that, while maintaining valid coverage, sacrifice practical utility.\n\nWe propose **Adaptive Conformal Score Learning (ACSL)**, a novel framework that jointly optimizes both the underlying predictor and the conformal score function to minimize expected interval width while preserving finite-sample marginal coverage guarantees. Our approach formulates score function learning as a constrained optimization problem where we minimize a differentiable upper bound on interval width subject to an empirical coverage constraint. We introduce a parametric score function class based on neural networks that can capture complex relationships between predictions and true uncertainty, and develop a bilevel optimization algorithm that alternates between updating the predictor and the score function parameters.\n\nTheoretically, we prove that our learned score functions maintain the finite-sample coverage property of conformal prediction while achieving asymptotic optimality in terms of interval width. Our framework is model-agnostic and can be applied to any base predictor, from linear models to deep neural networks. The method scales efficiently to high-dimensional problems and provides a principled way to incorporate domain knowledge about prediction uncertainty through the score function architecture. This work bridges the gap between the statistical rigor of conformal prediction and the practical need for efficient uncertainty quantification in modern machine learning applications.",
+      "input_tokens": 483,
+      "output_tokens": 362,
+      "duration_seconds": 8.7,
+      "timestamp": "2026-04-04T04:56:23.549051+00:00",
+      "metadata": {
+        "response_id": "msg_01Wbq5S5u8iyijwG86S895cT",
+        "backend": "anthropic"
+      }
+    }
+  ],
+  "config": {
+    "condition": "no_refs"
+  }
+}

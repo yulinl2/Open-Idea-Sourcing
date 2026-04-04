@@ -1,0 +1,18 @@
+{
+  "problem_context": "In many real-world prediction tasks, we need not just point estimates but prediction intervals that quantify uncertainty. The key challenge is constructing intervals that achieve valid coverage (contain the true value with specified probability) while being as narrow as possible. Conformal prediction offers a framework for achieving finite-sample marginal coverage guarantees, but the efficiency of these intervals depends critically on the choice of score function used to measure conformity. Current approaches typically use fixed, pre-specified score functions that may not be optimal for the data at hand. The fundamental question is: can we learn score functions from data that produce shorter prediction intervals while still maintaining the finite-sample coverage guarantees that make conformal prediction attractive?",
+  "reference_guidance": {
+    "arxiv-1904.06019": "This paper addresses conformal prediction when the test distribution differs from the training distribution (covariate shift). Understanding how conformal methods handle distribution shift is relevant because any learned score function must maintain validity even when the learning process may not perfectly capture the data distribution."
+  },
+  "evaluation_criteria": "A successful solution must satisfy two critical requirements: (1) Finite-sample marginal coverage - the prediction intervals must contain the true value with at least the specified probability for any finite sample size, regardless of the underlying distribution, and (2) Efficiency - the intervals should be as short as possible while maintaining coverage. The method should ideally provide theoretical guarantees about coverage validity and consistency of interval length. Empirical evaluation should demonstrate shorter intervals than standard conformal methods across diverse datasets.",
+  "domain_keywords": [
+    "conformal prediction",
+    "prediction intervals",
+    "finite-sample coverage",
+    "marginal coverage",
+    "score function",
+    "nonconformity score",
+    "calibration",
+    "distribution-free inference",
+    "uncertainty quantification"
+  ]
+}

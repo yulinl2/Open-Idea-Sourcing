@@ -1,0 +1,29 @@
+{
+  "paper_id": "2602.04770",
+  "paper_url": "https://arxiv.org/abs/2602.04770",
+  "reconstruction_type": "with_refs/abstract",
+  "student_model": "claude-sonnet-4-20250514",
+  "teacher_model": "claude-opus-4-20250514",
+  "start_time": "2026-04-04T04:51:31.136954+00:00",
+  "finish_time": "2026-04-04T04:51:40.783455+00:00",
+  "steps": [
+    {
+      "step_name": "student_abstract",
+      "model": "claude-sonnet-4-20250514",
+      "system_prompt": "You are a researcher tasked with writing an abstract for a NEW paper that\naddresses the problem described below. You have access to the reference papers\nlisted, but you do NOT have access to the actual paper that solved this problem.\n\n## Problem context\n\nIn many prediction tasks, we need not just point estimates but prediction intervals that contain the true outcome with high probability. The key challenge is constructing intervals that achieve valid coverage (contain the true value with the specified probability) while being as narrow as possible. Conformal prediction offers a framework for achieving finite-sample marginal coverage guarantees, but the efficiency of these intervals depends heavily on the choice of score function used to measure prediction uncertainty. The fundamental problem is: how can we learn an optimal score function that produces the shortest possible prediction intervals while maintaining the finite-sample coverage guarantee? This requires balancing two competing objectives: maintaining statistical validity and minimizing interval width.\n\n## Evaluation criteria\n\nA good solution must satisfy two key properties: (1) Finite-sample marginal coverage - the prediction intervals must contain the true outcome with at least the specified probability (e.g., 90%) regardless of the data distribution, and this guarantee must hold in finite samples, not just asymptotically. (2) Interval efficiency - among all methods that achieve valid coverage, we want the shortest possible intervals on average. The method should also be practical, meaning it can be implemented efficiently and scales to real datasets. Theoretical guarantees about consistency (intervals becoming optimally short as sample size grows) would strengthen the solution.\n\n## Your task\n\nWrite a complete research paper abstract (150\u2013300 words) that:\n\n1. Motivates the problem and its importance\n2. States the gap in existing work (based on the references you can see)\n3. Proposes a concrete approach (your own invention \u2014 be specific!)\n4. Summarizes expected contributions or properties of the approach\n\nWrite as if this is YOUR paper. Be technically precise. Use the references to\nground your understanding of the field, but the approach must be your own\nsynthesis.\n\nDo NOT fabricate specific experimental numbers. Focus on the conceptual\ncontribution.\n\n## References\n\n--- Reference: arxiv-1904.06019 ---\nTitle: Conformal Prediction Under Covariate Shift\nAuthors: Ryan J. Tibshirani, Rina Foygel Barber, Emmanuel J. Candes, Aaditya Ramdas\nYear: 2020\nVenue: NeurIPS\nAbstract: We extend conformal prediction to the setting where the test and training data are drawn from different distributions. Standard conformal prediction requires exchangeability, and so it breaks down in the presence of covariate shift. Our approach uses a weighted version of the conformal score that corrects for the distributional shift, yielding valid marginal coverage guarantees under covariate shift.\n--- End reference ---\n",
+      "user_prompt": "Begin your reconstruction now.",
+      "response": "# Learning Optimal Conformal Score Functions via Risk-Constrained Optimization\n\nConformal prediction provides finite-sample marginal coverage guarantees for prediction intervals, but the efficiency of these intervals critically depends on the choice of score function used to quantify prediction uncertainty. While existing methods typically rely on heuristic score functions such as absolute residuals or quantile-based measures, there is no principled framework for learning score functions that minimize interval width while preserving the essential coverage guarantee.\n\nWe propose a novel approach that frames optimal score function learning as a risk-constrained optimization problem. Our method, called Conformal Score Learning (CSL), jointly optimizes a parametric score function and a prediction model by minimizing expected interval width subject to an empirical coverage constraint. The key insight is to use a smooth approximation of the coverage violation that enables gradient-based optimization while maintaining theoretical guarantees. We employ a Lagrangian formulation with adaptive penalty weighting that automatically balances coverage validity against interval efficiency.\n\nOur approach extends naturally to handle covariate shift by incorporating importance weighting in both the objective and constraint, building upon recent advances in weighted conformal prediction. We establish theoretical properties showing that our learned score functions achieve asymptotic optimality\u2014converging to the shortest possible intervals among all valid conformal predictors as sample size increases. The method is computationally efficient, requiring only standard gradient-based optimization, and can be integrated with any differentiable prediction model.\n\nThe primary contributions include: (1) a principled framework for learning optimal conformal score functions, (2) finite-sample coverage guarantees with asymptotic efficiency, (3) extension to covariate shift settings, and (4) practical algorithms with theoretical backing.",
+      "input_tokens": 635,
+      "output_tokens": 368,
+      "duration_seconds": 9.65,
+      "timestamp": "2026-04-04T04:51:40.783416+00:00",
+      "metadata": {
+        "response_id": "msg_01V6gpG4WPErHXCUBNB7Dk4P",
+        "backend": "anthropic"
+      }
+    }
+  ],
+  "config": {
+    "condition": "with_refs"
+  }
+}

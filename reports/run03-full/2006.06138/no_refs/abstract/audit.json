@@ -1,0 +1,29 @@
+{
+  "paper_id": "2006.06138",
+  "paper_url": "https://arxiv.org/abs/2006.06138",
+  "reconstruction_type": "no_refs/abstract",
+  "student_model": "claude-sonnet-4-20250514",
+  "teacher_model": "claude-opus-4-20250514",
+  "start_time": "2026-04-04T04:56:03.248621+00:00",
+  "finish_time": "2026-04-04T04:56:13.800214+00:00",
+  "steps": [
+    {
+      "step_name": "student_abstract",
+      "model": "claude-sonnet-4-20250514",
+      "system_prompt": "You are a researcher tasked with writing an abstract for a NEW paper that\naddresses the problem described below. You have access to the reference papers\nlisted, but you do NOT have access to the actual paper that solved this problem.\n\n## Problem context\n\nIn many machine learning applications, algorithms must output sets of predictions rather than single predictions. Examples include multi-label classification (where an instance may belong to multiple classes), object detection (where multiple objects may be present), image segmentation (where multiple regions must be identified), and protein structure prediction (where multiple conformations may be valid). The fundamental challenge is: how can we construct these prediction sets with formal guarantees about their performance? Specifically, given any pre-trained model and any loss function of interest, we need a principled method to generate prediction sets that control the expected loss at a user-specified level. This control must hold in finite samples without making strong distributional assumptions about the data. The key difficulty is that we need this guarantee to hold for the test data, using only a finite calibration dataset, under minimal assumptions about the relationship between calibration and test data.\n\n## Evaluation criteria\n\nA successful solution must: (1) work with any underlying predictive model without requiring retraining, (2) accommodate any user-specified loss function, (3) provide finite-sample guarantees on the expected loss, (4) make minimal assumptions about the data distribution, (5) be computationally efficient enough for practical use, (6) demonstrate effectiveness across diverse domains including computer vision and natural language processing tasks. The method should provide formal theoretical guarantees while remaining practically useful.\n\n## Your task\n\nWrite a complete research paper abstract (150\u2013300 words) that:\n\n1. Motivates the problem and its importance\n2. States the gap in existing work (based on the references you can see)\n3. Proposes a concrete approach (your own invention \u2014 be specific!)\n4. Summarizes expected contributions or properties of the approach\n\nWrite as if this is YOUR paper. Be technically precise. Use the references to\nground your understanding of the field, but the approach must be your own\nsynthesis.\n\nDo NOT fabricate specific experimental numbers. Focus on the conceptual\ncontribution.\n\n## References\n\nNo references provided. Rely on your own knowledge of the field.\n",
+      "user_prompt": "Begin your reconstruction now.",
+      "response": "# Set-Valued Prediction with Finite-Sample Loss Control via Adaptive Conformal Risk Control\n\n**Abstract**\n\nModern machine learning applications increasingly require algorithms to output sets of predictions rather than single point estimates, spanning domains from multi-label classification to object detection and protein folding. While conformal prediction provides distribution-free coverage guarantees for prediction sets, existing methods primarily focus on controlling set size or marginal coverage rather than directly controlling task-specific loss functions. This creates a fundamental gap between theoretical guarantees and practical objectives in set-valued prediction problems.\n\nWe introduce **Adaptive Conformal Risk Control (ACRC)**, a post-hoc calibration framework that constructs prediction sets with finite-sample guarantees on user-specified expected loss functions. Our approach leverages a novel risk-aware scoring mechanism that adaptively weights potential set elements based on their contribution to the overall risk, combined with a sequential calibration procedure that maintains loss control under distribution shift between calibration and test data.\n\nACRC operates by: (1) defining risk-calibrated scores that incorporate both model confidence and loss sensitivity, (2) employing a multi-level conformal framework that simultaneously controls multiple risk thresholds, and (3) using adaptive quantile estimation to maintain guarantees under covariate shift. The method provides finite-sample bounds showing that with probability at least 1-\u03b4, the expected loss on test data remains below a user-specified threshold \u03b1, requiring only exchangeability between calibration and test examples.\n\nOur framework accommodates arbitrary loss functions without model retraining, scales efficiently through approximate set construction algorithms, and provides the first distribution-free finite-sample guarantees for expected loss control in set-valued prediction. This bridges the gap between conformal prediction theory and practical risk-sensitive applications across computer vision and natural language processing domains.",
+      "input_tokens": 498,
+      "output_tokens": 390,
+      "duration_seconds": 10.55,
+      "timestamp": "2026-04-04T04:56:13.800133+00:00",
+      "metadata": {
+        "response_id": "msg_014e7B8AkMo91R23EVFw6UmP",
+        "backend": "anthropic"
+      }
+    }
+  ],
+  "config": {
+    "condition": "no_refs"
+  }
+}

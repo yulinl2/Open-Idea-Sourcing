@@ -71,18 +71,62 @@ DATA_DIR = SCRIPT_DIR / "data"
 DEFAULT_STUDENT_MODEL = "gpt-4o"
 DEFAULT_TEACHER_MODEL = "gpt-5.4"
 
+# Claude model aliases for when using Anthropic backend
+CLAUDE_MODELS = {
+    "student": "claude-sonnet-4-20250514",
+    "teacher": "claude-opus-4-20250514",
+}
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _import_openai():
-    try:
-        import openai
-        return openai
-    except ImportError:
-        print("ERROR: 'openai' package not installed. Run: pip install openai", file=sys.stderr)
-        sys.exit(1)
+def _make_client(backend: str = "auto"):
+    """Create an LLM client based on the backend selection.
+
+    'auto' tries OpenAI first, then Anthropic.
+    """
+    if backend in ("openai", "auto"):
+        try:
+            import openai
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if api_key:
+                return openai.OpenAI(api_key=api_key), "openai"
+            if backend == "openai":
+                print("ERROR: OPENAI_API_KEY not set.", file=sys.stderr)
+                sys.exit(1)
+        except ImportError:
+            if backend == "openai":
+                print("ERROR: 'openai' package not installed.", file=sys.stderr)
+                sys.exit(1)
+
+    if backend in ("anthropic", "auto"):
+        try:
+            import anthropic
+            # Try session token (Claude Code remote environment)
+            # Check multiple possible home dirs
+            token_candidates = [
+                Path.home() / ".claude" / "remote" / ".session_ingress_token",
+                Path("/home/claude/.claude/remote/.session_ingress_token"),
+            ]
+            token_path = next((p for p in token_candidates if p.exists()), None)
+            if token_path is not None:
+                auth_token = token_path.read_text().strip()
+                return anthropic.Anthropic(auth_token=auth_token), "anthropic"
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if api_key:
+                return anthropic.Anthropic(api_key=api_key), "anthropic"
+            if backend == "anthropic":
+                print("ERROR: No Anthropic auth found.", file=sys.stderr)
+                sys.exit(1)
+        except ImportError:
+            if backend == "anthropic":
+                print("ERROR: 'anthropic' package not installed.", file=sys.stderr)
+                sys.exit(1)
+
+    print("ERROR: No LLM backend available. Install openai or anthropic.", file=sys.stderr)
+    sys.exit(1)
 
 
 def extract_paper_id(url: str) -> str:
@@ -263,13 +307,27 @@ def dispatch_paper(
     teacher_model: str,
     modes: list[str],
     output_dir: Path,
+    paper_metadata: dict | None = None,
+    conditions: list[str] | None = None,
 ) -> dict:
-    """Run all reconstruction modes for a single paper.
+    """Run all reconstruction modes for a single paper under each condition.
+
+    Args:
+        paper_metadata: Optional dict with pre-loaded metadata (title, abstract,
+            authors, etc.) from test_papers.ndjson. Used as fallback when PDF
+            download fails.
+        conditions: List of experimental conditions to run. Defaults to
+            ["with_refs", "no_refs"]. Each condition gets its own subfolder.
+            - "with_refs": student receives hint + reference texts
+            - "no_refs":   student receives hint only (baseline)
 
     Returns a summary dict with paths to all outputs.
     """
     from infra.audit import AuditLog
     from infra.pdf_utils import extract_text_from_pdf
+
+    if conditions is None:
+        conditions = ["with_refs", "no_refs"]
 
     paper_id = extract_paper_id(paper_url)
     paper_dir = output_dir / paper_id
@@ -277,23 +335,37 @@ def dispatch_paper(
 
     print(f"\n{'='*60}")
     print(f"Paper: {paper_id} ({paper_url})")
+    print(f"Conditions: {', '.join(conditions)}")
     print(f"{'='*60}")
 
-    # Fetch paper text for teacher
+    # Fetch paper text for teacher — try PDF first, fall back to embedded abstract
     print(f"  Fetching paper text...")
     paper_text = extract_text_from_pdf(paper_url, max_chars=60_000)
-    if not paper_text:
-        print(f"  WARNING: Could not extract paper text for {paper_url}")
+    if not paper_text and paper_metadata:
+        title = paper_metadata.get("title", "")
+        abstract = paper_metadata.get("abstract", "")
+        authors = ", ".join(paper_metadata.get("authors", []))
+        year = paper_metadata.get("year", "")
+        paper_text = (
+            f"Title: {title}\n"
+            f"Authors: {authors}\n"
+            f"Year: {year}\n\n"
+            f"Abstract:\n{abstract}\n\n"
+            f"[Note: Full text unavailable — teacher is working from abstract only.]"
+        )
+        print(f"  Using embedded abstract ({len(abstract)} chars) as fallback.")
+    elif not paper_text:
+        print(f"  WARNING: No paper text available for {paper_url}")
         print(f"  Teacher will work with limited context.")
 
-    # Teacher pass (shared across all modes for this paper)
+    # Teacher pass (shared across all conditions and modes for this paper)
     teacher_audit = AuditLog(
         paper_id=paper_id,
         paper_url=paper_url,
         reconstruction_type="teacher_extract",
         student_model=student_model,
         teacher_model=teacher_model,
-        config={"modes": modes},
+        config={"modes": modes, "conditions": conditions},
     )
     hint = run_teacher(client, teacher_model, paper_text, refs, teacher_audit)
     teacher_audit.mark_finished()
@@ -306,64 +378,76 @@ def dispatch_paper(
     )
     teacher_audit.save(teacher_dir / "audit.json")
 
-    # Prepare reference text for student (same for all modes)
-    refs_text = prepare_refs_text(refs)
+    # Prepare reference texts
+    refs_text_with = prepare_refs_text(refs)
+    refs_text_none = "No references provided. Rely on your own knowledge of the field."
 
-    # Student passes — one per mode
-    results = {"paper_id": paper_id, "paper_url": paper_url, "modes": {}}
+    results = {"paper_id": paper_id, "paper_url": paper_url, "conditions": {}}
 
-    for mode in modes:
-        print(f"\n  --- Mode: {mode} ---")
-        mode_dir = paper_dir / mode
-        mode_dir.mkdir(exist_ok=True)
+    for condition in conditions:
+        refs_text = refs_text_with if condition == "with_refs" else refs_text_none
+        cond_dir = paper_dir / condition
+        cond_dir.mkdir(exist_ok=True)
+        cond_results = {}
 
-        student_audit = AuditLog(
-            paper_id=paper_id,
-            paper_url=paper_url,
-            reconstruction_type=mode,
-            student_model=student_model,
-            teacher_model=teacher_model,
-        )
+        print(f"\n  === Condition: {condition} ===")
 
-        try:
-            output = run_student(
-                client, student_model, mode, hint, refs_text, student_audit
+        for mode in modes:
+            print(f"\n  --- {condition}/{mode} ---")
+            mode_dir = cond_dir / mode
+            mode_dir.mkdir(exist_ok=True)
+
+            student_audit = AuditLog(
+                paper_id=paper_id,
+                paper_url=paper_url,
+                reconstruction_type=f"{condition}/{mode}",
+                student_model=student_model,
+                teacher_model=teacher_model,
+                config={"condition": condition},
             )
-            student_audit.mark_finished()
 
-            # Save student output
-            (mode_dir / "output.md").write_text(
-                f"# Reconstruction: {mode}\n"
-                f"**Paper:** {paper_id}  \n"
-                f"**Student model:** {student_model}  \n"
-                f"**Teacher model:** {teacher_model}  \n\n"
-                f"---\n\n"
-                f"{output}\n",
-                encoding="utf-8",
-            )
-            student_audit.save(mode_dir / "audit.json")
+            try:
+                output = run_student(
+                    client, student_model, mode, hint, refs_text, student_audit
+                )
+                student_audit.mark_finished()
 
-            results["modes"][mode] = {
-                "status": "success",
-                "output_chars": len(output),
-                "output_path": str(mode_dir / "output.md"),
-                "input_tokens": student_audit.total_input_tokens(),
-                "output_tokens": student_audit.total_output_tokens(),
-                "duration_s": student_audit.total_duration(),
-            }
+                # Save student output
+                (mode_dir / "output.md").write_text(
+                    f"# Reconstruction: {mode}\n"
+                    f"**Paper:** {paper_id}  \n"
+                    f"**Condition:** {condition}  \n"
+                    f"**Student model:** {student_model}  \n"
+                    f"**Teacher model:** {teacher_model}  \n\n"
+                    f"---\n\n"
+                    f"{output}\n",
+                    encoding="utf-8",
+                )
+                student_audit.save(mode_dir / "audit.json")
 
-        except Exception as exc:
-            student_audit.mark_finished()
-            student_audit.save(mode_dir / "audit.json")
+                cond_results[mode] = {
+                    "status": "success",
+                    "output_chars": len(output),
+                    "output_path": str(mode_dir / "output.md"),
+                    "input_tokens": student_audit.total_input_tokens(),
+                    "output_tokens": student_audit.total_output_tokens(),
+                    "duration_s": student_audit.total_duration(),
+                }
 
-            error_msg = f"ERROR in {mode}: {exc}"
-            print(f"  {error_msg}")
-            (mode_dir / "error.txt").write_text(error_msg, encoding="utf-8")
+            except Exception as exc:
+                student_audit.mark_finished()
+                student_audit.save(mode_dir / "audit.json")
 
-            results["modes"][mode] = {
-                "status": "error",
-                "error": str(exc),
-            }
+                error_msg = f"ERROR in {condition}/{mode}: {exc}"
+                print(f"  {error_msg}")
+                (mode_dir / "error.txt").write_text(error_msg, encoding="utf-8")
+
+                cond_results[mode] = {
+                    "status": "error",
+                    "error": str(exc),
+                }
+
+        results["conditions"][condition] = cond_results
 
     return results
 
@@ -389,18 +473,22 @@ def write_dispatch_summary(results: list[dict], output_dir: Path,
         lines.append(f"## Paper: {r['paper_id']}")
         lines.append(f"URL: {r['paper_url']}")
         lines.append("")
-        lines.append("| Mode | Status | Chars | Tokens (in/out) | Time |")
-        lines.append("|------|--------|-------|-----------------|------|")
-        for mode, info in r.get("modes", {}).items():
-            if info["status"] == "success":
-                lines.append(
-                    f"| {mode} | OK | {info['output_chars']:,} | "
-                    f"{info['input_tokens']:,}/{info['output_tokens']:,} | "
-                    f"{info['duration_s']:.1f}s |"
-                )
-            else:
-                lines.append(f"| {mode} | ERROR | — | — | — |")
-        lines.append("")
+
+        for condition, modes in r.get("conditions", {}).items():
+            lines.append(f"### Condition: `{condition}`")
+            lines.append("")
+            lines.append("| Mode | Status | Chars | Tokens (in/out) | Time |")
+            lines.append("|------|--------|-------|-----------------|------|")
+            for mode, info in modes.items():
+                if info["status"] == "success":
+                    lines.append(
+                        f"| {mode} | OK | {info['output_chars']:,} | "
+                        f"{info['input_tokens']:,}/{info['output_tokens']:,} | "
+                        f"{info['duration_s']:.1f}s |"
+                    )
+                else:
+                    lines.append(f"| {mode} | ERROR | — | — | — |")
+            lines.append("")
 
     (output_dir / "SUMMARY.md").write_text("\n".join(lines), encoding="utf-8")
     print(f"\nSummary written to {output_dir / 'SUMMARY.md'}")
@@ -424,12 +512,22 @@ def main() -> None:
         help=f"Reconstruction modes to run (default: all). Choices: {RECONSTRUCTION_MODES}",
     )
     parser.add_argument(
-        "--student-model", default=DEFAULT_STUDENT_MODEL,
-        help=f"Student LLM model (default: {DEFAULT_STUDENT_MODEL})",
+        "--student-model", default=None,
+        help="Student LLM model (default: auto-selected per backend)",
     )
     parser.add_argument(
-        "--teacher-model", default=DEFAULT_TEACHER_MODEL,
-        help=f"Teacher LLM model (default: {DEFAULT_TEACHER_MODEL})",
+        "--teacher-model", default=None,
+        help="Teacher LLM model (default: auto-selected per backend)",
+    )
+    parser.add_argument(
+        "--conditions", nargs="*", default=None,
+        choices=["with_refs", "no_refs"],
+        help="Experimental conditions (default: both). "
+             "with_refs = student gets references, no_refs = baseline without references",
+    )
+    parser.add_argument(
+        "--backend", default="auto", choices=["auto", "openai", "anthropic"],
+        help="LLM backend (default: auto — tries OpenAI, falls back to Anthropic)",
     )
     parser.add_argument(
         "--output-dir", default="reports",
@@ -443,6 +541,18 @@ def main() -> None:
     args = parser.parse_args()
 
     modes = args.modes or RECONSTRUCTION_MODES
+    conditions = args.conditions or ["with_refs", "no_refs"]
+
+    # Initialize LLM client
+    client, backend = _make_client(args.backend)
+
+    # Resolve model names based on backend
+    if backend == "anthropic":
+        student_model = args.student_model or CLAUDE_MODELS["student"]
+        teacher_model = args.teacher_model or CLAUDE_MODELS["teacher"]
+    else:
+        student_model = args.student_model or DEFAULT_STUDENT_MODEL
+        teacher_model = args.teacher_model or DEFAULT_TEACHER_MODEL
 
     # Timestamp for this dispatch
     if args.timestamp:
@@ -455,19 +565,25 @@ def main() -> None:
 
     # Load data
     refs = load_references()
+    all_known_papers = load_test_papers()
     if args.paper_url:
-        papers = [{"url": args.paper_url}]
+        # Try to find enriched metadata from test_papers.ndjson
+        match = next(
+            (p for p in all_known_papers
+             if p["url"] == args.paper_url
+             or p.get("paper_id") == extract_paper_id(args.paper_url)),
+            None,
+        )
+        papers = [match if match else {"url": args.paper_url}]
     else:
-        papers = load_test_papers()
+        papers = all_known_papers
 
-    print(f"Dispatch: {len(papers)} paper(s), {len(modes)} mode(s)")
-    print(f"Student: {args.student_model} | Teacher: {args.teacher_model}")
+    print(f"Dispatch: {len(papers)} paper(s), {len(modes)} mode(s), {len(conditions)} condition(s)")
+    print(f"Backend: {backend}")
+    print(f"Student: {student_model} | Teacher: {teacher_model}")
     print(f"Output:  {output_dir}")
     print(f"Modes:   {', '.join(modes)}")
-
-    # Initialize OpenAI client
-    openai = _import_openai()
-    client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    print(f"Conditions: {', '.join(conditions)}")
 
     # Dispatch each paper
     all_results = []
@@ -476,15 +592,17 @@ def main() -> None:
             client=client,
             paper_url=paper["url"],
             refs=refs,
-            student_model=args.student_model,
-            teacher_model=args.teacher_model,
+            student_model=student_model,
+            teacher_model=teacher_model,
             modes=modes,
             output_dir=output_dir,
+            paper_metadata=paper,
+            conditions=conditions,
         )
         all_results.append(result)
 
     # Write dispatch summary
-    write_dispatch_summary(all_results, output_dir, args.student_model, args.teacher_model)
+    write_dispatch_summary(all_results, output_dir, student_model, teacher_model)
 
     # Save machine-readable results
     (output_dir / "results.json").write_text(

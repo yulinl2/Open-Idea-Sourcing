@@ -1,0 +1,40 @@
+{
+  "paper_id": "2006.06138",
+  "paper_url": "https://arxiv.org/abs/2006.06138",
+  "reconstruction_type": "teacher_extract",
+  "student_model": "claude-sonnet-4-20250514",
+  "teacher_model": "claude-opus-4-20250514",
+  "start_time": "2026-04-04T04:51:16.441881+00:00",
+  "finish_time": "2026-04-04T04:51:30.776468+00:00",
+  "steps": [
+    {
+      "step_name": "teacher_extract",
+      "model": "claude-opus-4-20250514",
+      "system_prompt": "You are the Teacher in a scientific reconstruction experiment.\n\nYou have access to the FULL TEXT of a research paper. Your job is to prepare\ncontext for a Student model that will attempt to reconstruct various parts of\nthis paper from scratch \u2014 given ONLY the paper's cited references (not the paper\nitself).\n\n## Your task\n\nRead the paper carefully and extract:\n\n1. **problem_context**: A precise description of the research problem, the gap\n   in existing work, and the motivation \u2014 written as a researcher would frame it\n   BEFORE having a solution. Do NOT reveal the approach, method, or results.\n\n2. **reference_guidance**: For each cited reference that the Student will have\n   access to, briefly note what is relevant about it for this problem. This\n   helps the Student focus on the right parts of each reference. Do NOT reveal\n   how the paper under review uses or combines these references.\n\n3. **evaluation_criteria**: What would a good solution look like? What\n   properties must it satisfy? What metrics or guarantees matter?\n\n4. **domain_keywords**: Key technical terms the Student should understand.\n\n## Critical rules\n\n- You must NOT reveal the paper's approach, algorithm, architecture, or results.\n- You must NOT hint at specific design choices the authors made.\n- Frame everything as the PROBLEM, never the SOLUTION.\n- The Student should feel like a researcher reading a call-for-papers, not\n  a student reading a textbook with the answer on the next page.\n\n## Output format\n\nRespond with a JSON object:\n```json\n{\n  \"problem_context\": \"...\",\n  \"reference_guidance\": {\n    \"<ref_id_or_title>\": \"why this reference is relevant to the problem\"\n  },\n  \"evaluation_criteria\": \"...\",\n  \"domain_keywords\": [\"...\", \"...\"]\n}\n```\n",
+      "user_prompt": "## Paper full text (first 40k chars)\n\nTitle: Distribution-Free, Risk-Controlling Prediction Sets\nAuthors: Stephen Bates, Anastasios Angelopoulos, Lihua Lei, Jitendra Malik, Michael I. Jordan\nYear: 2021\n\nAbstract:\nMany machine learning tasks require the algorithm to return a set of predictions, such as multi-label classification and object detection. In such settings, we develop a general framework for generating prediction sets with a user-specified risk guarantee. Our approach works for any underlying model and loss function. The method adjusts prediction sets via a single threshold parameter, which is calibrated on a holdout set to control the expected loss. We prove that the expected loss is controlled at the desired level in finite samples under the assumption that the calibration and test data are exchangeable. We demonstrate the utility of our approach on several computer vision and natural language processing tasks, including multi-label classification, image segmentation, object detection, and protein structure prediction.\n\n[Note: Full text unavailable \u2014 teacher is working from abstract only.]\n\n## References the student will have access to\n\n- arxiv-1904.06019: Conformal Prediction Under Covariate Shift (2020)",
+      "response": "```json\n{\n  \"problem_context\": \"In many machine learning applications, algorithms must output sets of predictions rather than single predictions. Examples include multi-label classification (where an instance may belong to multiple classes), object detection (where multiple objects may be present), image segmentation (where multiple regions must be identified), and protein structure prediction (where multiple conformations may be valid). The fundamental challenge is: how can we construct these prediction sets with formal guarantees about their performance? Specifically, given any pre-trained model and any loss function of interest, we need a principled method to generate prediction sets that control the expected loss at a user-specified level. This control must hold in finite samples without making strong distributional assumptions about the data. The key difficulty is that we need this guarantee to hold for the test data, using only a finite calibration dataset, under minimal assumptions about the relationship between calibration and test data.\",\n  \"reference_guidance\": {\n    \"arxiv-1904.06019\": \"This paper addresses conformal prediction methods when the test distribution differs from the training distribution (covariate shift). Understanding how prediction intervals can be constructed with coverage guarantees under distributional changes is relevant because any practical method for prediction sets must handle the relationship between calibration and test data.\"\n  },\n  \"evaluation_criteria\": \"A successful solution must: (1) work with any underlying predictive model without requiring retraining, (2) accommodate any user-specified loss function, (3) provide finite-sample guarantees on the expected loss, (4) make minimal assumptions about the data distribution, (5) be computationally efficient enough for practical use, (6) demonstrate effectiveness across diverse domains including computer vision and natural language processing tasks. The method should provide formal theoretical guarantees while remaining practically useful.\",\n  \"domain_keywords\": [\"prediction sets\", \"risk control\", \"finite-sample guarantees\", \"exchangeability\", \"calibration\", \"expected loss\", \"distribution-free inference\", \"multi-label classification\", \"object detection\", \"coverage guarantees\"]\n}\n```",
+      "input_tokens": 688,
+      "output_tokens": 443,
+      "duration_seconds": 14.33,
+      "timestamp": "2026-04-04T04:51:30.776231+00:00",
+      "metadata": {
+        "response_id": "msg_01UoZtwnsuyNbuD7cskskgNr",
+        "backend": "anthropic"
+      }
+    }
+  ],
+  "config": {
+    "modes": [
+      "abstract",
+      "mindmap",
+      "problem",
+      "problem_method",
+      "full_guided",
+      "full_freestyle"
+    ],
+    "conditions": [
+      "with_refs",
+      "no_refs"
+    ]
+  }
+}

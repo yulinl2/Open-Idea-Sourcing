@@ -286,23 +286,49 @@ class TestDispatchMocked:
                 teacher_model="gpt-5.4",
                 modes=["abstract"],
                 output_dir=tmp_path,
+                conditions=["with_refs"],
             )
 
         assert result["paper_id"] == "2006.06138"
-        assert "abstract" in result["modes"]
-        assert result["modes"]["abstract"]["status"] == "success"
+        assert "with_refs" in result["conditions"]
+        assert "abstract" in result["conditions"]["with_refs"]
+        assert result["conditions"]["with_refs"]["abstract"]["status"] == "success"
 
         # Check output files exist
         paper_dir = tmp_path / "2006.06138"
         assert (paper_dir / "_teacher" / "hint.json").exists()
         assert (paper_dir / "_teacher" / "audit.json").exists()
-        assert (paper_dir / "abstract" / "output.md").exists()
-        assert (paper_dir / "abstract" / "audit.json").exists()
+        assert (paper_dir / "with_refs" / "abstract" / "output.md").exists()
+        assert (paper_dir / "with_refs" / "abstract" / "audit.json").exists()
 
         # Verify output content
-        output = (paper_dir / "abstract" / "output.md").read_text()
+        output = (paper_dir / "with_refs" / "abstract" / "output.md").read_text()
         assert "Reconstruction" in output
         assert "gpt-4o" in output
+
+    def test_both_conditions(self, tmp_path):
+        """Both with_refs and no_refs conditions produce output."""
+        from agent import dispatch_paper, load_references
+
+        client = self._mock_client()
+        refs = load_references()
+
+        with patch("infra.pdf_utils.extract_text_from_pdf", return_value="Mock paper text."):
+            result = dispatch_paper(
+                client=client,
+                paper_url="https://arxiv.org/abs/2006.06138",
+                refs=refs,
+                student_model="gpt-4o",
+                teacher_model="gpt-5.4",
+                modes=["abstract"],
+                output_dir=tmp_path,
+                conditions=["with_refs", "no_refs"],
+            )
+
+        for cond in ["with_refs", "no_refs"]:
+            assert cond in result["conditions"]
+            assert result["conditions"][cond]["abstract"]["status"] == "success"
+            assert (tmp_path / "2006.06138" / cond / "abstract" / "output.md").exists()
 
     def test_all_modes(self, tmp_path):
         from agent import dispatch_paper, load_references, RECONSTRUCTION_MODES
@@ -319,12 +345,13 @@ class TestDispatchMocked:
                 teacher_model="gpt-5.4",
                 modes=RECONSTRUCTION_MODES,
                 output_dir=tmp_path,
+                conditions=["with_refs"],
             )
 
         for mode in RECONSTRUCTION_MODES:
-            assert mode in result["modes"]
-            assert result["modes"][mode]["status"] == "success"
-            assert (tmp_path / "2006.06138" / mode / "output.md").exists()
+            assert mode in result["conditions"]["with_refs"]
+            assert result["conditions"]["with_refs"][mode]["status"] == "success"
+            assert (tmp_path / "2006.06138" / "with_refs" / mode / "output.md").exists()
 
     def test_dispatch_summary(self, tmp_path):
         from agent import dispatch_paper, write_dispatch_summary, load_references
@@ -341,6 +368,7 @@ class TestDispatchMocked:
                 teacher_model="gpt-5.4",
                 modes=["abstract", "mindmap"],
                 output_dir=tmp_path,
+                conditions=["with_refs"],
             )
 
         write_dispatch_summary([result], tmp_path, "gpt-4o", "gpt-5.4")
@@ -349,7 +377,7 @@ class TestDispatchMocked:
         text = summary_path.read_text()
         assert "2006.06138" in text
         assert "abstract" in text
-        assert "mindmap" in text
+        assert "with_refs" in text
 
     def test_llm_error_handled(self, tmp_path):
         """If the student LLM call fails, the mode records an error without crashing."""
@@ -378,10 +406,11 @@ class TestDispatchMocked:
                 teacher_model="gpt-5.4",
                 modes=["abstract"],
                 output_dir=tmp_path,
+                conditions=["with_refs"],
             )
 
-        assert result["modes"]["abstract"]["status"] == "error"
-        assert (tmp_path / "2006.06138" / "abstract" / "error.txt").exists()
+        assert result["conditions"]["with_refs"]["abstract"]["status"] == "error"
+        assert (tmp_path / "2006.06138" / "with_refs" / "abstract" / "error.txt").exists()
 
 
 # ---------------------------------------------------------------------------

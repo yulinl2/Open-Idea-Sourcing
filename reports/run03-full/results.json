@@ -1,0 +1,108 @@
+[
+  {
+    "paper_id": "2602.04770",
+    "paper_url": "https://arxiv.org/abs/2602.04770",
+    "conditions": {
+      "with_refs": {
+        "abstract": {
+          "status": "success",
+          "output_chars": 2039,
+          "output_path": "reports/run03-full/2602.04770/with_refs/abstract/output.md",
+          "input_tokens": 635,
+          "output_tokens": 368,
+          "duration_s": 9.65
+        },
+        "mindmap": {
+          "status": "success",
+          "output_chars": 4177,
+          "output_path": "reports/run03-full/2602.04770/with_refs/mindmap/output.md",
+          "input_tokens": 757,
+          "output_tokens": 827,
+          "duration_s": 19.42
+        },
+        "problem": {
+          "status": "success",
+          "output_chars": 5927,
+          "output_path": "reports/run03-full/2602.04770/with_refs/problem/output.md",
+          "input_tokens": 689,
+          "output_tokens": 1758,
+          "duration_s": 33.34
+        },
+        "problem_method": {
+          "status": "success",
+          "output_chars": 7369,
+          "output_path": "reports/run03-full/2602.04770/with_refs/problem_method/output.md",
+          "input_tokens": 706,
+          "output_tokens": 2496,
+          "duration_s": 44.0
+        },
+        "full_guided": {
+          "status": "success",
+          "output_chars": 19517,
+          "output_path": "reports/run03-full/2602.04770/with_refs/full_guided/output.md",
+          "input_tokens": 837,
+          "output_tokens": 5136,
+          "duration_s": 95.73
+        },
+        "full_freestyle": {
+          "status": "success",
+          "output_chars": 18084,
+          "output_path": "reports/run03-full/2602.04770/with_refs/full_freestyle/output.md",
+          "input_tokens": 703,
+          "output_tokens": 4451,
+          "duration_s": 81.57
+        }
+      },
+      "no_refs": {
+        "abstract": {
+          "status": "success",
+          "output_chars": 2045,
+          "output_path": "reports/run03-full/2602.04770/no_refs/abstract/output.md",
+          "input_tokens": 483,
+          "output_tokens": 362,
+          "duration_s": 8.7
+        },
+        "mindmap": {
+          "status": "success",
+          "output_chars": 4374,
+          "output_path": "reports/run03-full/2602.04770/no_refs/mindmap/output.md",
+          "input_tokens": 605,
+          "output_tokens": 847,
+          "duration_s": 19.34
+        },
+        "problem": {
+          "status": "success",
+          "output_chars": 5806,
+          "output_path": "reports/run03-full/2602.04770/no_refs/problem/output.md",
+          "input_tokens": 537,
+          "output_tokens": 1749,
+          "duration_s": 31.6
+        },
+        "problem_method": {
+          "status": "success",
+          "output_chars": 8134,
+          "output_path": "reports/run03-full/2602.04770/no_refs/problem_method/output.md",
+          "input_tokens": 554,
+          "output_tokens": 2830,
+          "duration_s": 47.14
+        },
+        "full_guided": {
+          "status": "success",
+          "output_chars": 19073,
+          "output_path": "reports/run03-full/2602.04770/no_refs/full_guided/output.md",
+          "input_tokens": 685,
+          "output_tokens": 4762,
+          "duration_s": 90.33
+        },
+        "full_freestyle": {
+          "status": "success",
+          "output_chars": 20158,
+          "output_path": "reports/run03-full/2602.04770/no_refs/full_freestyle/output.md",
+          "input_tokens": 551,
+          "output_tokens": 5353,
+          "duration_s": 98.35
+        }
+      }
+    }
+  }
+]

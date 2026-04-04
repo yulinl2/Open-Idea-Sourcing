@@ -1,0 +1,56 @@
+[
+  {
+    "paper_id": "2602.04770",
+    "paper_url": "https://arxiv.org/abs/2602.04770",
+    "modes": {
+      "abstract": {
+        "status": "success",
+        "output_chars": 2134,
+        "output_path": "reports/run02-paper2-all-modes/2602.04770/abstract/output.md",
+        "input_tokens": 614,
+        "output_tokens": 377,
+        "duration_s": 9.5
+      },
+      "mindmap": {
+        "status": "success",
+        "output_chars": 3115,
+        "output_path": "reports/run02-paper2-all-modes/2602.04770/mindmap/output.md",
+        "input_tokens": 736,
+        "output_tokens": 636,
+        "duration_s": 15.09
+      },
+      "problem": {
+        "status": "success",
+        "output_chars": 5423,
+        "output_path": "reports/run02-paper2-all-modes/2602.04770/problem/output.md",
+        "input_tokens": 668,
+        "output_tokens": 1567,
+        "duration_s": 29.14
+      },
+      "problem_method": {
+        "status": "success",
+        "output_chars": 8118,
+        "output_path": "reports/run02-paper2-all-modes/2602.04770/problem_method/output.md",
+        "input_tokens": 685,
+        "output_tokens": 2708,
+        "duration_s": 46.29
+      },
+      "full_guided": {
+        "status": "success",
+        "output_chars": 17497,
+        "output_path": "reports/run02-paper2-all-modes/2602.04770/full_guided/output.md",
+        "input_tokens": 816,
+        "output_tokens": 4118,
+        "duration_s": 79.88
+      },
+      "full_freestyle": {
+        "status": "success",
+        "output_chars": 18653,
+        "output_path": "reports/run02-paper2-all-modes/2602.04770/full_freestyle/output.md",
+        "input_tokens": 682,
+        "output_tokens": 4735,
+        "duration_s": 84.71
+      }
+    }
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "problem_context": "In many prediction tasks, we need not just point estimates but prediction intervals that contain the true outcome with high probability. The key challenge is constructing intervals that achieve valid coverage (contain the true value with the specified probability) while being as narrow as possible. Conformal prediction offers a framework for achieving finite-sample marginal coverage guarantees, but the efficiency of these intervals depends heavily on the choice of score function used to measure prediction uncertainty. The fundamental problem is: how can we learn an optimal score function that produces the shortest possible prediction intervals while maintaining the finite-sample coverage guarantee? This requires balancing two competing objectives: maintaining statistical validity and minimizing interval width.",
+  "reference_guidance": {
+    "arxiv-1904.06019": "This paper addresses conformal prediction when the test distribution differs from the training distribution (covariate shift). Understanding how conformal methods handle distribution shift is relevant because any learned score function must be robust to potential differences between training and deployment conditions."
+  },
+  "evaluation_criteria": "A good solution must satisfy two key properties: (1) Finite-sample marginal coverage - the prediction intervals must contain the true outcome with at least the specified probability (e.g., 90%) regardless of the data distribution, and this guarantee must hold in finite samples, not just asymptotically. (2) Interval efficiency - among all methods that achieve valid coverage, we want the shortest possible intervals on average. The method should also be practical, meaning it can be implemented efficiently and scales to real datasets. Theoretical guarantees about consistency (intervals becoming optimally short as sample size grows) would strengthen the solution.",
+  "domain_keywords": [
+    "conformal prediction",
+    "prediction intervals",
+    "marginal coverage",
+    "finite-sample guarantee",
+    "score function",
+    "nonconformity score",
+    "calibration",
+    "interval length",
+    "coverage probability",
+    "distribution-free inference"
+  ]
+}

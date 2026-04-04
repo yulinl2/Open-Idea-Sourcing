@@ -1,0 +1,22 @@
+{
+  "problem_context": "In many machine learning applications, algorithms must output sets of predictions rather than single predictions. Examples include multi-label classification (where an image might contain multiple objects), object detection (where we need to identify multiple bounding boxes), image segmentation (where multiple regions must be labeled), and protein structure prediction (where multiple conformations might be valid). The fundamental challenge is: how can we generate these prediction sets with formal guarantees about their performance? Specifically, given any pre-trained model and any loss function, we need a principled way to construct prediction sets that control risk (expected loss) at a user-specified level. This control must hold in finite samples, not just asymptotically, and should work without making strong distributional assumptions about the data. The key difficulty is that we need to calibrate these prediction sets using limited holdout data while ensuring the guarantees transfer to test data.",
+  "reference_guidance": {
+    "arxiv-1904.06019": "This paper addresses conformal prediction under covariate shift, which is relevant because it deals with distribution-free uncertainty quantification and how to maintain valid coverage guarantees when the distribution changes between calibration and test time. Understanding how conformal prediction provides finite-sample guarantees without distributional assumptions will be crucial for developing risk-controlling prediction sets."
+  },
+  "evaluation_criteria": "A successful solution must: (1) work with any underlying predictive model (model-agnostic), (2) handle any user-specified loss function (loss-agnostic), (3) provide finite-sample guarantees on the expected loss without requiring distributional assumptions beyond exchangeability, (4) be computationally efficient enough for practical use, (5) produce prediction sets that are not unnecessarily large while meeting the risk constraint, and (6) demonstrate effectiveness across diverse domains including computer vision and NLP tasks. The method should provide a simple calibration procedure that practitioners can easily implement.",
+  "domain_keywords": [
+    "prediction sets",
+    "risk control",
+    "finite-sample guarantees",
+    "distribution-free inference",
+    "exchangeability",
+    "calibration",
+    "expected loss",
+    "multi-label classification",
+    "object detection",
+    "conformal prediction",
+    "coverage guarantees",
+    "holdout set",
+    "threshold calibration"
+  ]
+}
