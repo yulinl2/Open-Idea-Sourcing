@@ -213,10 +213,17 @@ def run_teacher(client, model: str, paper_text: str, refs: list[dict],
     if hint is None:
         hint = {
             "problem_context": response[:2000],
-            "reference_guidance": {},
-            "evaluation_criteria": "See problem context.",
-            "domain_keywords": [],
+            "desirable_properties": [],
+            "field_context": "",
         }
+
+    # Migrate legacy hint format (evaluation_criteria → desirable_properties)
+    if "evaluation_criteria" in hint and "desirable_properties" not in hint:
+        hint["desirable_properties"] = [hint.pop("evaluation_criteria")]
+    # Drop legacy fields that leak info
+    hint.pop("reference_guidance", None)
+    hint.pop("domain_keywords", None)
+    hint.pop("evaluation_criteria", None)
 
     print(f"  [teacher] Problem context extracted ({hint.get('problem_context', '')[:80]}...)")
     return hint
@@ -238,11 +245,23 @@ def run_student(client, model: str, mode: str, hint: dict,
     prompt_file = PROMPT_FILES[mode]
     prompt_template = (PROMPTS_DIR / prompt_file).read_text()
 
-    # Fill template
+    # Fill template — new format uses desirable_properties + field_context
+    props = hint.get("desirable_properties", [])
+    if isinstance(props, list):
+        props_text = "\n".join(f"- {p}" for p in props) if props else "Not specified."
+    else:
+        props_text = str(props)
+
+    field_ctx = hint.get("field_context", "")
+    problem_ctx = hint.get("problem_context", "")
+    if field_ctx:
+        problem_ctx = f"{problem_ctx}\n\n**Field context:** {field_ctx}"
+
+    # Support both old and new template placeholders
     filled = (
         prompt_template
-        .replace("{problem_context}", hint.get("problem_context", ""))
-        .replace("{evaluation_criteria}", hint.get("evaluation_criteria", ""))
+        .replace("{problem_context}", problem_ctx)
+        .replace("{evaluation_criteria}", props_text)
         .replace("{refs_text}", refs_text)
     )
 
@@ -268,10 +287,11 @@ def run_student(client, model: str, mode: str, hint: dict,
 def prepare_refs_text(refs: list[dict], max_chars_per_ref: int = 20_000) -> str:
     """Prepare reference texts for the student.
 
-    Uses abstracts from references.json. Full PDF fetching can be enabled
-    later — for now, abstracts provide the reference context without
-    introducing excessive noise or latency.
+    Uses full text from data/pdfs/<id>.txt when available, falling back to
+    abstracts from references.json. Full reference text is the student's
+    legitimate knowledge — it's what they'd read before tackling the problem.
     """
+    pdf_cache = DATA_DIR / "pdfs"
     parts = []
     for ref in refs:
         ref_id = ref.get("id", "unknown")
@@ -281,15 +301,34 @@ def prepare_refs_text(refs: list[dict], max_chars_per_ref: int = 20_000) -> str:
         year = ref.get("year", "?")
         venue = ref.get("venue", "")
 
-        block = (
-            f"--- Reference: {ref_id} ---\n"
-            f"Title: {title}\n"
-            f"Authors: {authors}\n"
-            f"Year: {year}\n"
-            f"Venue: {venue}\n"
-            f"Abstract: {abstract}\n"
-            f"--- End reference ---"
-        )
+        # Try to load full text from cache
+        full_text = ""
+        # Extract arxiv ID from ref id like "arxiv-1904.06019"
+        arxiv_id = ref_id.replace("arxiv-", "") if ref_id.startswith("arxiv-") else ref_id
+        txt_path = pdf_cache / f"{arxiv_id}.txt"
+        if txt_path.exists():
+            full_text = txt_path.read_text(encoding="utf-8")[:max_chars_per_ref]
+
+        if full_text:
+            block = (
+                f"--- Reference: {ref_id} ---\n"
+                f"Title: {title}\n"
+                f"Authors: {authors}\n"
+                f"Year: {year}\n"
+                f"Venue: {venue}\n\n"
+                f"Full text:\n{full_text}\n"
+                f"--- End reference ---"
+            )
+        else:
+            block = (
+                f"--- Reference: {ref_id} ---\n"
+                f"Title: {title}\n"
+                f"Authors: {authors}\n"
+                f"Year: {year}\n"
+                f"Venue: {venue}\n"
+                f"Abstract: {abstract}\n"
+                f"--- End reference ---"
+            )
         parts.append(block)
 
     return "\n\n".join(parts) if parts else "No references provided."
@@ -331,19 +370,28 @@ def dispatch_paper(
     if conditions is None:
         conditions = ["with_refs", "no_refs"]
 
-    paper_id = extract_paper_id(paper_url)
+    # Resolve paper_id from URL or metadata
+    if paper_metadata and paper_metadata.get("paper_id"):
+        paper_id = paper_metadata["paper_id"]
+    elif paper_url:
+        paper_id = extract_paper_id(paper_url)
+    else:
+        paper_id = "unknown"
+
     paper_dir = output_dir / paper_id
     paper_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\n{'='*60}")
-    print(f"Paper: {paper_id} ({paper_url})")
+    print(f"Paper: {paper_id} ({paper_url or 'no URL'})")
     print(f"Conditions: {', '.join(conditions)}")
     print(f"Evaluate: {evaluate}")
     print(f"{'='*60}")
 
     # Fetch paper text for teacher — try PDF first, fall back to embedded abstract
     print(f"  Fetching paper text...")
-    paper_text = extract_text_from_pdf(paper_url, max_chars=60_000)
+    paper_text = ""
+    if paper_url:
+        paper_text = extract_text_from_pdf(paper_url, max_chars=60_000)
     text_source = "pdf"
     if not paper_text and paper_metadata:
         title = paper_metadata.get("title", "")
