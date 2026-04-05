@@ -35,11 +35,28 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      # Use pre-cached text data if available (data/cached_texts/*.json).
+      # This skips expensive PDF download + LLM extraction on the runner,
+      # saving ~80% of runner time and API costs.  Cache is populated
+      # locally via: python cache_texts.py
+      - name: Check for cached texts
+        id: cache_check
+        run: |
+          if ls data/cached_texts/*.json 1>/dev/null 2>&1; then
+            N=$(ls data/cached_texts/*.json | wc -l)
+            echo "cached_count=$N" >> "$GITHUB_OUTPUT"
+            echo "Found $N cached text files — will skip LLM extraction"
+          else
+            echo "cached_count=0" >> "$GITHUB_OUTPUT"
+            echo "No cached texts — will run full extraction pipeline"
+          fi
 
       - name: Run analysis
         env:
