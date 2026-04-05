@@ -104,8 +104,12 @@ def _make_client(backend: str = "auto"):
     if backend in ("anthropic", "auto"):
         try:
             import anthropic
-            # Try session token (Claude Code remote environment)
-            # Check multiple possible home dirs
+            # Prefer explicit API key (billed to user's API account, separate
+            # rate limits from Claude.ai session token).
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if api_key:
+                return anthropic.Anthropic(api_key=api_key), "anthropic"
+            # Fallback: session token (Claude Code remote environment)
             token_candidates = [
                 Path.home() / ".claude" / "remote" / ".session_ingress_token",
                 Path("/home/claude/.claude/remote/.session_ingress_token"),
@@ -114,9 +118,6 @@ def _make_client(backend: str = "auto"):
             if token_path is not None:
                 auth_token = token_path.read_text().strip()
                 return anthropic.Anthropic(auth_token=auth_token), "anthropic"
-            api_key = os.environ.get("ANTHROPIC_API_KEY")
-            if api_key:
-                return anthropic.Anthropic(api_key=api_key), "anthropic"
             if backend == "anthropic":
                 print("ERROR: No Anthropic auth found.", file=sys.stderr)
                 sys.exit(1)
@@ -415,25 +416,31 @@ def dispatch_paper(
         print(f"  Loaded {len(paper_text):,} chars from PDF.")
 
     # Teacher pass (shared across all conditions and modes for this paper)
-    teacher_audit = AuditLog(
-        paper_id=paper_id,
-        paper_url=paper_url,
-        reconstruction_type="teacher_extract",
-        student_model=student_model,
-        teacher_model=teacher_model,
-        config={"modes": modes, "conditions": conditions,
-                "text_source": text_source},
-    )
-    hint = run_teacher(client, teacher_model, paper_text, refs, teacher_audit)
-    teacher_audit.mark_finished()
-
-    # Save teacher output
     teacher_dir = paper_dir / "_teacher"
     teacher_dir.mkdir(exist_ok=True)
-    (teacher_dir / "hint.json").write_text(
-        json.dumps(hint, indent=2, default=str), encoding="utf-8"
-    )
-    teacher_audit.save(teacher_dir / "audit.json")
+    cached_hint_path = teacher_dir / "hint.json"
+
+    if cached_hint_path.exists():
+        # Reuse cached teacher hint (avoids redundant Opus call)
+        hint = json.loads(cached_hint_path.read_text(encoding="utf-8"))
+        print(f"  [teacher] Reusing cached hint from {cached_hint_path}")
+    else:
+        teacher_audit = AuditLog(
+            paper_id=paper_id,
+            paper_url=paper_url,
+            reconstruction_type="teacher_extract",
+            student_model=student_model,
+            teacher_model=teacher_model,
+            config={"modes": modes, "conditions": conditions,
+                    "text_source": text_source},
+        )
+        hint = run_teacher(client, teacher_model, paper_text, refs, teacher_audit)
+        teacher_audit.mark_finished()
+
+        (cached_hint_path).write_text(
+            json.dumps(hint, indent=2, default=str), encoding="utf-8"
+        )
+        teacher_audit.save(teacher_dir / "audit.json")
 
     # Prepare reference texts
     refs_text_with = prepare_refs_text(refs)

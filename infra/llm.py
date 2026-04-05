@@ -4,6 +4,7 @@ Supports both OpenAI Responses API and Anthropic Messages API.
 All calls are recorded into the AuditLog for full reproducibility.
 
 Backend is auto-detected from the client type.
+Includes retry-with-backoff for rate limit (429) errors.
 """
 
 from __future__ import annotations
@@ -12,6 +13,10 @@ import time
 from typing import Any
 
 from infra.audit import AuditLog, StepRecord
+
+# Retry config for 429 rate limits
+MAX_RETRIES = 4
+INITIAL_BACKOFF_SECONDS = 30  # 30s, 60s, 120s, 240s
 
 
 def llm_call(
@@ -27,18 +32,15 @@ def llm_call(
     """Make a single LLM call and record it in the audit log.
 
     Auto-detects whether client is OpenAI or Anthropic.
+    Retries up to MAX_RETRIES times on rate limit errors with exponential backoff.
     """
     backend = _detect_backend(client)
     t0 = time.time()
 
-    if backend == "anthropic":
-        text, input_tokens, output_tokens, resp_id = _call_anthropic(
-            client, model, system, user, max_tokens, temperature
-        )
-    else:
-        text, input_tokens, output_tokens, resp_id = _call_openai(
-            client, model, system, user, max_tokens, temperature
-        )
+    call_fn = _call_anthropic if backend == "anthropic" else _call_openai
+    text, input_tokens, output_tokens, resp_id = _call_with_retry(
+        call_fn, client, model, system, user, max_tokens, temperature, step_name
+    )
 
     duration = time.time() - t0
 
@@ -55,6 +57,38 @@ def llm_call(
     )
     audit.add_step(step)
     return text
+
+
+def _call_with_retry(call_fn, client, model, system, user, max_tokens, temperature, step_name):
+    """Retry an LLM call on rate limit errors with exponential backoff."""
+    last_err = None
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            return call_fn(client, model, system, user, max_tokens, temperature)
+        except Exception as e:
+            if _is_rate_limit(e) and attempt < MAX_RETRIES:
+                wait = INITIAL_BACKOFF_SECONDS * (2 ** attempt)
+                print(f"  [retry] {step_name}: rate limited, waiting {wait}s "
+                      f"(attempt {attempt + 1}/{MAX_RETRIES})...")
+                time.sleep(wait)
+                last_err = e
+            else:
+                raise
+    raise last_err  # unreachable, but satisfies type checkers
+
+
+def _is_rate_limit(e: Exception) -> bool:
+    """Check if an exception is a rate limit error (429)."""
+    # Anthropic SDK
+    if type(e).__name__ == "RateLimitError":
+        return True
+    # Check for status_code attribute
+    if hasattr(e, "status_code") and getattr(e, "status_code") == 429:
+        return True
+    # OpenAI SDK
+    if "429" in str(e) and "rate" in str(e).lower():
+        return True
+    return False
 
 
 def _detect_backend(client) -> str:
