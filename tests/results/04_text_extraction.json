@@ -10,5 +10,5 @@
   "llm_text_length": 8902,
   "llm_text_preview": "Evaluating treatment effect heterogeneity widely informs treatment decision making. At the moment, much emphasis is placed on the estimation of the conditional average treatment effect via flexible machine learning algorithms. While these methods enjoy some theoretical appeal in terms of consistency and convergence rates, they generally perform poorly in terms of uncertainty quantification. This is troubling since assessing risk is crucial for reliable decision-making in sensitive and uncertain ",
   "pass": true,
-  "timestamp": "2026-04-04T04:38:35.931553+00:00"
+  "timestamp": "2026-04-05T07:50:04.138666+00:00"
 }

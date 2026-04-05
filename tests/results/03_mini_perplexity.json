@@ -1,40 +1,40 @@
 {
   "closely_related": {
-    "perplexity": 1.000001350649281,
-    "avg_logprob": -1.3506483689466662e-06,
+    "perplexity": 1.0000009339136835,
+    "avg_logprob": -9.339132473527453e-07,
     "n_tokens": 31,
     "n_chunks": 1,
     "error": ""
   },
   "somewhat_related": {
-    "perplexity": 1.0000026912096507,
-    "avg_logprob": -2.691206029409489e-06,
+    "perplexity": 1.000000693105874,
+    "avg_logprob": -6.931056337898847e-07,
     "n_tokens": 31,
     "n_chunks": 1,
     "error": ""
   },
   "unrelated": {
-    "perplexity": 1.000002099035123,
-    "avg_logprob": -2.099032920180053e-06,
+    "perplexity": 1.0000016544268557,
+    "avg_logprob": -1.654425487216823e-06,
     "n_tokens": 31,
     "n_chunks": 1,
     "error": ""
   },
   "self": {
-    "perplexity": 1.0000014208197217,
-    "avg_logprob": -1.4208187122317066e-06,
+    "perplexity": 1.0000019798311588,
+    "avg_logprob": -1.9798291989922465e-06,
     "n_tokens": 31,
     "n_chunks": 1,
     "error": ""
   },
   "ordering_check": {
     "self < closely_related": false,
-    "closely_related < somewhat_related": true,
-    "somewhat_related < unrelated": false,
+    "closely_related < somewhat_related": false,
+    "somewhat_related < unrelated": true,
     "full ordering (self < closely < somewhat < unrelated)": false
   },
   "all_finite": true,
   "pass": true,
   "ordering_sensible": false,
-  "timestamp": "2026-04-04T04:38:13.612803+00:00"
+  "timestamp": "2026-04-05T07:49:44.728344+00:00"
 }

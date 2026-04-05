@@ -2,8 +2,8 @@
   "arxiv_id": "2006.06138",
   "n_total": 92,
   "n_with_arxiv_id": 36,
-  "n_with_abstract": 44,
-  "n_no_content": 48,
+  "n_with_abstract": 65,
+  "n_no_content": 27,
   "pass": true,
   "sample_refs": [
     {
@@ -67,5 +67,5 @@
       "arxiv_id": "1905.02928"
     }
   ],
-  "timestamp": "2026-04-04T04:38:36.496910+00:00"
+  "timestamp": "2026-04-05T07:50:04.664784+00:00"
 }

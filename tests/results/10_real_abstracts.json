@@ -3,11 +3,11 @@
   "model": "gpt-4o",
   "target_text_length": 8902,
   "n_total_refs": 92,
-  "n_refs_with_abstract": 44,
+  "n_refs_with_abstract": 65,
   "n_test_refs": 10,
   "self_ppl": {
-    "perplexity": 1.000010333222124,
-    "avg_logprob": -1.0333168736661648e-05,
+    "perplexity": 1.0000126928749156,
+    "avg_logprob": -1.2692794361726269e-05,
     "n_tokens": 1697,
     "n_chunks": 3,
     "error": ""
@@ -17,8 +17,8 @@
       "title": "Classification with Valid and Adaptive Coverage",
       "has_arxiv": true,
       "abstract_length": 956,
-      "perplexity": 1.002351577083196,
-      "avg_logprob": -0.0023488164528500995,
+      "perplexity": 1.001638463670314,
+      "avg_logprob": -0.001637122853101626,
       "n_tokens": 795,
       "n_chunks": 3,
       "error": ""
@@ -27,9 +27,9 @@
       "title": "Conformal prediction intervals for the individual treatment effect",
       "has_arxiv": true,
       "abstract_length": 690,
-      "perplexity": 1.0002772736758674,
-      "avg_logprob": -0.00027723524262594995,
-      "n_tokens": 1542,
+      "perplexity": 1.0009464380405408,
+      "avg_logprob": -0.0009459904504471769,
+      "n_tokens": 950,
       "n_chunks": 3,
       "error": ""
     },
@@ -37,8 +37,8 @@
       "title": "Towards optimal doubly robust estimation of heterogeneous causal effects",
       "has_arxiv": true,
       "abstract_length": 1651,
-      "perplexity": 1.0000914543127204,
-      "avg_logprob": -9.145013102978834e-05,
+      "perplexity": 1.0001512395122119,
+      "avg_logprob": -0.00015122807666978776,
       "n_tokens": 1697,
       "n_chunks": 3,
       "error": ""
@@ -47,8 +47,8 @@
       "title": "Use of directed acyclic graphs (DAGs) in applied health research: review and rec",
       "has_arxiv": false,
       "abstract_length": 1705,
-      "perplexity": 1.0003122426828543,
-      "avg_logprob": -0.00031219394525285076,
+      "perplexity": 1.000032908550236,
+      "avg_logprob": -3.290800876157922e-05,
       "n_tokens": 1697,
       "n_chunks": 3,
       "error": ""
@@ -57,8 +57,8 @@
       "title": "Evaluation of Differences in Individual Treatment Response in Schizophrenia Spec",
       "has_arxiv": false,
       "abstract_length": 2422,
-      "perplexity": 1.0000848191766447,
-      "avg_logprob": -8.48155797017443e-05,
+      "perplexity": 1.0000812359703495,
+      "avg_logprob": -8.123267088663905e-05,
       "n_tokens": 1697,
       "n_chunks": 3,
       "error": ""
@@ -67,8 +67,8 @@
       "title": "A comparison of some conformal quantile regression methods",
       "has_arxiv": true,
       "abstract_length": 973,
-      "perplexity": 1.0000283822594012,
-      "avg_logprob": -2.8381856632556775e-05,
+      "perplexity": 1.000044588483652,
+      "avg_logprob": -4.458748961516758e-05,
       "n_tokens": 1697,
       "n_chunks": 3,
       "error": ""
@@ -77,9 +77,9 @@
       "title": "Inference on finite-population treatment effects under limited overlap",
       "has_arxiv": false,
       "abstract_length": 1039,
-      "perplexity": 1.0000302205270366,
-      "avg_logprob": -3.0220070405639223e-05,
-      "n_tokens": 1697,
+      "perplexity": 1.0006571311009613,
+      "avg_logprob": -0.0006569152848606473,
+      "n_tokens": 1542,
       "n_chunks": 3,
       "error": ""
     },
@@ -87,8 +87,8 @@
       "title": "A national experiment reveals where a growth mindset improves achievement",
       "has_arxiv": false,
       "abstract_length": 1245,
-      "perplexity": 1.000026794705921,
-      "avg_logprob": -2.6794346949113934e-05,
+      "perplexity": 1.0000306384369457,
+      "avg_logprob": -3.063796759849245e-05,
       "n_tokens": 1697,
       "n_chunks": 3,
       "error": ""
@@ -97,8 +97,8 @@
       "title": "Assessing Treatment Effect Variation in Observational Studies: Results from a Da",
       "has_arxiv": true,
       "abstract_length": 1050,
-      "perplexity": 1.0007289527613568,
-      "avg_logprob": -0.0007286872043371623,
+      "perplexity": 1.001662073424623,
+      "avg_logprob": -0.0016606937091694662,
       "n_tokens": 950,
       "n_chunks": 3,
       "error": ""
@@ -107,9 +107,9 @@
       "title": "Predictive inference with the jackknife+",
       "has_arxiv": true,
       "abstract_length": 1229,
-      "perplexity": 1.0000248375173086,
-      "avg_logprob": -2.4837208862595428e-05,
-      "n_tokens": 1697,
+      "perplexity": 1.000890851331294,
+      "avg_logprob": -0.0008904547587540696,
+      "n_tokens": 1542,
       "n_chunks": 3,
       "error": ""
     }
@@ -117,16 +117,16 @@
   "n_valid": 10,
   "n_errored": 0,
   "stats": {
-    "mean": 1.0003956554702307,
-    "median": 1.0000881367446826,
-    "std": 0.0007217911713284637,
-    "min": 1.0000248375173086,
-    "max": 1.002351577083196,
-    "spread": 0.00232673956588747
+    "mean": 1.0006135568521128,
+    "median": 1.0004041853065866,
+    "std": 0.000652958735742073,
+    "min": 1.0000306384369457,
+    "max": 1.001662073424623,
+    "spread": 0.0016314349876773715
   },
   "n_cited_below_self_ppl": 0,
   "self_is_lowest": true,
   "meaningful_spread": false,
   "pass": true,
-  "timestamp": "2026-04-04T04:41:14.077571+00:00"
+  "timestamp": "2026-04-05T07:52:39.007536+00:00"
 }
