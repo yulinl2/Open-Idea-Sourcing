@@ -285,12 +285,14 @@ def run_experiment(
             title = rf.context_title[:50]
             print(f"  {title:<50} {rf.perplexity:>12.6f} {rt.perplexity:>12.6f} {change:>+9.3f}%")
 
-    # Save results
+    # Save results — include full I/O texts for audit
     results_data = {
         "arxiv_id": arxiv_id,
         "model": model,
         "keep_ratio": keep_ratio,
         "n_refs_tested": len(sample_refs),
+        "target_text_full": target_text,
+        "target_text_trimmed": trimmed_text,
         "diagnostics": diagnostics,
         "full_text_stats": {k: v for k, v in full_stats.items() if not isinstance(v, float) or math.isfinite(v)},
         "trimmed_text_stats": {k: v for k, v in trim_stats.items() if not isinstance(v, float) or math.isfinite(v)},

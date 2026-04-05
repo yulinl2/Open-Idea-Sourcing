@@ -170,6 +170,7 @@ def cache_single_paper(source: str, client, llm_json) -> Path | None:
         "title": title or "Unknown",
         "abstract": abstract,
         "full_text": full_text,
+        "raw_text": raw_text,  # preserve pdfplumber output for audit
         "raw_text_length": len(raw_text),
         "references": [
             {
