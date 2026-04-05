@@ -1,0 +1,13 @@
+{
+  "problem_context": "In many fields including medicine, policy evaluation, and social sciences, researchers need to move beyond estimating average treatment effects to understanding how treatments affect individuals differently. While average treatment effects provide useful population-level summaries, they can be misleading when treatment effects vary substantially across individuals - for instance, a treatment might help 70% of patients while harming the remaining 30%. Current methods for estimating conditional average treatment effects (CATE) using machine learning algorithms suffer from poor uncertainty quantification, which is problematic for decision-making in sensitive environments where assessing risk is crucial. The fundamental challenge is that for any individual, only one potential outcome is ever observed (either under treatment or control), making it impossible to directly observe individual treatment effects. Additionally, existing theoretical guarantees for uncertainty quantification typically rely on strong assumptions and asymptotic regimes that may not hold in practice, limiting their reliability in real-world applications.",
+  "desirable_properties": [
+    "Should provide reliable uncertainty quantification with coverage guarantees that hold in finite samples",
+    "Should work without requiring asymptotic approximations or strong parametric assumptions",
+    "Should handle both randomized experiments and observational studies",
+    "Should be robust to model misspecification",
+    "Should account for the fundamental problem that only one potential outcome is observed per individual",
+    "Should provide interval estimates rather than just point estimates to capture uncertainty",
+    "Should work in settings with covariate shift between study and target populations"
+  ],
+  "field_context": "This work addresses the problem of estimating treatment effect heterogeneity under the potential outcomes framework, a fundamental challenge in causal inference. The field has traditionally focused on average treatment effects, but there is growing recognition across disciplines that understanding individual-level variation in treatment response is essential for personalized decision-making. The challenge of constructing reliable uncertainty estimates for individual-level causal quantities remains an important open problem in the field."
+}
