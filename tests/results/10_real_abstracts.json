@@ -10,7 +10,7 @@
     "avg_logprob": -3.5202078255213805e-05,
     "n_tokens": 2887,
     "n_chunks": 5,
-    "error": "chunk 2/5: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o in organization org-YHtdLrQ8KAel6oYw0LVgAlx7 on tokens per min (TPM): Limit 30000, Used 26631, Requested 4713. Please try again in 2.688s. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}"
+    "error": "chunk 2/5: rate_limit_exceeded (429); retry_after=2.688s"
   },
   "ref_results": [
     {

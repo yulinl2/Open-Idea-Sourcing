@@ -146,4 +146,4 @@ Values >1 mean the reference makes the target harder to predict than itself.
 
 ## Errors (1 total)
 
-- **gpt-4o** | The Unreasonable Effectiveness of Deep Features as: chunk 1/1: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o in organization org-YHtdLrQ8KAel6oYw0LVgAlx7 on tokens per min (TPM): Limit 30000, Used 26968, Requested 4557. Please try again in 3.05s. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}
+- **gpt-4o** | The Unreasonable Effectiveness of Deep Features as: chunk 1/1: rate_limit_exceeded (429); retry_after=3.05s
