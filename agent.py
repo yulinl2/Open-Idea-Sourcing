@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-IMPL_ID = "staged_reconstruct_v0_4_0"
+IMPL_ID = "staged_reconstruct_v0_5_0"
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -541,6 +541,62 @@ def dispatch_paper(
                 }
 
         results["conditions"][condition] = cond_results
+
+    # Pairwise comparison (if both conditions ran and evaluate is enabled)
+    if evaluate and paper_text and "with_refs" in results["conditions"] and "no_refs" in results["conditions"]:
+        from infra.evaluate import evaluate_pairwise
+        pairwise_dir = paper_dir / "_pairwise"
+        pairwise_dir.mkdir(exist_ok=True)
+        pairwise_results = {}
+
+        print(f"\n  === Pairwise comparison (with_refs vs no_refs) ===")
+
+        for mode in modes:
+            wr = results["conditions"]["with_refs"].get(mode, {})
+            nr = results["conditions"]["no_refs"].get(mode, {})
+            if wr.get("status") != "success" or nr.get("status") != "success":
+                continue
+
+            wr_path = Path(wr["output_path"])
+            nr_path = Path(nr["output_path"])
+            if not wr_path.exists() or not nr_path.exists():
+                continue
+
+            wr_text = wr_path.read_text(encoding="utf-8")
+            nr_text = nr_path.read_text(encoding="utf-8")
+
+            pw_audit = AuditLog(
+                paper_id=paper_id,
+                paper_url=paper_url,
+                reconstruction_type=f"pairwise/{mode}",
+                student_model=student_model,
+                teacher_model=teacher_model,
+                config={"mode": mode},
+            )
+
+            try:
+                print(f"  [pairwise] Comparing {mode}...")
+                pw_result = evaluate_pairwise(
+                    client, teacher_model, paper_text,
+                    wr_text, nr_text, mode, pw_audit,
+                )
+                pw_audit.mark_finished()
+                pw_audit.save(pairwise_dir / f"{mode}_audit.json")
+                (pairwise_dir / f"{mode}.json").write_text(
+                    json.dumps(pw_result, indent=2, default=str),
+                    encoding="utf-8",
+                )
+                score = pw_result.get("reference_impact_score", "?")
+                closer = pw_result.get("which_is_closer_to_original", "?")
+                print(f"  [pairwise] Impact: {score}/7 | Closer: {closer}")
+                pairwise_results[mode] = pw_result
+            except Exception as exc:
+                pw_audit.mark_finished()
+                pw_audit.save(pairwise_dir / f"{mode}_audit.json")
+                print(f"  [pairwise] ERROR in {mode}: {exc}")
+                pairwise_results[mode] = {"error": str(exc)}
+
+        results["pairwise"] = pairwise_results
 
     return results
 
