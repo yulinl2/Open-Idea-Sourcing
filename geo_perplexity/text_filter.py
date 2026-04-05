@@ -81,7 +81,7 @@ def _filtered_tokens(text: str) -> list[str]:
 def _split_sentences(text: str) -> list[str]:
     """Split text into sentences, preserving paragraph structure."""
     # Split on sentence-ending punctuation followed by space or newline
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
+    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z(\["(]|[a-z]{1,3}\s)', text)
     # Also split on double newlines (paragraph breaks)
     result = []
     for s in sentences:
@@ -137,6 +137,7 @@ class ScoredSentence:
     score: float
     n_keywords: int  # number of high-TF-IDF terms
     top_terms: list[str]  # most distinctive terms in this sentence
+    orig_index: int = 0  # position in the original sentence list
 
 
 def score_sentences(
@@ -171,7 +172,7 @@ def score_sentences(
     sentences = _split_sentences(text)
     scored = []
 
-    for sent in sentences:
+    for idx, sent in enumerate(sentences):
         tokens = _filtered_tokens(sent)
         if not tokens:
             continue
@@ -193,6 +194,7 @@ def score_sentences(
             score=avg_score,
             n_keywords=len(keywords),
             top_terms=sorted(set(keywords), key=lambda t: tfidf.get(t, 0), reverse=True)[:5],
+            orig_index=idx,
         ))
 
     scored.sort(key=lambda s: s.score, reverse=True)
@@ -237,16 +239,14 @@ def filter_to_dense_passages(
     n_keep = max(min_sentences, int(len(scored) * keep_ratio))
     n_keep = min(n_keep, len(scored))
 
-    # Keep top-scoring sentences, but restore original order
-    kept_set = set(id(s) for s in scored[:n_keep])
-    # Re-split to get original order
+    # Keep top-scoring sentences, but restore original order.
+    # scored list entries carry an .orig_index set during scoring.
+    kept_indices = {s.orig_index for s in scored[:n_keep]}
     all_sentences = _split_sentences(text)
-    scored_map = {s.text: s for s in scored}
 
     kept_in_order = []
-    for sent in all_sentences:
-        s = scored_map.get(sent)
-        if s and id(s) in kept_set:
+    for idx, sent in enumerate(all_sentences):
+        if idx in kept_indices:
             kept_in_order.append(sent)
 
     filtered_text = "\n\n".join(kept_in_order)

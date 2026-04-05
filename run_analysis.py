@@ -141,7 +141,11 @@ def _load_from_cache(arxiv_id: str):
     if not cache_path.exists():
         return None
 
-    data = json.loads(cache_path.read_text())
+    try:
+        data = json.loads(cache_path.read_text())
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        print(f"WARNING: ignoring invalid cache file {cache_path}: {e}", file=sys.stderr)
+        return None
     if not data.get("full_text") or not data.get("references"):
         return None
 
@@ -254,7 +258,7 @@ def run_single_paper(
 
     # Step 5: Compute perplexities
     print(f"\n[5/5] Computing perplexities across {len(models)} model(s)...")
-    n_contexts = n_with_text + 1 + (1 if random_ref else 0)  # cited + self + random
+    n_contexts = n_with_text + 1 + (1 if random_ref and random_ref.has_content else 0)  # cited + self + random
     print(f"  Total evaluations: {n_contexts} contexts × {len(models)} models = {n_contexts * len(models)}")
 
     results = compute_all_perplexities(

@@ -42,9 +42,8 @@ try:
 except ImportError:
     pass
 
-from geo_perplexity.text_filter import filter_to_dense_passages, compute_idf, score_sentences
+from geo_perplexity.text_filter import filter_to_dense_passages
 from geo_perplexity.perplexity import estimate_perplexity, PerplexityResult
-from geo_perplexity.reference_collector import CitedPaper
 
 
 def load_cached_paper(arxiv_id: str) -> dict | None:
@@ -146,18 +145,18 @@ def run_experiment(
     print(f"  Score separation:  {diagnostics['score_separation']:.4f}")
     print(f"  Top distinctive terms: {', '.join(diagnostics['top_distinctive_terms'][:10])}")
 
-    # Build context list: self + sample refs + random ref
+    # Build context list: (id, title, text, type)
     contexts = []
-    contexts.append(("self", "Target paper (self)", target_text))
+    contexts.append(("self", "Target paper (self)", target_text, "self"))
 
     for r in sample_refs:
         text = r.get("full_text") or r.get("abstract", "")
-        contexts.append((r.get("paper_id", ""), r["title"], text))
+        contexts.append((r.get("paper_id", ""), r["title"], text, "cited"))
 
     if random_ref:
         rtext = random_ref.get("full_text") or random_ref.get("abstract", "")
         if rtext:
-            contexts.append((random_ref.get("paper_id", ""), random_ref["title"], rtext))
+            contexts.append((random_ref.get("paper_id", ""), random_ref["title"], rtext, "random"))
 
     # Run perplexity for BOTH full and trimmed target
     print(f"\nRunning perplexity comparisons ({len(contexts)} contexts × 2 variants)...")
@@ -166,8 +165,7 @@ def run_experiment(
     full_results = []
     trimmed_results = []
 
-    for i, (ctx_id, ctx_title, ctx_text) in enumerate(contexts):
-        ctx_type = "self" if ctx_id == "self" else ("random" if random_ref and ctx_id == random_ref.get("paper_id") else "cited")
+    for i, (ctx_id, ctx_title, ctx_text, ctx_type) in enumerate(contexts):
 
         # Full text perplexity
         print(f"  [{i+1}/{len(contexts)}] Full-text PPL | {ctx_type}: {ctx_title[:50]}...")
