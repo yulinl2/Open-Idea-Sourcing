@@ -17,7 +17,7 @@
       "samples": []
     },
     "no_arxiv_has_abstract": {
-      "count": 29,
+      "count": 8,
       "samples": [
         "Use of directed acyclic graphs (DAGs) in applied health research: review and rec",
         "Evaluation of Differences in Individual Treatment Response in Schizophrenia Spec",
@@ -27,22 +27,22 @@
       ]
     },
     "no_arxiv_no_abstract": {
-      "count": 27,
+      "count": 48,
       "samples": [
         "Quantile Regression",
         "Balancing Out Regression Error: Efficient Treatment Effect Estimation without Sm",
-        "Heterogeneous causal effects and sample selection bias",
-        "How Generalizable Is Your Experiment? An Index for Comparing Experimental Sample",
-        "Improving Generalizations From Experiments Using Propensity Score Subclassificat"
+        "Estimating Heterogeneous Treatment Effects and the Effects of Heterogeneous Trea",
+        "Causal Inference in Statistics: A Primer",
+        "Transductive conformal predictors"
       ]
     }
   },
   "coverage": {
     "arxiv_pdf_only": "36/92 (39%)",
-    "abstract_only": "65/92 (71%)",
-    "arxiv_or_abstract": "65/92 (71%)",
-    "nothing": "27/92 (29%)"
+    "abstract_only": "44/92 (48%)",
+    "arxiv_or_abstract": "44/92 (48%)",
+    "nothing": "48/92 (52%)"
   },
   "pass": true,
-  "timestamp": "2026-04-05T07:50:05.508853+00:00"
+  "timestamp": "2026-04-05T08:00:14.755232+00:00"
 }
