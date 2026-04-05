@@ -1,0 +1,149 @@
+[
+  {
+    "paper_id": "2602.04770",
+    "paper_url": "https://arxiv.org/abs/2602.04770",
+    "text_source": "pdf",
+    "conditions": {
+      "no_refs": {
+        "abstract": {
+          "status": "success",
+          "output_chars": 1701,
+          "output_path": "reports/run07-v0.4-improved-eval/2602.04770/no_refs/abstract/output.md",
+          "input_tokens": 529,
+          "output_tokens": 327,
+          "duration_s": 8.29,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 2,
+              "writing_quality": 4,
+              "completeness": 4
+            },
+            "composite_score": 3.4,
+            "novelty_alignment_rationale": "The student proposed a flow-based approach with rectified trajectories, missing the paper's core insight of training-time evolution through a drifting field that governs sample movement via attraction/repulsion dynamics.",
+            "novelty_gap": "The actual paper introduces a 'drifting field' that evolves the pushforward distribution during training time through attraction to data samples and repulsion from generated samples, reaching equilibrium when distributions match. The student's rectified flow approach focuses on straightening ODE trajectories for single-step inference, which is conceptually different - it lacks the contrastive positive/negative sample mechanism and the training-time evolution paradigm that defines the paper's contribution.",
+            "reconstruction_difficulty": 4,
+            "strongest_aspect": "Clear articulation of the single-step generation goal and well-structured abstract that correctly identifies the core challenge of balancing quality vs efficiency in generative modeling.",
+            "weakest_aspect": "Failed to capture the paper's unique mechanism of using a drifting field with attraction/repulsion dynamics during training, instead proposing a more conventional flow-based approach."
+          }
+        },
+        "mindmap": {
+          "status": "success",
+          "output_chars": 3734,
+          "output_path": "reports/run07-v0.4-improved-eval/2602.04770/no_refs/mindmap/output.md",
+          "input_tokens": 651,
+          "output_tokens": 828,
+          "duration_s": 20.33,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 3,
+              "novelty_alignment": 2,
+              "writing_quality": 4,
+              "completeness": 4
+            },
+            "composite_score": 3.4,
+            "novelty_alignment_rationale": "The student proposed rectified flows with straight-line trajectories, completely missing the paper's core insight of training-time evolution through a drifting field with attraction/repulsion dynamics.",
+            "novelty_gap": "The paper's key innovation is a drifting field V that governs sample movement during training through attraction to data samples and repulsion from generated samples, reaching equilibrium when distributions match. The student instead proposed rectified flows that straighten paths between noise and data - a fundamentally different mechanism that doesn't capture the contrastive-like dynamics or the training-time evolution concept.",
+            "reconstruction_difficulty": 4,
+            "strongest_aspect": "The mindmap is well-structured with clear problem identification, theoretical grounding, and thoughtful consideration of challenges and connections to existing work.",
+            "weakest_aspect": "Complete misalignment with the paper's core mechanism - the student proposed a flow-based approach when the paper explicitly presents a new paradigm distinct from diffusion/flow models."
+          }
+        },
+        "problem": {
+          "status": "success",
+          "output_chars": 5431,
+          "output_path": "reports/run07-v0.4-improved-eval/2602.04770/no_refs/problem/output.md",
+          "input_tokens": 583,
+          "output_tokens": 1510,
+          "duration_s": 29.44,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 2,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 3.8,
+            "novelty_alignment_rationale": "The student correctly identifies the need for single-pass generation but completely misses the paper's core insight of training-time distribution evolution through a drifting field, instead framing it as a standard distributional matching problem.",
+            "novelty_gap": "The paper's key innovation is the concept of 'drifting' - evolving the pushforward distribution during training time through a drifting field V that governs sample movement and reaches equilibrium when distributions match. The student's formulation is a generic distributional matching framework that could apply to GANs, VAEs, or any generative model, missing the specific mechanism of training-time evolution through drift dynamics. The paper introduces V_p,q(x) as an anti-symmetric field that moves samples and defines a novel fixed-point training objective, none of which appears in the student's generic IPM formulation.",
+            "reconstruction_difficulty": 4,
+            "strongest_aspect": "The mathematical formulation is rigorous and well-structured, with clear notation, appropriate assumptions, and excellent contextualization of the single-pass generation problem within the broader generative modeling landscape.",
+            "weakest_aspect": "Complete failure to capture the paper's core novelty - the drifting mechanism. The student presents a standard generative modeling problem formulation that could describe many existing methods, showing no insight into what makes this paper unique."
+          }
+        },
+        "problem_method": {
+          "status": "success",
+          "output_chars": 8715,
+          "output_path": "reports/run07-v0.4-improved-eval/2602.04770/no_refs/problem_method/output.md",
+          "input_tokens": 600,
+          "output_tokens": 2871,
+          "duration_s": 50.73,
+          "eval": {
+            "scores": {
+              "problem_understanding": 3,
+              "technical_depth": 4,
+              "novelty_alignment": 2,
+              "writing_quality": 4,
+              "completeness": 4
+            },
+            "composite_score": 3.4,
+            "novelty_alignment_rationale": "The student proposed consistency training between time steps, which is fundamentally different from the paper's core insight of evolving distributions through attraction-repulsion drifting fields during training.",
+            "novelty_gap": "The paper's key insight is a drifting field V that governs sample movement through attraction to data samples and repulsion from generated samples, reaching equilibrium when distributions match. The student's consistency training approach enforces self-consistency across time steps but completely misses the kernelized attraction-repulsion mechanism, the anti-symmetry property V_p,q = -V_q,p, and the training-time evolution of pushforward distributions that defines the paper's novelty.",
+            "reconstruction_difficulty": 4,
+            "strongest_aspect": "The technical presentation is rigorous and well-structured, with clear mathematical notation, formal problem setup, and a complete algorithmic description that would be suitable for a research paper.",
+            "weakest_aspect": "The proposed method bears no conceptual resemblance to the actual paper's approach - it reads more like a consistency distillation method rather than capturing the unique drifting field mechanism that makes the paper novel."
+          }
+        },
+        "full_guided": {
+          "status": "success",
+          "output_chars": 18682,
+          "output_path": "reports/run07-v0.4-improved-eval/2602.04770/no_refs/full_guided/output.md",
+          "input_tokens": 731,
+          "output_tokens": 4414,
+          "duration_s": 85.86,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 2,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 3.8,
+            "novelty_alignment_rationale": "While the student correctly identifies the goal of efficient single-step generation, their 'Rectified Flow' approach of learning straight-line velocity fields fundamentally differs from the paper's key insight of evolving distributions through training-time drift with kernel-based attraction/repulsion dynamics.",
+            "novelty_gap": "The paper's core mechanism is a drifting field based on kernel-weighted attraction to data samples and repulsion from generated samples, creating an equilibrium when distributions match. The student's approach instead learns direct velocity fields for straight-line transport between noise and data - missing the contrastive positive/negative sample dynamics, the anti-symmetric field property, and the training-time evolution concept that defines the paper's contribution.",
+            "reconstruction_difficulty": 4,
+            "strongest_aspect": "The writing quality is exceptional - the student presents a coherent, well-structured paper with clear motivation, thorough related work, rigorous mathematical formulation, and comprehensive experimental design. The technical presentation rivals published work.",
+            "weakest_aspect": "The novelty alignment - while the student's 'Rectified Flow' is a reasonable approach to single-step generation, it completely misses the paper's distinctive mechanism of kernel-based drifting fields with positive/negative sample dynamics. The student essentially invented a different (though related) method rather than reconstructing the actual approach."
+          }
+        },
+        "full_freestyle": {
+          "status": "success",
+          "output_chars": 15039,
+          "output_path": "reports/run07-v0.4-improved-eval/2602.04770/no_refs/full_freestyle/output.md",
+          "input_tokens": 597,
+          "output_tokens": 3466,
+          "duration_s": 67.54,
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 4,
+              "novelty_alignment": 2,
+              "writing_quality": 5,
+              "completeness": 4
+            },
+            "composite_score": 3.8,
+            "novelty_alignment_rationale": "The student proposed consistency models that map noise to data in one step, but completely missed the paper's core insight of training-time distribution evolution via a drifting field with attraction/repulsion dynamics.",
+            "novelty_gap": "The original paper's key innovation is a drifting field V_p,q that governs sample movement during training through attraction to data samples and repulsion from generated samples, reaching equilibrium when distributions match. The student's consistency models instead focus on enforcing trajectory consistency constraints, missing the fundamental mechanism of distribution evolution via kernel-based drift fields and the anti-symmetric property that ensures equilibrium.",
+            "reconstruction_difficulty": 4,
+            "strongest_aspect": "Excellent writing quality and presentation - the student produced a well-structured, clearly written paper with proper mathematical formulation and comprehensive coverage of a plausible single-step generation approach.",
+            "weakest_aspect": "Complete misalignment with the paper's core mechanism - the student invented an entirely different approach (consistency models) rather than discovering the drifting field concept that makes the original paper novel."
+          }
+        }
+      }
+    }
+  }
+]

@@ -1,0 +1,29 @@
+{
+  "paper_id": "2602.04770",
+  "paper_url": "https://arxiv.org/abs/2602.04770",
+  "reconstruction_type": "no_refs/abstract",
+  "student_model": "claude-sonnet-4-20250514",
+  "teacher_model": "claude-opus-4-20250514",
+  "start_time": "2026-04-05T14:48:11.766651+00:00",
+  "finish_time": "2026-04-05T14:48:20.059160+00:00",
+  "steps": [
+    {
+      "step_name": "student_abstract",
+      "model": "claude-sonnet-4-20250514",
+      "system_prompt": "You are a researcher tasked with writing an abstract for a NEW paper that\naddresses the problem described below. You have access to the reference papers\nlisted, but you do NOT have access to the actual paper that solved this problem.\n\n## Problem context\n\nCurrent generative modeling approaches face fundamental challenges in mapping from one distribution to another efficiently. While discriminative models simply map individual samples to labels, generative models must learn mappings between entire distributions - a significantly more complex task. Existing approaches often require iterative procedures at inference time, performing multiple network evaluations to progressively transform samples from noise to data. This creates a fundamental tension: decomposing complex transformations into simpler steps improves modeling quality but increases computational cost at generation time. There is a need for generative models that can produce high-quality samples in a single forward pass while maintaining the modeling flexibility that iterative approaches provide.\n\n**Field context:** Generative modeling is a fundamental problem in machine learning that aims to learn the underlying distribution of data and generate new samples from it. This field has seen significant progress through various paradigms including variational methods, adversarial approaches, and more recently, score-based and flow-based models. The challenge of efficient, high-quality generation remains central to advancing applications in image synthesis, robotics, and other domains.\n\n## Desirable solution properties\n\n- Should generate high-quality samples in a single network evaluation\n- Should avoid mode collapse and capture the full data distribution\n- Should work effectively in high-dimensional spaces like natural images\n- Should not require adversarial training or complex optimization procedures\n- Should be trainable from scratch without requiring pre-trained models\n- Should support conditional generation with flexible conditioning mechanisms\n- Should scale efficiently with data dimensionality and dataset size\n\n## Your task\n\nWrite a complete research paper abstract (150\u2013300 words) that:\n\n1. Motivates the problem and its importance\n2. States the gap in existing work (based on the references you can see)\n3. Proposes a concrete approach (your own invention \u2014 be specific!)\n4. Summarizes expected contributions or properties of the approach\n\nWrite as if this is YOUR paper. Be technically precise. Use the references to\nground your understanding of the field, but the approach must be your own\nsynthesis.\n\nDo NOT fabricate specific experimental numbers. Focus on the conceptual\ncontribution.\n\n## References\n\nNo references provided. Rely on your own knowledge of the field.\n",
+      "user_prompt": "Begin your reconstruction now.",
+      "response": "# Abstract\n\nGenerative modeling faces a fundamental trade-off between sample quality and computational efficiency. While diffusion models achieve state-of-the-art results through iterative denoising processes, they require hundreds of network evaluations at inference time. Conversely, single-step generators like GANs suffer from training instability and mode collapse. We propose **Rectified Flow Networks (RFNs)**, a novel generative modeling framework that learns to transform noise into data through a single neural ordinary differential equation (ODE) evaluation.\n\nOur approach parameterizes the velocity field of a continuous-time normalizing flow using a neural network, but crucially employs a **rectified training objective** that encourages straight-line trajectories in the latent space. Specifically, we minimize the discrepancy between the learned velocity field and the optimal transport path connecting noise to data distributions. This rectification process naturally leads to flows that can be accurately simulated with a single Euler step, eliminating the need for iterative sampling while maintaining high sample quality.\n\nRFNs offer several key advantages: (1) single-step generation with quality comparable to multi-step diffusion models, (2) stable training without adversarial objectives, (3) natural support for conditional generation through classifier-free guidance, and (4) theoretical guarantees on trajectory optimality. Our framework bridges the gap between the modeling flexibility of continuous normalizing flows and the efficiency requirements of practical applications, enabling high-quality generative modeling with minimal computational overhead at inference time.",
+      "input_tokens": 529,
+      "output_tokens": 327,
+      "duration_seconds": 8.29,
+      "timestamp": "2026-04-05T14:48:20.059116+00:00",
+      "metadata": {
+        "response_id": "msg_01Rqr8Bz7QEuiEJ11e14edRt",
+        "backend": "anthropic"
+      }
+    }
+  ],
+  "config": {
+    "condition": "no_refs"
+  }
+}
