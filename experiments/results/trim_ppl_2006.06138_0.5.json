@@ -1,0 +1,122 @@
+{
+  "arxiv_id": "2006.06138",
+  "model": "gpt-4o",
+  "keep_ratio": 0.5,
+  "n_refs_tested": 5,
+  "diagnostics": {
+    "n_sentences_total": 49,
+    "n_sentences_kept": 24,
+    "n_sentences_dropped": 25,
+    "keep_ratio": 0.5,
+    "original_length": 8902,
+    "filtered_length": 4050,
+    "compression_ratio": 0.4549539429341721,
+    "avg_score_kept": 1.5784730570873948,
+    "avg_score_dropped": 1.2511381657521499,
+    "score_separation": 0.32733489133524496,
+    "top_distinctive_terms": [
+      "ite",
+      "drug",
+      "nam",
+      "reliable",
+      "decision-making",
+      "insufficient",
+      "quantification",
+      "conjunction",
+      "highlighting",
+      "uncertain",
+      "troubling",
+      "sensitive",
+      "care",
+      "academy",
+      "held",
+      "xie",
+      "florens",
+      "treating",
+      "scientists",
+      "breen"
+    ],
+    "sample_kept": "In conjunction with this event, NAM published a report highlighting the importance of ITE in medicine.",
+    "sample_dropped": "This of course limits the applications of machine learning methods in sensitive causal inference problems."
+  },
+  "full_text_stats": {
+    "self_ppl": 1.0000083365708534,
+    "cited_mean": 1.0001646999188833,
+    "cited_median": 1.0001727532721278,
+    "cited_std": 0.00011711611472986381,
+    "cited_min": 1.0000298815994404,
+    "cited_max": 1.0003403156773454,
+    "cited_spread": 0.00031043407790498634,
+    "cited_cv": 0.00011709682889164386,
+    "self_vs_cited_mean": 0.0001563633480299309,
+    "self_vs_cited_ratio": 1.0001563620445066
+  },
+  "trimmed_text_stats": {
+    "self_ppl": 1.0000064555432706,
+    "cited_mean": 1.000009274673107,
+    "cited_median": 1.0000026020805706,
+    "cited_std": 1.4845091909943943e-05,
+    "cited_min": 1.00000019037536,
+    "cited_max": 1.0000354845010175,
+    "cited_spread": 3.529412565761447e-05,
+    "cited_cv": 1.484495422784619e-05,
+    "self_vs_cited_mean": 2.819129836462153e-06,
+    "self_vs_cited_ratio": 1.0000028191116375
+  },
+  "improvements": {
+    "spread_change": 0.11369281973101177,
+    "cv_change": 0.12677503198300138,
+    "separation_change": 0.018029385880436892
+  },
+  "per_reference": [
+    {
+      "title": "Target paper (self)",
+      "context_type": "self",
+      "full_ppl": 1.0000083365708534,
+      "trimmed_ppl": 1.0000064555432706,
+      "full_tokens": 1697,
+      "trimmed_tokens": 821
+    },
+    {
+      "title": "Predictive inference with the jackknife+",
+      "context_type": "cited",
+      "full_ppl": 1.0000298815994404,
+      "trimmed_ppl": 1.00000019037536,
+      "full_tokens": 1697,
+      "trimmed_tokens": 821
+    },
+    {
+      "title": "Use of directed acyclic graphs (DAGs) in applied health research: review and recommendations",
+      "context_type": "cited",
+      "full_ppl": 1.000092369371728,
+      "trimmed_ppl": 1.0000015112743645,
+      "full_tokens": 1697,
+      "trimmed_tokens": 821
+    },
+    {
+      "title": "Conformalized Quantile Regression",
+      "context_type": "cited",
+      "full_ppl": 1.0001727532721278,
+      "trimmed_ppl": 1.0000065851342228,
+      "full_tokens": 1697,
+      "trimmed_tokens": 821
+    },
+    {
+      "title": "Causal Inference in Statistics: A Primer",
+      "context_type": "cited",
+      "full_ppl": 1.0001881796737755,
+      "trimmed_ppl": 1.0000026020805706,
+      "full_tokens": 1697,
+      "trimmed_tokens": 821
+    },
+    {
+      "title": "Who Benefits Most from College?",
+      "context_type": "cited",
+      "full_ppl": 1.0003403156773454,
+      "trimmed_ppl": 1.0000354845010175,
+      "full_tokens": 1697,
+      "trimmed_tokens": 821
+    }
+  ],
+  "timestamp": "2026-04-05T07:43:23.241561+00:00"
+}

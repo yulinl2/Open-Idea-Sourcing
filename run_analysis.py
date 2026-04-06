@@ -133,6 +133,57 @@ def _parse_target_paper(pdf_path: str, llm_json) -> dict:
     }
 
 
+def _load_from_cache(arxiv_id: str):
+    """Try to load pre-cached text data, skipping expensive extraction."""
+    from geo_perplexity.reference_collector import CitedPaper
+
+    cache_path = Path(f"data/cached_texts/{arxiv_id.replace('/', '_')}.json")
+    if not cache_path.exists():
+        return None
+
+    try:
+        data = json.loads(cache_path.read_text())
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        print(f"WARNING: ignoring invalid cache file {cache_path}: {e}", file=sys.stderr)
+        return None
+    if not data.get("full_text") or not data.get("references"):
+        return None
+
+    target = {
+        "title": data.get("title", "Unknown"),
+        "abstract": data.get("abstract", ""),
+        "full_text": data["full_text"],
+    }
+
+    cited_papers = []
+    for r in data["references"]:
+        p = CitedPaper(
+            paper_id=r.get("paper_id", ""),
+            title=r.get("title", ""),
+            abstract=r.get("abstract", ""),
+            arxiv_id=r.get("arxiv_id", ""),
+            year=r.get("year"),
+            url=r.get("url", ""),
+            full_text=r.get("full_text", ""),
+            content_source=r.get("content_source", ""),
+        )
+        cited_papers.append(p)
+
+    random_ref = None
+    if data.get("random_ref"):
+        rr = data["random_ref"]
+        random_ref = CitedPaper(
+            paper_id=rr.get("paper_id", ""),
+            title=rr.get("title", ""),
+            abstract=rr.get("abstract", ""),
+            arxiv_id=rr.get("arxiv_id", ""),
+            full_text=rr.get("full_text", ""),
+            content_source=rr.get("content_source", ""),
+        )
+
+    return target, cited_papers, random_ref
+
+
 def run_single_paper(
     source: str,
     models: list[str],
@@ -152,51 +203,62 @@ def run_single_paper(
 
     # Step 0: Set up OpenAI client
     client = _get_openai_client()
-    llm_json = _make_llm_json(client, model="gpt-4o")  # use 4o for extraction
-
-    # Step 1: Parse target paper
-    print("[1/5] Parsing target paper...")
     arxiv_id = _extract_arxiv_id(source)
-    pdf_path = _download_source(source)
-    target = _parse_target_paper(pdf_path, llm_json)
-    print(f"  Title: {target['title']}")
-    print(f"  Abstract: {target['abstract'][:100]}...")
 
-    # Step 2: Collect all cited references
-    print("\n[2/5] Collecting cited references...")
-    cited_papers = fetch_all_citations(arxiv_id=arxiv_id, title=target["title"])
-    print(f"  Found {len(cited_papers)} cited references")
-
-    if not cited_papers:
-        print("  WARNING: No cited references found. Trying title-based lookup...")
-        cited_papers = fetch_all_citations(title=target["title"])
-        print(f"  Found {len(cited_papers)} via title lookup")
-
-    # Step 3: Extract full text for cited papers (batched LLM)
-    print("\n[3/5] Extracting full text from cited papers (batched LLM)...")
-    cited_papers = batch_extract_full_text(cited_papers, llm_json)
-    n_with_text = sum(1 for p in cited_papers if p.has_content)
-    print(f"  {n_with_text}/{len(cited_papers)} papers have extractable text")
-
-    # Step 4: Find random non-cited reference
-    print("\n[4/5] Finding random non-cited field reference...")
-    cited_ids = {p.paper_id for p in cited_papers if p.paper_id}
-    random_ref = find_random_non_cited_reference(
-        title=target["title"],
-        abstract=target["abstract"],
-        cited_ids=cited_ids,
-        target_year=None,  # could extract from paper metadata
-    )
-    if random_ref:
-        # Also extract its text
-        batch_extract_full_text([random_ref], llm_json)
-        print(f"  Random ref: {random_ref.title[:60]}...")
+    # Try loading from persistent cache first (skips expensive extraction)
+    cached = _load_from_cache(arxiv_id) if arxiv_id else None
+    if cached:
+        target, cited_papers, random_ref = cached
+        n_with_text = sum(1 for p in cited_papers if p.has_content)
+        print(f"[cache] Loaded pre-cached data for arXiv:{arxiv_id}")
+        print(f"  Title: {target['title']}")
+        print(f"  {n_with_text}/{len(cited_papers)} refs with text, "
+              f"random_ref={'yes' if random_ref else 'no'}")
     else:
-        print("  WARNING: Could not find a random non-cited reference")
+        llm_json = _make_llm_json(client, model="gpt-4o")  # use 4o for extraction
+
+        # Step 1: Parse target paper
+        print("[1/5] Parsing target paper...")
+        pdf_path = _download_source(source)
+        target = _parse_target_paper(pdf_path, llm_json)
+        print(f"  Title: {target['title']}")
+        print(f"  Abstract: {target['abstract'][:100]}...")
+
+        # Step 2: Collect all cited references
+        print("\n[2/5] Collecting cited references...")
+        cited_papers = fetch_all_citations(arxiv_id=arxiv_id, title=target["title"])
+        print(f"  Found {len(cited_papers)} cited references")
+
+        if not cited_papers:
+            print("  WARNING: No cited references found. Trying title-based lookup...")
+            cited_papers = fetch_all_citations(title=target["title"])
+            print(f"  Found {len(cited_papers)} via title lookup")
+
+        # Step 3: Extract full text for cited papers (batched LLM)
+        print("\n[3/5] Extracting full text from cited papers (batched LLM)...")
+        cited_papers = batch_extract_full_text(cited_papers, llm_json)
+        n_with_text = sum(1 for p in cited_papers if p.has_content)
+        print(f"  {n_with_text}/{len(cited_papers)} papers have extractable text")
+
+        # Step 4: Find random non-cited reference
+        print("\n[4/5] Finding random non-cited field reference...")
+        cited_ids = {p.paper_id for p in cited_papers if p.paper_id}
+        random_ref = find_random_non_cited_reference(
+            title=target["title"],
+            abstract=target["abstract"],
+            cited_ids=cited_ids,
+            target_year=None,  # could extract from paper metadata
+        )
+        if random_ref:
+            # Also extract its text
+            batch_extract_full_text([random_ref], llm_json)
+            print(f"  Random ref: {random_ref.title[:60]}...")
+        else:
+            print("  WARNING: Could not find a random non-cited reference")
 
     # Step 5: Compute perplexities
     print(f"\n[5/5] Computing perplexities across {len(models)} model(s)...")
-    n_contexts = n_with_text + 1 + (1 if random_ref else 0)  # cited + self + random
+    n_contexts = n_with_text + 1 + (1 if random_ref and random_ref.has_content else 0)  # cited + self + random
     print(f"  Total evaluations: {n_contexts} contexts × {len(models)} models = {n_contexts * len(models)}")
 
     results = compute_all_perplexities(

@@ -1,28 +1,28 @@
 {
   "closely_related": {
-    "perplexity": 1.000001350649281,
-    "avg_logprob": -1.3506483689466662e-06,
+    "perplexity": 1.0000010853246555,
+    "avg_logprob": -1.0853240664324227e-06,
     "n_tokens": 31,
     "n_chunks": 1,
     "error": ""
   },
   "somewhat_related": {
-    "perplexity": 1.0000026912096507,
-    "avg_logprob": -2.691206029409489e-06,
+    "perplexity": 1.0000028628026658,
+    "avg_logprob": -2.8627985680105344e-06,
     "n_tokens": 31,
     "n_chunks": 1,
     "error": ""
   },
   "unrelated": {
-    "perplexity": 1.000002099035123,
-    "avg_logprob": -2.099032920180053e-06,
+    "perplexity": 1.000002818104172,
+    "avg_logprob": -2.818100201253518e-06,
     "n_tokens": 31,
     "n_chunks": 1,
     "error": ""
   },
   "self": {
-    "perplexity": 1.0000014208197217,
-    "avg_logprob": -1.4208187122317066e-06,
+    "perplexity": 1.0000015592500566,
+    "avg_logprob": -1.5592488410682622e-06,
     "n_tokens": 31,
     "n_chunks": 1,
     "error": ""
@@ -36,5 +36,5 @@
   "all_finite": true,
   "pass": true,
   "ordering_sensible": false,
-  "timestamp": "2026-04-04T04:38:13.612803+00:00"
+  "timestamp": "2026-04-05T14:34:03.495919+00:00"
 }
