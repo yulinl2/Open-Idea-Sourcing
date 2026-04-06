@@ -40,7 +40,8 @@ GitHub Actions minutes cost money. So: run experiments here, CI just runs tests.
 | Teacher hint extraction | This sandbox -> API | ~$0.15/paper (Opus, 60K input) | ~30s |
 | Student reconstruction (x6 modes) | This sandbox -> API | ~$0.03/mode (Sonnet) | ~10s each |
 | Teacher evaluation (x6 modes) | This sandbox -> API | ~$0.10/mode (Opus, 30K input) | ~15s each |
-| **Full run (2 papers x 2 conditions x 6 modes)** | This sandbox -> API | **~$3-5 total** | **~15-30 min** |
+| Pairwise comparison (x6 modes) | This sandbox -> API | ~$0.10/mode (Opus, 30K input) | ~15s each |
+| **Full run (2 papers x 2 conditions x 6 modes + pairwise)** | This sandbox -> API | **~$4-6 total** | **~20-35 min** |
 
 ---
 
@@ -55,7 +56,7 @@ Open-Idea-Sourcing/
 |   |-- run_teacher()           L179  teacher hint extraction
 |   |-- run_student()           L236  student reconstruction
 |   |-- prepare_refs_text()     L288  reference text assembly
-|   +-- main()                  L643  CLI arg parsing + dispatch loop
+|   +-- main()                  L700  CLI arg parsing + dispatch loop
 |
 +-- infra/                      <-- SUPPORTING MODULES
 |   |-- llm.py                  L1    LLM call wrapper + retry-with-backoff
@@ -82,7 +83,8 @@ Open-Idea-Sourcing/
 |
 +-- reports/                    <-- OUTPUT (one subfolder per run)
 |   |-- run06-v0.4-antileak/          Complete run, old eval rubric
-|   |-- run07-v0.4-improved-eval/     Partial run (rate limited)
+|   |-- run07-v0.4-improved-eval/     Complete run, calibrated rubric
+|   |-- run08-v0.5-pairwise/          Complete run + pairwise comparison
 |   +-- LEAKAGE_ANALYSIS.md           Info leakage findings doc
 |
 +-- tests/
@@ -164,7 +166,32 @@ Open-Idea-Sourcing/
                   Delta = ref impact signal
                   Paper 1 (related ref): should be positive
                   Paper 2 (unrelated ref): should be ~0
+
+                           |
+                           v
+                  +------------------+
+                  |  PAIRWISE EVAL   |  (v0.5+)
+                  |  (Opus)          |
+                  |  evaluate.py:148 |
+                  |  Side-by-side    |
+                  |  A vs B on 1-7   |
+                  |  scale           |
+                  +------------------+
+                           |
+                           v
+                  Reference Impact Score (1-7)
+                  7 = refs dramatically helped
+                  4 = no difference
+                  1 = refs actively hurt
 ```
+
+### Student reference engagement (v0.5+)
+
+All student prompts include mandatory reference-engagement instructions:
+students must build their approach ON TOP of the references, not just cite
+them in passing. This prevents students from ignoring references and
+reconstructing from general knowledge — which would make the with_refs vs
+no_refs comparison meaningless.
 
 ---
 

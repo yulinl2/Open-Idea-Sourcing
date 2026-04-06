@@ -90,3 +90,41 @@ With the corrected data and redesigned prompt:
 All three test papers in v0.3.1 had fabricated metadata. The actual papers
 at the user-specified URLs are now correctly identified and cached. See
 `reports/v0.3.1-abstract-fallback_2026-04-04/VERSION_NOTES.md` for details.
+
+---
+
+## Validation Results (v0.5, 2026-04-06)
+
+The predictions above have been validated by run08 (v0.5 pairwise evaluator):
+
+### Paper 1 (Lei-Candès, RELATED reference)
+
+**Prediction:** Real with_refs vs no_refs signal expected.
+**Result: CONFIRMED.**
+
+- Independent composite delta: **+0.20** avg (refs help)
+- Pairwise impact: **6/7** on 5 of 6 modes (strong positive)
+- All 5 modes favor with_refs output (Output A)
+- Evaluator: *"Reference to Tibshirani et al. was crucial for correctly
+  identifying the weighted conformal approach"*
+
+### Paper 2 (Deng et al., UNRELATED reference)
+
+**Prediction:** Zero or negative delta (irrelevant reference = noise).
+**Result: CONFIRMED.**
+
+- Independent composite delta: **-0.00** avg (no effect)
+- Pairwise impact: **2-4/7** (refs hurt or neutral on all 6 modes)
+- All 6 modes favor no_refs output (Output B)
+- Evaluator: *"Conformal prediction reference led completely away from
+  the paper's core drifting field concept"*
+
+### Conclusions
+
+1. The v0.4 anti-leakage redesign successfully eliminated hint dominance —
+   references now produce a measurable signal.
+2. The negative control validates that the signal is genuine: unrelated
+   references don't just fail to help, they actively distract.
+3. The pairwise evaluator (v0.5) produces much sharper discrimination
+   than independent scoring, which suffered from anchoring (all scores
+   converging to novelty_alignment=2, reconstruction_difficulty=4).
