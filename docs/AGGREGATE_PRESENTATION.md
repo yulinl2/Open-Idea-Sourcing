@@ -7,13 +7,42 @@
 
 ---
 
+### How to Read This Document
+
+This project treats **novelty measurement as a controlled experiment**. We ask:
+*How much of a paper's contribution can be reconstructed from its references?*
+
+The setup follows a teacher-student protocol familiar from knowledge
+distillation, but applied to entire research papers:
+
+- A **teacher** (a stronger LLM that has read the full paper) extracts a
+  problem statement — carefully designed to describe *what problem the paper
+  solves* without revealing *how it solves it*.
+- A **student** (a weaker LLM that has never seen the paper) attempts to
+  reconstruct the paper from that problem statement, under two conditions:
+  **with references** (given the text of cited papers) and **without**.
+- A separate **evaluator** (teacher-level LLM) scores each reconstruction
+  against the original paper.
+
+The **delta** (with_refs score minus no_refs score) measures how much the
+references contribute. A large positive delta means the paper builds closely
+on its references; a near-zero delta means the contribution is novel beyond
+what references provide.
+
+Reconstruction is attempted at six levels of granularity (called **modes**):
+abstract, idea mindmap, problem formulation, problem + methodology,
+full paper with template, and full paper with free structure.
+
+---
+
 ## 1. Aggregate Score Tables
 
-All independent scores are teacher-evaluated composites on a 1–5 Likert scale
-(mean of problem_understanding, technical_depth, novelty_alignment,
-writing_quality, completeness). Statistics are sample mean +/- sample standard
-deviation across n=3 independent runs with identical student/teacher models but
-different random seeds.
+All independent scores are evaluator-assessed composites on a 1–5 Likert scale
+(mean of five rubric dimensions: problem understanding, technical depth,
+novelty alignment, writing quality, and completeness). Statistics are sample
+mean +/- sample standard deviation across n=3 independent experimental runs
+with identical models but different random seeds (i.e., separate LLM
+generation passes).
 
 ### 1.1 Paper 1 — Lei & Candes 2021 (arXiv:2006.06138)
 
@@ -53,7 +82,7 @@ Scale: 7 = references dramatically helped, 4 = no difference, 1 = references act
 
 ### 1.2 Paper 2 — Deng et al. 2026 (arXiv:2602.04770)
 
-**Domain:** Generative modeling via training-time drifting fields
+**Domain:** Generative modeling (learns to produce new samples, e.g., images, by iteratively transforming noise into data)
 **Reference supplied:** Tibshirani et al. 2020 (arXiv:1904.06019) — conformal prediction under covariate shift
 **Relevance:** UNRELATED (negative control; reference domain is orthogonal to target paper)
 
@@ -107,19 +136,22 @@ scorer cannot replicate due to anchoring and calibration noise.
 
 ### 2.1 Anti-Leakage Validation
 
-The v0.3.1 teacher prompt exhibited information leakage through four vectors:
-(i) `evaluation_criteria` that encoded solution-specific properties (e.g.,
-"doubly robust"), (ii) `domain_keywords` containing methodology terms,
-(iii) `reference_guidance` revealing how references connect to the solution,
-and (iv) hallucinated paper metadata that corrupted problem formulations.
+A central challenge in this experimental design is ensuring the problem
+statement (the "hint") does not leak the paper's solution. In early versions
+(v0.3.1), the teacher inadvertently revealed method-specific properties — for
+example, describing a desired property as "doubly robust," which is a technical
+achievement specific to the paper's approach rather than a general goal.
+This meant the student could reconstruct the method from the hint alone,
+regardless of whether references were provided, rendering the with_refs vs
+no_refs comparison meaningless.
 
-The v0.4 redesign eliminated all four vectors by replacing solution-specific
-fields with abstract desiderata, removing domain keywords and reference
-guidance, and adding explicit anti-leakage rules with worked examples. Runs
-06–08 confirm that the fix is effective: references now produce a measurable
-positive signal for Paper 1 (mean delta +0.17, pairwise impact 5.67/7) that
-was absent in v0.3.1 (where with_refs ≈ no_refs because the hint itself
-was sufficient to reconstruct the approach). See
+The v0.4 redesign addressed this by: (i) replacing solution-specific criteria
+with abstract desiderata (e.g., "robust to model misspecification" instead of
+"doubly robust"), (ii) removing methodology-leaking keywords, (iii) removing
+guidance on how references connect to the solution, and (iv) adding explicit
+anti-leakage self-check rules. Runs 06–08 confirm the fix works: references
+now produce a measurable signal for Paper 1 (mean delta +0.17, pairwise
+impact 5.67/7) that was absent in v0.3.1. See
 `reports/LEAKAGE_ANALYSIS.md` for the full analysis.
 
 ### 2.2 Reference Impact Signal
@@ -140,23 +172,25 @@ noise that dilutes the reference signal.
 
 ### 2.3 Negative Control Validation
 
-Paper 2 serves as a negative control: the conformal prediction reference is
-topically orthogonal to the target paper on training-time drifting fields for
-generative modeling. The experimental predictions were:
+Paper 2 serves as a **negative control**: the supplied reference (on
+conformal prediction, a statistical inference technique) is topically
+unrelated to the target paper (on a new generative modeling method). If our
+framework works correctly, providing this irrelevant reference should not help
+— and may hurt — the student's reconstruction.
 
 - **Predicted:** Zero or negative mean delta, high per-mode variance.
 - **Observed:** Mean delta +0.02 (indistinguishable from zero), per-mode
   stdev 2.3x larger than Paper 1, and pairwise evaluation unanimously favoring
   the no-reference condition (6/6 modes).
 
-The pairwise evaluator provides the mechanistic explanation: with the
-conformal reference, the student attempts to graft statistical coverage
-guarantees onto generative modeling — producing "Conformal Flow Networks"
-and other chimeric frameworks that have no connection to the target paper's
-drifting field concept. Without references, the student defaults to flow
-matching and optimal transport — generic but at least domain-appropriate
-baselines that score closer to the original. This confirms that irrelevant
-references don't merely fail to help; they actively misdirect reconstruction.
+The pairwise evaluator reveals the mechanism: given the conformal prediction
+reference, the student tries to force-fit statistical coverage guarantees into
+a generative modeling framework — producing incoherent hybrid approaches that
+have no connection to the target paper's actual method. Without the reference,
+the student at least stays within the correct domain (proposing generic but
+plausible approaches like flow-based models). This confirms that irrelevant
+references don't merely fail to help; they actively misdirect the
+reconstruction by pulling the student into the wrong technical territory.
 
 ### 2.4 Mode-Level Patterns
 
@@ -193,40 +227,46 @@ aggregate effect but differ sharply in statistical power:
 | Coefficient of variation (P1) | 1.06 (delta sd / delta mean) | 0.14 (impact sd / impact mean) |
 | Known failure mode | Anchoring around 3.0–3.5 | Requires paired outputs |
 
-The independent scorer suffers from **absolute calibration anchoring**: without
-a reference point, the evaluator gravitates toward mid-scale scores for both
-conditions, compressing the effective dynamic range. The pairwise evaluator
-eliminates this by forcing a direct A-vs-B comparison, producing a signal-to-noise
-ratio approximately 7x higher on our data.
+The independent scorer suffers from **calibration anchoring** — a well-known
+rating bias where, without an explicit comparison point, evaluators gravitate
+toward mid-scale scores (here, 3.0–3.5) for both conditions. This compresses
+the effective dynamic range and obscures real differences. The pairwise
+evaluator eliminates this by forcing a direct side-by-side comparison (akin
+to a paired t-test vs two independent measurements), yielding approximately
+7x higher signal-to-noise ratio on our data.
 
-This finding has practical implications for LLM-as-judge evaluation design:
-pairwise protocols should be preferred when the quantity of interest is a
-treatment effect (delta) rather than an absolute quality score.
+This finding has practical implications for automated evaluation design:
+paired comparison protocols should be preferred over independent rating
+when the quantity of interest is a treatment effect (difference between
+conditions) rather than an absolute quality score.
 
 ### 2.6 Novelty Gap Patterns
 
-Qualitative analysis of reconstruction gaps reveals consistent failure modes
-across both papers:
+Qualitative analysis of what the student *fails to reconstruct* reveals
+consistent patterns across both papers:
 
-**Paper 1 (Lei-Candes):** Students reconstruct generic conformal prediction
-for causal inference — the right domain but the wrong mechanism. The three
-innovations they consistently miss are: (i) the reduction of counterfactual
-inference to a covariate shift problem solvable via weighted conformal
-inference, (ii) conformal quantile regression (CQR) with
-max{q_alpha_lo(x) - y, y - q_alpha_hi(x)} as the nonconformity score
-(instead of simple residuals), and (iii) the doubly robust coverage property.
-With the reference, students get closer to (i) but still miss (ii) and (iii),
-suggesting these represent genuine novelty beyond what the reference provides.
+**Paper 1 (Lei-Candes):** Students reconstruct a generic application of
+conformal prediction to causal inference — the right domain but the wrong
+specific mechanism. The three innovations they consistently miss are:
+(i) the key insight that counterfactual prediction can be reframed as a
+covariate shift problem (a known statistical setup), enabling direct
+application of weighted conformal methods; (ii) a specific quantile-based
+scoring function that produces tighter prediction intervals than naive
+residuals; and (iii) a doubly robust coverage guarantee (valid if *either*
+the treatment model or the outcome model is correct). With the reference,
+students get closer to (i) but still miss (ii) and (iii), suggesting these
+represent genuine novelty beyond what the reference provides.
 
-**Paper 2 (Deng et al.):** Students uniformly miss the core concept of
-training-time evolution of the pushforward distribution through drifting
-fields with attraction/repulsion dynamics and equilibrium convergence.
-With the irrelevant reference, they produce conformal-prediction-based
-generative frameworks; without it, they default to flow matching or optimal
-transport — domain-appropriate but still missing the paper's actual
-contribution. The fact that neither condition recovers the drifting field
-concept indicates high genuine novelty: the paper's intellectual contribution
-is not derivable from either its references or general domain knowledge.
+**Paper 2 (Deng et al.):** Students uniformly miss the paper's core idea:
+instead of optimizing a generative model at test time (as most methods do),
+this paper evolves the model's internal sample distribution *during training*
+through a novel "drifting field" mechanism with attraction/repulsion dynamics.
+With the irrelevant reference, students produce conformal-prediction-based
+generative frameworks (which do not exist in the literature); without it,
+they default to standard generative approaches like flow matching — plausible
+but missing the paper's actual contribution. The fact that neither condition
+recovers the core concept indicates high genuine novelty: the contribution
+is not derivable from either its cited references or general domain knowledge.
 
 ---
 
@@ -239,37 +279,39 @@ A Reference-Ablation Framework**
 
 ### Abstract
 
-We introduce *staged reconstruction*, a framework for quantifying the
-intellectual novelty of a research paper by measuring how much of its
-contribution a large language model can recover from cited references alone.
-A teacher model extracts a leakage-controlled problem statement from the
-target paper; a student model then attempts reconstruction across six levels
-of granularity — from abstract through full paper — under two conditions:
-with access to reference texts and without. The delta between conditions
-isolates the marginal information contribution of cited references, while
-the reconstruction gap against the original paper quantifies residual novelty.
+How novel is a research paper's contribution — and can we measure this
+automatically? We introduce *staged reconstruction*, a framework that
+operationalizes novelty measurement as a controlled ablation study. A
+capable language model (the "teacher") reads the target paper and extracts
+a problem statement that describes *what* the paper solves without revealing
+*how*. A second model (the "student"), which has never seen the paper, then
+attempts to reconstruct it across six levels of granularity — from abstract
+to full paper — under two conditions: with access to cited reference texts
+and without. The difference between conditions isolates the marginal
+information contribution of the references, while the gap between
+reconstruction and original quantifies residual novelty.
 
-We validate the framework on two papers sharing a common reference: one where
-the reference is methodologically related (conformal inference for treatment
-effects, citing a conformal prediction paper) and one where it is unrelated
-(generative modeling via drifting fields — serving as a negative control).
-Across three independent experimental runs using Claude Sonnet 4 as student
-and Claude Opus 4 as evaluator, the related reference yields a consistent
-positive effect (mean composite delta +0.17 on a 5-point scale, pairwise
-reference impact 5.67/7, with 5 of 6 reconstruction modes favoring the
-reference condition). The unrelated reference yields near-zero aggregate
+We validate the framework on two papers that share a common reference: one
+where the reference is methodologically related (statistical inference for
+causal treatment effects, citing a directly relevant prior work) and one
+where it is unrelated (a generative modeling method, same reference — serving
+as a negative control). Across three independent runs using Claude Sonnet 4
+as student and Claude Opus 4 as evaluator, the related reference yields a
+consistent positive effect (mean composite delta +0.17 on a 5-point scale,
+pairwise reference impact 5.67/7, with 5 of 6 reconstruction modes favoring
+the reference condition). The unrelated reference yields near-zero aggregate
 effect (delta +0.02) with 2.3x higher per-mode variance, and pairwise
-evaluation unanimously favors the no-reference baseline across all 6 modes.
+evaluation unanimously favors the no-reference baseline across all 6 modes —
+confirming that the signal is genuine.
 
-Qualitative novelty-gap analysis reveals that student models consistently
-fail to recover paper-specific innovations — doubly robust conformal quantile
-regression in Paper 1, training-time drifting fields in Paper 2 — defaulting
-instead to generic domain knowledge. We additionally demonstrate that pairwise
-LLM evaluation achieves approximately 7x higher signal-to-noise ratio than
-independent scoring for measuring reference treatment effects, owing to the
-elimination of absolute calibration anchoring. These results suggest that
-reconstruction-based ablation can operationally distinguish genuine
-intellectual contributions from derivable extensions of prior work.
+Qualitative analysis reveals that student models consistently fail to recover
+paper-specific innovations, defaulting to generic domain knowledge. We
+additionally show that paired side-by-side evaluation achieves approximately
+7x higher signal-to-noise ratio than independent scoring for detecting
+reference effects, due to the elimination of rating-scale anchoring bias.
+These results suggest that reconstruction-based ablation can operationally
+distinguish genuine intellectual contributions from derivable extensions of
+prior work.
 
 ---
 
