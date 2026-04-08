@@ -217,3 +217,24 @@ the highest scores in the entire study.
 | 2026-04-08T11-11-36Z | 2602.04770 | 1904.06019 | Pair 3 (distant ref) |
 | 2026-04-08T11-34-51Z | 2602.04770 | 2006.01474 | Pair 4 (distant ref) |
 | 2026-04-08T09-50-33Z | 2006.06138 | 1904.06019 | Pre-fix baseline (MIN_ROUNDS=2) |
+
+---
+
+## Budget & Token Usage
+
+Prices: Sonnet $3/$15 per 1M in/out, Opus $15/$75 per 1M in/out.
+
+| Pair | API Calls | Sonnet Tokens | Opus Tokens | Total Tokens | Est. Cost |
+|------|-----------|--------------|-------------|-------------|-----------|
+| 1 (A+R1) | 48 | 147K in / 25K out | 412K in / 23K out | 607K | $8.73 |
+| 2 (A+R2) | 50 | 128K in / 32K out | 434K in / 26K out | 621K | $9.37 |
+| 3 (B+R1) | 43 | 129K in / 21K out | 376K in / 22K out | 548K | $7.99 |
+| 4 (B+R2) | 52 | 134K in / 28K out | 443K in / 26K out | 631K | $9.44 |
+| **Total** | **193** | **539K in / 106K out** | **1,665K in / 98K out** | **2,408K** | **$35.52** |
+
+**Cost breakdown by role:**
+- Opus (teacher: hint extraction + evaluation + refinement): ~77% of cost
+- Sonnet (student: reconstruction): ~23% of cost
+
+**Cost per pair:** ~$8–9.50 (16 mode-runs, avg 4 rounds each = ~48 API calls)
+**Cost per mode-run:** ~$1.85 average
