@@ -228,6 +228,11 @@ def _strip_references_section(text: str) -> str:
 
 def _strip_markdown_artifacts(text: str) -> str:
     """Remove markdown formatting artifacts while preserving content."""
+    # Remove pymupdf4llm figure placeholders: **==> picture [...] <==**
+    text = re.sub(
+        r'\*{0,2}=+>\s*picture\s*\[[^\]]*\]\s*intentionally omitted\s*<?=+\*{0,2}',
+        '', text,
+    )
     # Remove image references: ![...](...)
     text = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', text)
     # Remove bold/italic markers but keep the text
@@ -239,8 +244,8 @@ def _strip_markdown_artifacts(text: str) -> str:
     text = re.sub(r'\n\*{3,}\n', '\n', text)
     # Clean up heading markers
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    # Remove HTML tags (e.g. <br>)
-    text = re.sub(r'<[^>]+>', '', text)
+    # Remove only real HTML tags (short, with known tag names) — NOT math < > symbols
+    text = re.sub(r'<(?:br|hr|/?\w{1,10})(?:\s[^>]{0,50})?/?>', '', text)
     # Collapse runs of blank lines
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
@@ -248,10 +253,12 @@ def _strip_markdown_artifacts(text: str) -> str:
 
 def _extract_abstract_from_md(md_text: str) -> str:
     """Try to extract the abstract from markdown text."""
-    # Pattern: "Abstract" heading followed by text until next section
+    # Pattern 1: "Abstract"/"Summary" heading (possibly bold) followed by text
+    # until next section heading.  The abstract text may start on the same line
+    # (e.g. "**Summary** . Evaluating...") or on the next line.
     m = re.search(
         r'(?:^|\n)(?:#{1,3}\s*)?(?:\*{0,2})?(?:Abstract|ABSTRACT|Summary)(?:\*{0,2})?'
-        r'[:\.]?\s*\n(.*?)(?=\n#{1,3}\s|\n\d+[\.\s]+[A-Z]|\n\*{2}[A-Z])',
+        r'[:\.\s]*\n?(.*?)(?=\n#{1,3}\s|\n\d+[\.\s]+[A-Z]|\n\*{2}\d+[\.\s])',
         md_text, re.DOTALL | re.IGNORECASE,
     )
     if m:
@@ -259,9 +266,9 @@ def _extract_abstract_from_md(md_text: str) -> str:
         if len(abstract) > 50:
             return abstract[:3000]
 
-    # Fallback: look for "Abstract." or "Abstract:" inline
+    # Fallback: look for "Abstract." or "Summary:" inline with text following
     m = re.search(
-        r'(?:Abstract|Summary)[:\.\s]+(.{50,2000}?)(?:\n\n|\n[A-Z1-9])',
+        r'(?:Abstract|Summary)[:\.\s]+(.{50,3000}?)(?:\n\n\n|\n#{1,3}\s|\n\d+[\.\s]+[A-Z])',
         md_text, re.DOTALL | re.IGNORECASE,
     )
     if m:
