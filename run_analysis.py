@@ -94,42 +94,25 @@ def _download_source(source: str) -> str:
     sys.exit(1)
 
 
-def _parse_target_paper(pdf_path: str, llm_json) -> dict:
-    """Parse the target paper via the agentic LLM extractor.
+def _parse_target_paper(pdf_path: str, _llm_json=None) -> dict:
+    """Parse the target paper via the SOTA v2 extractor.
 
     Returns dict with title, abstract, full_text.
+    Uses rule-based cleaning only (no LLM cost); ``_llm_json`` is
+    accepted for backward compatibility but unused.
     """
-    from geo_perplexity.text_extractor import extract_text_llm_agentic, extract_text_pdfplumber
+    from geo_perplexity.text_extractor import extract_full_text
 
-    raw_text = extract_text_pdfplumber(pdf_path)
-    if not raw_text:
+    extraction = extract_full_text(pdf_path, use_llm_cleaning=False)
+
+    if not extraction["full_text"]:
         print("ERROR: could not extract any text from PDF", file=sys.stderr)
         sys.exit(1)
 
-    full_text = extract_text_llm_agentic(raw_text, llm_json)
-
-    # Extract title from first lines
-    title = ""
-    for line in raw_text.splitlines()[:10]:
-        line = line.strip()
-        if len(line) > 10 and not any(kw in line.lower() for kw in ["abstract", "arxiv", "http"]):
-            title = line
-            break
-
-    # Extract abstract
-    abstract = ""
-    m = re.search(
-        r"(?i)abstract[:\s]*\n(.+?)(?=\n\n|\nintroduction|\n1[\.\s])",
-        raw_text,
-        re.DOTALL,
-    )
-    if m:
-        abstract = re.sub(r"\s+", " ", m.group(1)).strip()[:2000]
-
     return {
-        "title": title or "Unknown Title",
-        "abstract": abstract,
-        "full_text": full_text,
+        "title": extraction["title"] or "Unknown Title",
+        "abstract": extraction["abstract"],
+        "full_text": extraction["full_text"],
     }
 
 

@@ -1,11 +1,18 @@
-"""Batched full-text extraction from PDFs using an agentic LLM parser.
+"""SOTA full-text extraction from academic PDFs.
 
-Downloads arXiv PDFs and extracts structured text via a multi-turn LLM
-conversation with tool-use-style structured outputs.  When the first
-extraction pass is incomplete or low-confidence, the parser runs a
-second "refinement" turn asking the model to fill gaps.
+Uses **pymupdf4llm** (PyMuPDF markdown backend) as the primary extractor —
+it handles multi-column layouts, tables, math symbols, and embedded fonts
+far more accurately than pdfplumber.  Falls back to **pdfminer.six** when
+pymupdf4llm extraction fails or returns too little text to be useful.
 
-Falls back gracefully: LLM parse → pdfplumber raw text → abstract only.
+An optional LLM cleaning pass (GPT-4o) refines the pymupdf4llm markdown
+into plain academic prose — removing figure captions, page-break artifacts,
+table markup, and the references section — while preserving all substantive
+text.
+
+Fallback behavior: try pymupdf4llm first, use the cleaned result when
+available, otherwise keep the raw pymupdf4llm text; if extraction fails or
+is too short, fall back to pdfminer, then to abstract-only text.
 """
 
 from __future__ import annotations
@@ -13,65 +20,60 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import signal
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from .reference_collector import CitedPaper
 
-_CACHE_DIR = Path(".cache/pdf_text")
+# ── Cache config ──────────────────────────────────────────────────────
+_CACHE_DIR = Path(".cache/pdf_text_v2")
 _BATCH_SIZE = 5
 _BATCH_DELAY = 1.5
 _DOWNLOAD_TIMEOUT = 30
 _MAX_RETRIES = 3
 
-# ── Agentic parser prompts ─────────────────────────────────────────────
+# ── Extraction limits ────────────────────────────────────────────────
+_MAX_FULL_TEXT_CHARS = 120_000   # generous cap for very long papers
+_MIN_USEFUL_LENGTH = 300        # below this, extraction is considered failed
+_EXTRACT_TIMEOUT = 120          # seconds — abort pymupdf4llm if it takes too long
 
-_EXTRACT_SYSTEM = """\
-You are an expert academic paper parser.  Given raw text extracted from a \
-PDF, you produce clean, structured output.  You handle messy OCR, column \
-layouts, header/footer noise, and reference-list boilerplate gracefully.
 
-Return a JSON object with EXACTLY these keys:
-{
-  "title": "<paper title>",
-  "authors": ["<author 1>", "<author 2>"],
-  "abstract": "<full abstract text>",
-  "sections": [
-    {"heading": "<section heading>", "text": "<section body text>"}
-  ],
-  "full_text": "<complete body text, sections concatenated, cleaned>",
-  "confidence": <0.0-1.0 float — your confidence in extraction quality>
-}
+# ── LLM cleaning prompt ─────────────────────────────────────────────
+
+_CLEAN_SYSTEM = """\
+You are an expert academic-text cleaner.  You receive markdown extracted \
+from a PDF of an academic paper.  Your job is to return the paper's \
+substantive prose — clean, readable, paragraph-structured plain text.
 
 Rules:
-- Strip page numbers, headers/footers, and column-break artifacts.
-- Preserve paragraph structure with blank lines.
-- Do NOT include the reference/bibliography list in full_text.
-- If a field is genuinely unrecoverable, use "" or [].
-- Output ONLY valid JSON — no markdown fences, no commentary."""
+1. KEEP all sections from Abstract through Conclusion/Discussion \
+   (inclusive).  Keep appendices if they contain methodological detail.
+2. REMOVE: the references / bibliography section, figure/table captions, \
+   page numbers, header/footer repetitions, and markdown table markup.
+3. PRESERVE: all equations written inline, theorem/lemma statements, \
+   algorithm descriptions, and mathematical notation.
+4. CLEAN UP: fix broken words from column-break hyphenation, collapse \
+   excessive whitespace, and join lines that were split mid-sentence.
+5. Output ONLY the cleaned text — no commentary, no markdown fences.
+6. Preserve section headings as simple lines (e.g. "1 Introduction")."""
 
-_EXTRACT_USER = """\
-Parse the following raw paper text (first {n_chars} characters).  \
-Return the structured JSON.
+_CLEAN_USER = """\
+Clean the following extracted markdown ({n_chars} chars) from an academic \
+paper.  Return only the cleaned body text.
 
---- RAW TEXT ---
-{raw_text}
+--- EXTRACTED MARKDOWN ---
+{md_text}
 --- END ---"""
 
-_REFINE_USER = """\
-Your previous extraction had confidence {confidence:.2f}.  Here are \
-additional pages of the paper that may help fill gaps.  Update and \
-return the COMPLETE JSON structure (not just the changes).
 
---- ADDITIONAL TEXT (chars {start}-{end}) ---
-{extra_text}
---- END ---"""
-
+# ── Cache helpers ────────────────────────────────────────────────────
 
 def _ensure_cache_dir() -> None:
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -81,19 +83,33 @@ def _cache_key(identifier: str) -> str:
     return hashlib.sha256(identifier.encode()).hexdigest()[:16]
 
 
-def _load_cached(identifier: str) -> str | None:
+def _load_cached(identifier: str) -> dict[str, str] | None:
+    """Load cached extraction result.  Returns dict with 'text' and 'source', or None."""
     _ensure_cache_dir()
     path = _CACHE_DIR / f"{_cache_key(identifier)}.json"
     if path.exists():
-        return path.read_text(encoding="utf-8")
+        raw = path.read_text(encoding="utf-8")
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict) and "text" in data:
+                return data  # new structured format
+        except json.JSONDecodeError:
+            pass
+        # Legacy: file contains raw text
+        return {"text": raw, "source": "full_text_pymupdf4llm"}
     return None
 
 
-def _save_cache(identifier: str, text: str) -> None:
+def _save_cache(identifier: str, text: str, source: str = "full_text_pymupdf4llm") -> None:
     _ensure_cache_dir()
     path = _CACHE_DIR / f"{_cache_key(identifier)}.json"
-    path.write_text(text, encoding="utf-8")
+    path.write_text(
+        json.dumps({"text": text, "source": source}, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
+
+# ── PDF download ─────────────────────────────────────────────────────
 
 def download_arxiv_pdf(arxiv_id: str) -> str | None:
     """Download an arXiv PDF and return its local file path."""
@@ -105,18 +121,17 @@ def download_arxiv_pdf(arxiv_id: str) -> str | None:
     if dest.exists() and dest.stat().st_size > 1000:
         return str(dest)
 
-    headers = {"User-Agent": "geo-perplexity/0.1.0 (academic research)"}
+    headers = {"User-Agent": "geo-perplexity/0.2.0 (academic research)"}
     req = urllib.request.Request(url, headers=headers)
 
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
             with urllib.request.urlopen(req, timeout=_DOWNLOAD_TIMEOUT) as resp:
                 data = resp.read()
-                # Sanity check: PDFs start with %PDF
                 if not data[:5].startswith(b"%PDF"):
                     print(
-                        f"  [extractor] arXiv:{arxiv_id}: response is not a PDF "
-                        f"({len(data)} bytes, starts with {data[:20]!r})",
+                        f"  [v2-extractor] arXiv:{arxiv_id}: not a PDF "
+                        f"({len(data)} bytes)",
                         file=sys.stderr,
                     )
                     return None
@@ -126,138 +141,333 @@ def download_arxiv_pdf(arxiv_id: str) -> str | None:
             if attempt < _MAX_RETRIES:
                 time.sleep(2 ** attempt)
                 continue
-            print(f"  [extractor] download failed arXiv:{arxiv_id}: {exc}", file=sys.stderr)
+            print(f"  [v2-extractor] download failed arXiv:{arxiv_id}: {exc}",
+                  file=sys.stderr)
             return None
 
 
-def extract_text_pdfplumber(pdf_path: str) -> str:
-    """Extract raw text from a PDF using pdfplumber."""
-    try:
-        import pdfplumber
-    except ImportError:
-        return ""
-    try:
-        with pdfplumber.open(pdf_path) as pdf:
-            pages = [page.extract_text() or "" for page in pdf.pages]
-        text = "\n\n".join(p for p in pages if p.strip())
-        return text
-    except Exception as exc:
-        print(f"  [extractor] pdfplumber error: {exc}", file=sys.stderr)
-        return ""
+# ── Primary: pymupdf4llm ────────────────────────────────────────────
+
+class _ExtractionTimeout(Exception):
+    pass
 
 
-def _parse_json_response(text: str) -> dict[str, Any] | None:
-    """Robustly parse a JSON response, handling markdown fences etc."""
-    text = text.strip()
-    # Strip ```json ... ``` fences
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-z]*\n?", "", text, flags=re.MULTILINE)
-        text = re.sub(r"\n?```$", "", text.strip())
-
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        # Try to find a JSON object in the response
-        m = re.search(r"\{.*\}", text, re.DOTALL)
-        if m:
-            try:
-                return json.loads(m.group())
-            except json.JSONDecodeError:
-                pass
-    return None
+def _timeout_handler(signum, frame):
+    raise _ExtractionTimeout("extraction timed out")
 
 
-def extract_text_llm_agentic(
-    raw_text: str,
-    llm_json: Callable[[str, str], str],
-) -> str:
-    """Multi-turn agentic LLM extraction with refinement.
+def extract_text_pymupdf4llm(pdf_path: str) -> str:
+    """Extract markdown text from a PDF using pymupdf4llm (PyMuPDF).
 
-    Parameters
-    ----------
-    raw_text:
-        Raw text from pdfplumber.
-    llm_json:
-        Callable(system_prompt, user_prompt) -> response_text.
-        Should be configured for JSON output mode if the model supports it.
-
-    Returns
-    -------
-    str
-        Cleaned full text of the paper, or raw text fallback.
+    This is the SOTA approach — handles multi-column academic layouts,
+    embedded math, tables, and produces clean markdown output.
+    Uses SIGALRM timeout to prevent hangs on very large PDFs.
     """
-    # Pass 1: initial extraction (first 15K chars)
-    first_chunk = raw_text[:15000]
-    user_msg = _EXTRACT_USER.format(n_chars=len(first_chunk), raw_text=first_chunk)
-
     try:
-        resp1 = llm_json(_EXTRACT_SYSTEM, user_msg)
+        import pymupdf4llm
+    except ImportError:
+        print("  [v2-extractor] pymupdf4llm not installed", file=sys.stderr)
+        return ""
+    try:
+        _sigalrm_ok = (
+            hasattr(signal, "SIGALRM")
+            and threading.current_thread() is threading.main_thread()
+        )
+        if _sigalrm_ok:
+            # Set alarm-based timeout (Unix / main thread only)
+            old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(_EXTRACT_TIMEOUT)
+        try:
+            md = pymupdf4llm.to_markdown(pdf_path)
+        finally:
+            if _sigalrm_ok:
+                signal.alarm(0)  # cancel alarm
+                signal.signal(signal.SIGALRM, old_handler)
+
+        if not md or len(md.strip()) < _MIN_USEFUL_LENGTH:
+            return ""
+        return md[:_MAX_FULL_TEXT_CHARS]
+    except _ExtractionTimeout:
+        print(f"  [v2-extractor] pymupdf4llm timed out ({_EXTRACT_TIMEOUT}s) "
+              f"for {pdf_path}", file=sys.stderr)
+        return ""
     except Exception as exc:
-        print(f"  [extractor] LLM pass-1 failed: {exc}", file=sys.stderr)
-        return _clean_raw_fallback(raw_text)
+        print(f"  [v2-extractor] pymupdf4llm error: {exc}", file=sys.stderr)
+        return ""
 
-    parsed = _parse_json_response(resp1)
-    if not parsed:
-        print("  [extractor] LLM pass-1: could not parse JSON response", file=sys.stderr)
-        return _clean_raw_fallback(raw_text)
 
-    confidence = parsed.get("confidence", 0.0)
-    full_text = parsed.get("full_text", "")
+# ── Fallback: pdfminer.six ──────────────────────────────────────────
 
-    # Pass 2: refinement if confidence is low and we have more text
-    if confidence < 0.7 and len(raw_text) > 15000:
-        extra = raw_text[12000:28000]  # overlapping window
-        refine_msg = _REFINE_USER.format(
-            confidence=confidence,
-            start=12000,
-            end=min(28000, len(raw_text)),
-            extra_text=extra,
+def extract_text_pdfminer(pdf_path: str) -> str:
+    """Extract text using pdfminer.six layout analysis.
+
+    Good at preserving reading order in multi-column PDFs.
+    """
+    try:
+        from pdfminer.high_level import extract_text
+    except ImportError:
+        print("  [v2-extractor] pdfminer.six not installed", file=sys.stderr)
+        return ""
+    try:
+        text = extract_text(pdf_path)
+        if not text or len(text.strip()) < _MIN_USEFUL_LENGTH:
+            return ""
+        return text[:_MAX_FULL_TEXT_CHARS]
+    except Exception as exc:
+        print(f"  [v2-extractor] pdfminer error: {exc}", file=sys.stderr)
+        return ""
+
+
+# ── Text cleaning ────────────────────────────────────────────────────
+
+def _strip_references_section(text: str) -> str:
+    """Remove the References / Bibliography section from the end of the text."""
+    # Look for common reference-section headings
+    patterns = [
+        # Markdown headings
+        r'\n#{1,3}\s*\*{0,2}References\*{0,2}\s*\n',
+        r'\n#{1,3}\s*\*{0,2}Bibliography\*{0,2}\s*\n',
+        r'\n#{1,3}\s*\*{0,2}Works Cited\*{0,2}\s*\n',
+        # Numbered section headings
+        r'\n\d+\.?\s+References\s*\n',
+        r'\n\d+\.?\s+Bibliography\s*\n',
+        # Plain headings (bold or uppercase)
+        r'\n\*{2}References\*{2}\s*\n',
+        r'\nREFERENCES\s*\n',
+        r'\nBIBLIOGRAPHY\s*\n',
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            # Keep everything before the references heading
+            before = text[:m.start()]
+            # Sanity: don't strip more than 60% of the text
+            if len(before) > len(text) * 0.3:
+                return before.rstrip()
+    return text
+
+
+def _strip_markdown_artifacts(text: str) -> str:
+    """Remove markdown formatting artifacts while preserving content."""
+    # Remove pymupdf4llm figure placeholders: **==> picture [...] <==**
+    text = re.sub(
+        r'\*{0,2}=+>\s*picture\s*\[[^\]]*\]\s*intentionally omitted\s*<?=+\*{0,2}',
+        '', text,
+    )
+    # Remove pymupdf4llm picture-text blocks: ----- Start/End of picture text -----
+    text = re.sub(r'-{3,}\s*(?:Start|End) of picture text\s*-{3,}', '', text)
+    # Remove image references: ![...](...)
+    text = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', text)
+    # Remove bold/italic markers but keep the text
+    text = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', text)
+    # Remove markdown links: [text](url) → text
+    text = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', text)
+    # Remove horizontal rules
+    text = re.sub(r'\n-{3,}\n', '\n', text)
+    text = re.sub(r'\n\*{3,}\n', '\n', text)
+    # Clean up heading markers
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    # Remove only real HTML tags (short, with known tag names) — NOT math < > symbols
+    text = re.sub(r'<(?:br|hr|/?\w{1,10})(?:\s[^>]{0,50})?/?>', '', text)
+    # Remove standalone page numbers (isolated 1-3 digit numbers between blank lines)
+    text = re.sub(r'\n\n\d{1,3}\s*\n\n', '\n\n', text)
+    # Collapse runs of blank lines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
+def _strip_running_headers(text: str, title: str) -> str:
+    """Remove repeated page headers (page number + paper title on each page)."""
+    if not title or len(title) < 10:
+        return text
+    # Escape title for regex and allow minor variations
+    esc = re.escape(title[:60])
+    # Match: page number line, blank line, title line
+    text = re.sub(
+        r'^\d{1,3}\s*\n\n' + esc + r'\s*\n',
+        '\n', text, flags=re.MULTILINE,
+    )
+    # Also match: "N Author Name" style headers (e.g. "4 Lihua Lei and Emmanuel J. Candès")
+    text = re.sub(r'^\d{1,3}\s+_[A-Z][a-z]+.*?_\s*$', '', text, flags=re.MULTILINE)
+    return text
+
+
+def _extract_abstract_from_md(md_text: str) -> str:
+    """Try to extract the abstract from markdown text."""
+    # Pattern 1: "Abstract"/"Summary" heading (possibly bold) followed by text
+    # until next section heading.  The abstract text may start on the same line
+    # (e.g. "**Summary** . Evaluating...") or on the next line.
+    m = re.search(
+        r'(?:^|\n)(?:#{1,3}\s*)?(?:\*{0,2})?(?:Abstract|ABSTRACT|Summary)(?:\*{0,2})?'
+        r'[:\.\s]*\n?(.*?)(?=\n#{1,3}\s|\n\d+[\.\s]+[A-Z]|\n\*{2}\d+[\.\s])',
+        md_text, re.DOTALL | re.IGNORECASE,
+    )
+    if m:
+        abstract = re.sub(r'\s+', ' ', m.group(1)).strip()
+        if len(abstract) > 50:
+            return abstract[:3000]
+
+    # Fallback: look for "Abstract." or "Summary:" inline with text following
+    m = re.search(
+        r'(?:Abstract|Summary)[:\.\s]+(.{50,3000}?)(?:\n\n\n|\n#{1,3}\s|\n\d+[\.\s]+[A-Z])',
+        md_text, re.DOTALL | re.IGNORECASE,
+    )
+    if m:
+        return re.sub(r'\s+', ' ', m.group(1)).strip()[:3000]
+
+    return ""
+
+
+def _extract_title_from_md(md_text: str) -> str:
+    """Extract the paper title from the first heading or prominent line."""
+    # Look for first markdown heading
+    m = re.search(r'^#{1,3}\s+\*{0,2}(.+?)\*{0,2}\s*$', md_text, re.MULTILINE)
+    if m:
+        title = m.group(1).strip()
+        if 10 < len(title) < 300:
+            return title
+
+    # Fallback: first substantial line
+    for line in md_text.splitlines()[:15]:
+        line = line.strip().strip('#').strip('*').strip()
+        if len(line) > 10 and not any(
+            kw in line.lower()
+            for kw in ['abstract', 'arxiv', 'http', 'university', 'department']
+        ):
+            return line[:300]
+
+    return ""
+
+
+def clean_extracted_text(
+    md_text: str,
+    *,
+    llm_clean: Optional[Callable[[str, str], str]] = None,
+    title: str = "",
+) -> str:
+    """Clean extracted markdown into plain academic prose.
+
+    If llm_clean is provided, uses the LLM for high-quality cleaning.
+    Otherwise does rule-based cleaning.
+
+    Args:
+        llm_clean: callable(system_prompt, user_prompt) -> str.
+            Should return plain text (not JSON).
+    """
+    # Always strip references first
+    text = _strip_references_section(md_text)
+
+    if llm_clean and len(text) > _MIN_USEFUL_LENGTH:
+        # Use LLM for deep cleaning — send in chunks if very long
+        # LLM context is limited, so send up to ~60K chars
+        chunk_to_clean = text[:60000]
+        user_msg = _CLEAN_USER.format(
+            n_chars=len(chunk_to_clean), md_text=chunk_to_clean,
         )
         try:
-            resp2 = llm_json(_EXTRACT_SYSTEM, refine_msg)
-            parsed2 = _parse_json_response(resp2)
-            if parsed2 and parsed2.get("full_text"):
-                full_text = parsed2["full_text"]
-                confidence = parsed2.get("confidence", confidence)
+            resp = llm_clean(_CLEAN_SYSTEM, user_msg)
+            cleaned = resp.strip()
+            # Basic validation: LLM output should be substantial
+            if len(cleaned) > len(chunk_to_clean) * 0.15:
+                # If original was longer than what we sent to LLM, append rest
+                if len(text) > 60000:
+                    remainder = _strip_markdown_artifacts(text[55000:])
+                    cleaned = cleaned + "\n\n" + remainder
+                return cleaned[:_MAX_FULL_TEXT_CHARS]
         except Exception as exc:
-            print(f"  [extractor] LLM pass-2 refinement failed: {exc}", file=sys.stderr)
+            print(f"  [v2-extractor] LLM cleaning failed: {exc}", file=sys.stderr)
 
-    if full_text and len(full_text) > 200:
-        return full_text
+    # Rule-based fallback cleaning
+    text = _strip_markdown_artifacts(text)
+    if title:
+        text = _strip_running_headers(text, title)
+    return text[:_MAX_FULL_TEXT_CHARS]
 
-    # Fall back to assembling from sections
-    sections = parsed.get("sections", [])
-    if sections:
-        assembled = "\n\n".join(
-            f"## {s.get('heading', '')}\n\n{s.get('text', '')}"
-            for s in sections
-            if s.get("text")
+
+# ── Main extraction pipeline ────────────────────────────────────────
+
+def extract_full_text(
+    pdf_path: str,
+    *,
+    llm_json: Optional[Callable[[str, str], str]] = None,
+    use_llm_cleaning: bool = True,
+) -> dict[str, Any]:
+    """Extract full text from a PDF using the SOTA pipeline.
+
+    Args:
+        llm_json: callable(system_prompt, user_prompt) -> str.
+            Used for LLM-based text cleaning.  Despite the name, this
+            callable should return plain text (not JSON) for the cleaning
+            pass.  The name is kept for backward compatibility with callers.
+        use_llm_cleaning: if True and llm_json is provided, apply LLM
+            cleaning to the extracted markdown.
+
+    Returns a dict with:
+        - full_text: cleaned body text
+        - raw_md: raw pymupdf4llm markdown (for audit)
+        - title: extracted title
+        - abstract: extracted abstract
+        - extraction_method: which extractor succeeded
+        - raw_md_length: character count of raw markdown
+    """
+    result: dict[str, Any] = {
+        "full_text": "",
+        "raw_md": "",
+        "title": "",
+        "abstract": "",
+        "extraction_method": "none",
+        "raw_md_length": 0,
+    }
+
+    # ── Try pymupdf4llm first (SOTA) ──
+    raw_md = extract_text_pymupdf4llm(pdf_path)
+    if raw_md and len(raw_md) >= _MIN_USEFUL_LENGTH:
+        result["raw_md"] = raw_md
+        result["raw_md_length"] = len(raw_md)
+        result["title"] = _extract_title_from_md(raw_md)
+        result["abstract"] = _extract_abstract_from_md(raw_md)
+
+        lj = llm_json if (use_llm_cleaning and llm_json) else None
+        result["full_text"] = clean_extracted_text(
+            raw_md, llm_clean=lj, title=result["title"],
         )
-        if len(assembled) > 200:
-            return assembled
+        result["extraction_method"] = "pymupdf4llm+llm" if lj else "pymupdf4llm"
+        return result
 
-    return _clean_raw_fallback(raw_text)
+    # ── Fallback: pdfminer.six ──
+    print("  [v2-extractor] pymupdf4llm failed, trying pdfminer.six",
+          file=sys.stderr)
+    raw_pdfminer = extract_text_pdfminer(pdf_path)
+    if raw_pdfminer and len(raw_pdfminer) >= _MIN_USEFUL_LENGTH:
+        result["raw_md"] = raw_pdfminer
+        result["raw_md_length"] = len(raw_pdfminer)
+        result["extraction_method"] = "pdfminer"
+
+        # Try basic title/abstract extraction from plain text
+        for line in raw_pdfminer.splitlines()[:10]:
+            line = line.strip()
+            if len(line) > 10 and not any(
+                kw in line.lower()
+                for kw in ['abstract', 'arxiv', 'http']
+            ):
+                result["title"] = line[:300]
+                break
+
+        m = re.search(
+            r'(?i)abstract[:\s]*\n(.+?)(?=\n\n|\nintroduction|\n1[\.\s])',
+            raw_pdfminer, re.DOTALL,
+        )
+        if m:
+            result["abstract"] = re.sub(r'\s+', ' ', m.group(1)).strip()[:3000]
+
+        result["full_text"] = _strip_references_section(raw_pdfminer)
+        return result
+
+    print("  [v2-extractor] all extraction methods failed", file=sys.stderr)
+    return result
 
 
-def _clean_raw_fallback(raw_text: str) -> str:
-    """Last-resort cleaning of raw PDF text."""
-    # Remove obvious noise: page numbers, repeated headers
-    lines = raw_text.splitlines()
-    cleaned = []
-    for line in lines:
-        stripped = line.strip()
-        # Skip pure page numbers
-        if re.match(r"^\d{1,3}$", stripped):
-            continue
-        # Skip very short lines that look like headers/footers
-        if len(stripped) < 5 and not stripped.endswith("."):
-            continue
-        cleaned.append(line)
-    text = "\n".join(cleaned)
-    # Collapse excessive whitespace
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text[:15000]  # cap at 15K chars
-
+# ── Batch extraction for cited papers ────────────────────────────────
 
 def batch_extract_full_text(
     papers: list[CitedPaper],
@@ -268,24 +478,11 @@ def batch_extract_full_text(
 ) -> list[CitedPaper]:
     """Download and extract full text for cited papers.
 
-    Parameters
-    ----------
-    papers:
-        CitedPaper objects to process.
-    llm_json:
-        Callable(system_prompt, user_prompt) -> response.
-    batch_size:
-        Papers per batch before rate-limit pause.
-    batch_delay:
-        Seconds between batches.
-
-    Returns
-    -------
-    list[CitedPaper]
-        Same papers with full_text populated where possible.
+    Uses pymupdf4llm (no LLM cleaning) for references to save cost.
+    Falls back to pdfminer.six, then abstract.
     """
     total = len(papers)
-    stats = {"extracted_llm": 0, "extracted_raw": 0, "abstract_only": 0, "skipped": 0}
+    stats = {"pymupdf4llm": 0, "pdfminer": 0, "abstract_only": 0, "skipped": 0}
 
     for batch_start in range(0, total, batch_size):
         batch = papers[batch_start : batch_start + batch_size]
@@ -294,18 +491,18 @@ def batch_extract_full_text(
             cache_id = paper.arxiv_id or paper.paper_id
             cached = _load_cached(cache_id)
             if cached:
-                paper.full_text = cached
-                paper.content_source = "full_text_llm"
-                stats["extracted_llm"] += 1
+                paper.full_text = cached["text"]
+                paper.content_source = cached["source"]
+                stat_key = cached["source"].replace("full_text_", "").split("+")[0]
+                stats[stat_key] = stats.get(stat_key, 0) + 1
                 continue
 
             if not paper.arxiv_id:
-                # No arXiv ID → use abstract
                 if paper.abstract:
                     paper.full_text = paper.abstract
-                    _save_cache(cache_id, paper.abstract)
+                    # Do not cache abstract-only text — keep it in-memory only
+                    # so a later cache hit is never mislabeled as full text.
                     stats["abstract_only"] += 1
-                    # content_source already set by reference_collector
                 else:
                     stats["skipped"] += 1
                 continue
@@ -315,39 +512,36 @@ def batch_extract_full_text(
             if not pdf_path:
                 if paper.abstract:
                     paper.full_text = paper.abstract
-                    _save_cache(cache_id, paper.abstract)
+                    # Do not cache abstract-only text (same reason as above)
                     stats["abstract_only"] += 1
                 else:
                     stats["skipped"] += 1
                 continue
 
-            # Raw extraction via pdfplumber
-            raw_text = extract_text_pdfplumber(pdf_path)
-            if not raw_text or len(raw_text) < 100:
-                if paper.abstract:
-                    paper.full_text = paper.abstract
-                    _save_cache(cache_id, paper.abstract)
-                    stats["abstract_only"] += 1
-                else:
-                    stats["skipped"] += 1
-                continue
+            # Try pymupdf4llm (no LLM cleaning for references — too costly)
+            extraction = extract_full_text(
+                pdf_path, llm_json=None, use_llm_cleaning=False,
+            )
+            full_text = extraction["full_text"]
 
-            # Agentic LLM extraction
-            full_text = extract_text_llm_agentic(raw_text, llm_json)
-            paper.full_text = full_text
-            _save_cache(cache_id, full_text)
-
-            if full_text == _clean_raw_fallback(raw_text):
-                paper.content_source = "full_text_raw"
-                stats["extracted_raw"] += 1
+            if full_text and len(full_text) >= _MIN_USEFUL_LENGTH:
+                paper.full_text = full_text
+                method = extraction["extraction_method"]
+                paper.content_source = f"full_text_{method}"
+                _save_cache(cache_id, full_text, source=paper.content_source)
+                stats[method.split("+")[0]] = stats.get(method.split("+")[0], 0) + 1
+            elif paper.abstract:
+                paper.full_text = paper.abstract
+                # Do not cache abstract-only text
+                paper.content_source = "abstract"
+                stats["abstract_only"] += 1
             else:
-                paper.content_source = "full_text_llm"
-                stats["extracted_llm"] += 1
+                stats["skipped"] += 1
 
         done = min(batch_start + batch_size, total)
         print(
-            f"  [extractor] {done}/{total} processed "
-            f"(llm={stats['extracted_llm']}, raw={stats['extracted_raw']}, "
+            f"  [v2-extractor] {done}/{total} processed "
+            f"(pymupdf4llm={stats['pymupdf4llm']}, pdfminer={stats['pdfminer']}, "
             f"abstract={stats['abstract_only']}, skip={stats['skipped']})",
             file=sys.stderr,
         )
@@ -355,5 +549,5 @@ def batch_extract_full_text(
         if batch_start + batch_size < total:
             time.sleep(batch_delay)
 
-    print(f"  [extractor] done: {stats}", file=sys.stderr)
+    print(f"  [v2-extractor] done: {stats}", file=sys.stderr)
     return papers

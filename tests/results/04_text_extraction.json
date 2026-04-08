@@ -3,12 +3,15 @@
   "download_ok": true,
   "pdf_path": "/tmp/geo_perplexity_pdfs/2006.06138.pdf",
   "pdf_size_bytes": 708188,
-  "raw_text_length": 111896,
+  "raw_text_length": 111630,
   "raw_extraction_ok": true,
-  "raw_text_preview": "Conformal Inference\nof Counterfactuals and Individual Treatment Effects\nLihua Lei\nDepartmentofStatistics,StanfordUniversity\nE-mail: lihualei@stanford.edu\nEmmanuel J. Cande`s\nDepartmentofStatisticsandDepartmentofMathematics,StanfordUniversity\nE-mail: candes@stanford.edu\nSummary. Evaluatingtreatmenteffectheterogeneitywidelyinformstreatmentdecisionmaking. At\nthe moment, much emphasis is placed on the estimation of the conditional average treatment ef-\nfect via flexible machine learning algorithms. ",
-  "llm_extraction_ok": true,
-  "llm_text_length": 8902,
-  "llm_text_preview": "Evaluating treatment effect heterogeneity widely informs treatment decision making. At the moment, much emphasis is placed on the estimation of the conditional average treatment effect via flexible machine learning algorithms. While these methods enjoy some theoretical appeal in terms of consistency and convergence rates, they generally perform poorly in terms of uncertainty quantification. This is troubling since assessing risk is crucial for reliable decision-making in sensitive and uncertain ",
+  "raw_text_preview": "## **Conformal Inference of Counterfactuals and Individual Treatment Effects** \n\n## Lihua Lei \n\n_Department of Statistics, Stanford University_ \n\nE-mail: lihualei@stanford.edu \n\nEmmanuel J. Cand`es \n\n_Department of Statistics and Department of Mathematics, Stanford University_ \n\nE-mail: candes@stanford.edu \n\n**Summary** . Evaluating treatment effect heterogeneity widely informs treatment decision making. At the moment, much emphasis is placed on the estimation of the conditional average treatmen",
+  "v2_extraction_ok": true,
+  "v2_text_length": 69010,
+  "v2_text_preview": "Conformal Inference of Counterfactuals and Individual Treatment Effects \n\nLihua Lei \n\n_Department of Statistics, Stanford University_ \n\nE-mail: lihualei@stanford.edu \n\nEmmanuel J. Cand`es \n\n_Department of Statistics and Department of Mathematics, Stanford University_ \n\nE-mail: candes@stanford.edu \n\nSummary . Evaluating treatment effect heterogeneity widely informs treatment decision making. At the moment, much emphasis is placed on the estimation of the conditional average treatment effect via f",
+  "v2_title": "Conformal Inference of Counterfactuals and Individual Treatment Effects",
+  "v2_abstract_length": 1537,
+  "v2_method": "pymupdf4llm",
   "pass": true,
-  "timestamp": "2026-04-05T14:34:25.572742+00:00"
+  "timestamp": "2026-04-08T13:49:41.847165+00:00"
 }
