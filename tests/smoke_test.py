@@ -246,7 +246,7 @@ def test_text_extraction():
     print("\n[Test 4] Text extraction pipeline ...")
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
-    from geo_perplexity.text_extractor import download_arxiv_pdf, extract_text_pdfplumber
+    from geo_perplexity.text_extractor_v2 import download_arxiv_pdf, extract_text_pymupdf4llm
 
     test_id = "2006.06138"
     result = {"arxiv_id": test_id}
@@ -265,54 +265,38 @@ def test_text_extraction():
     result["pdf_size_bytes"] = Path(pdf_path).stat().st_size
     print(f"  Downloaded: {result['pdf_size_bytes']} bytes")
 
-    # Step B: pdfplumber raw extraction
-    print(f"  Extracting raw text via pdfplumber ...")
-    raw_text = extract_text_pdfplumber(pdf_path)
-    result["raw_text_length"] = len(raw_text)
-    result["raw_extraction_ok"] = len(raw_text) > 100
-    print(f"  Raw text: {len(raw_text)} chars")
+    # Step B: pymupdf4llm extraction (SOTA v2 pipeline)
+    print(f"  Extracting text via pymupdf4llm ...")
+    raw_md = extract_text_pymupdf4llm(pdf_path)
+    result["raw_text_length"] = len(raw_md)
+    result["raw_extraction_ok"] = len(raw_md) > 300
+    print(f"  Raw markdown: {len(raw_md)} chars")
 
-    if not raw_text or len(raw_text) < 100:
+    if not raw_md or len(raw_md) < 300:
         result["pass"] = False
-        result["error"] = "pdfplumber extracted too little text"
+        result["error"] = "pymupdf4llm extracted too little text"
         _save("04_text_extraction", result)
         return False
 
-    result["raw_text_preview"] = raw_text[:500]
+    result["raw_text_preview"] = raw_md[:500]
 
-    # Step C: LLM-based extraction (if API is available)
-    client, err = _get_client()
-    if err:
-        result["llm_extraction_ok"] = None
-        result["llm_skip_reason"] = err
-    else:
-        print(f"  Running LLM agentic extraction ...")
-        from geo_perplexity.text_extractor import extract_text_llm_agentic
-
-        def llm_json(system_prompt, user_prompt):
-            resp = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                max_tokens=8000,
-                temperature=0.0,
-                response_format={"type": "json_object"},
-            )
-            return resp.choices[0].message.content or ""
-
-        try:
-            full_text = extract_text_llm_agentic(raw_text, llm_json)
-            result["llm_extraction_ok"] = len(full_text) > 200
-            result["llm_text_length"] = len(full_text)
-            result["llm_text_preview"] = full_text[:500]
-            print(f"  LLM text: {len(full_text)} chars")
-        except Exception as exc:
-            result["llm_extraction_ok"] = False
-            result["llm_error"] = str(exc)
-            result["llm_traceback"] = _sanitize_traceback(traceback.format_exc())
-            print(f"  LLM extraction failed: {exc}")
+    # Step C: Full v2 extraction pipeline (no LLM needed)
+    from geo_perplexity.text_extractor_v2 import extract_full_text
+    try:
+        extraction = extract_full_text(pdf_path, use_llm_cleaning=False)
+        full_text = extraction["full_text"]
+        result["v2_extraction_ok"] = len(full_text) > 200
+        result["v2_text_length"] = len(full_text)
+        result["v2_text_preview"] = full_text[:500]
+        result["v2_title"] = extraction["title"]
+        result["v2_abstract_length"] = len(extraction["abstract"])
+        result["v2_method"] = extraction["extraction_method"]
+        print(f"  V2 full text: {len(full_text)} chars ({extraction['extraction_method']})")
+    except Exception as exc:
+        result["v2_extraction_ok"] = False
+        result["v2_error"] = str(exc)
+        result["v2_traceback"] = _sanitize_traceback(traceback.format_exc())
+        print(f"  V2 extraction failed: {exc}")
 
     result["pass"] = result["raw_extraction_ok"]
     _save("04_text_extraction", result)

@@ -64,16 +64,15 @@ def test_real_paper_abstracts():
         return False
 
     from geo_perplexity.reference_collector import fetch_all_citations
-    from geo_perplexity.text_extractor import (
+    from geo_perplexity.text_extractor_v2 import (
         download_arxiv_pdf,
-        extract_text_pdfplumber,
-        extract_text_llm_agentic,
+        extract_full_text,
     )
     from geo_perplexity.perplexity import estimate_perplexity
 
     result = {"target_arxiv": TARGET_ARXIV, "model": MODEL}
 
-    # Step 1: Get target paper full text
+    # Step 1: Get target paper full text (v2 SOTA pipeline)
     print("  Downloading target paper...")
     pdf_path = download_arxiv_pdf(TARGET_ARXIV)
     if not pdf_path:
@@ -82,22 +81,8 @@ def test_real_paper_abstracts():
         _save("10_real_abstracts", result)
         return False
 
-    raw_text = extract_text_pdfplumber(pdf_path)
-
-    def llm_json(system_prompt, user_prompt):
-        resp = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=8000,
-            temperature=0.0,
-            response_format={"type": "json_object"},
-        )
-        return resp.choices[0].message.content or ""
-
-    full_text = extract_text_llm_agentic(raw_text, llm_json)
+    extraction = extract_full_text(pdf_path, use_llm_cleaning=False)
+    full_text = extraction["full_text"]
     result["target_text_length"] = len(full_text)
     print(f"  Target text: {len(full_text)} chars")
 
