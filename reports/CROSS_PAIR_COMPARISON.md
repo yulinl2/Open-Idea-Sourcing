@@ -238,3 +238,26 @@ Prices: Sonnet $3/$15 per 1M in/out, Opus $15/$75 per 1M in/out.
 
 **Cost per pair:** ~$8–9.50 (16 mode-runs, avg 4 rounds each = ~48 API calls)
 **Cost per mode-run:** ~$1.85 average
+
+### Wall-Clock Time
+
+| Pair | abstract | mindmap | problem | problem_method | Total |
+|------|----------|---------|---------|----------------|-------|
+| 1 (A+R1) | 4.4m (4R) | 5.6m (5R) | 4.3m (3R) | 7.5m (4R) | **22.1m** |
+| 2 (A+R2) | 3.3m (3R) | 5.2m (4R) | 7.5m (5R) | 9.6m (5R) | **25.9m** |
+| 3 (B+R1) | 3.3m (3R) | 5.2m (4R) | 6.6m (4R) | 5.6m (3R) | **20.9m** |
+| 4 (B+R2) | 5.4m (5R) | 4.0m (3R) | 7.5m (5R) | 8.7m (5R) | **25.9m** |
+| **Total** | | | | | **94.8m** |
+
+**Per-round time by mode:**
+
+| Mode | Avg Time/Round | Breakdown |
+|------|---------------|-----------|
+| abstract | ~66s | Student (~15s) + Evaluate (~25s) + Refine (~25s) |
+| mindmap | ~76s | Student (~20s) + Evaluate (~25s) + Refine (~30s) |
+| problem | ~91s | Student (~25s) + Evaluate (~30s) + Refine (~35s) |
+| problem_method | ~111s | Student (~35s) + Evaluate (~35s) + Refine (~40s) |
+
+Round time scales with output length — problem_method (~10K chars) takes ~1.7x
+longer per round than abstract (~2.5K chars). The dominant cost is serial:
+student → evaluate → refine must run sequentially within each round.
