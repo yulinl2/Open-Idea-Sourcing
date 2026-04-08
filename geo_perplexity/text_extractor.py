@@ -321,18 +321,22 @@ def _extract_title_from_md(md_text: str) -> str:
 def clean_extracted_text(
     md_text: str,
     *,
-    llm_json: Optional[Callable[[str, str], str]] = None,
+    llm_clean: Optional[Callable[[str, str], str]] = None,
     title: str = "",
 ) -> str:
     """Clean extracted markdown into plain academic prose.
 
-    If llm_json is provided, uses the LLM for high-quality cleaning.
+    If llm_clean is provided, uses the LLM for high-quality cleaning.
     Otherwise does rule-based cleaning.
+
+    Args:
+        llm_clean: callable(system_prompt, user_prompt) -> str.
+            Should return plain text (not JSON).
     """
     # Always strip references first
     text = _strip_references_section(md_text)
 
-    if llm_json and len(text) > _MIN_USEFUL_LENGTH:
+    if llm_clean and len(text) > _MIN_USEFUL_LENGTH:
         # Use LLM for deep cleaning — send in chunks if very long
         # LLM context is limited, so send up to ~60K chars
         chunk_to_clean = text[:60000]
@@ -340,7 +344,7 @@ def clean_extracted_text(
             n_chars=len(chunk_to_clean), md_text=chunk_to_clean,
         )
         try:
-            resp = llm_json(_CLEAN_SYSTEM, user_msg)
+            resp = llm_clean(_CLEAN_SYSTEM, user_msg)
             cleaned = resp.strip()
             # Basic validation: LLM output should be substantial
             if len(cleaned) > len(chunk_to_clean) * 0.15:
@@ -369,6 +373,14 @@ def extract_full_text(
 ) -> dict[str, Any]:
     """Extract full text from a PDF using the SOTA pipeline.
 
+    Args:
+        llm_json: callable(system_prompt, user_prompt) -> str.
+            Used for LLM-based text cleaning.  Despite the name, this
+            callable should return plain text (not JSON) for the cleaning
+            pass.  The name is kept for backward compatibility with callers.
+        use_llm_cleaning: if True and llm_json is provided, apply LLM
+            cleaning to the extracted markdown.
+
     Returns a dict with:
         - full_text: cleaned body text
         - raw_md: raw pymupdf4llm markdown (for audit)
@@ -396,7 +408,7 @@ def extract_full_text(
 
         lj = llm_json if (use_llm_cleaning and llm_json) else None
         result["full_text"] = clean_extracted_text(
-            raw_md, llm_json=lj, title=result["title"],
+            raw_md, llm_clean=lj, title=result["title"],
         )
         result["extraction_method"] = "pymupdf4llm+llm" if lj else "pymupdf4llm"
         return result
