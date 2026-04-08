@@ -46,8 +46,8 @@ generation passes).
 
 ### 1.1 Paper 1 — Lei & Candes 2021 (arXiv:2006.06138)
 
-**Domain:** Conformal inference for counterfactuals and individual treatment effects
-**Reference supplied:** Tibshirani et al. 2020 (arXiv:1904.06019) — conformal prediction under covariate shift
+**Domain:** Causal inference — constructs prediction intervals for individual treatment effects (e.g., "how much would *this* patient benefit from the drug?") using distribution-free statistical guarantees
+**Reference supplied:** Tibshirani et al. 2020 (arXiv:1904.06019) — a general method for making prediction intervals valid even when training and test data come from different distributions
 **Relevance:** RELATED (reference provides the methodological foundation the paper extends)
 
 #### Independent Scoring (n=3 runs: 06, 07, 08)
@@ -82,9 +82,9 @@ Scale: 7 = references dramatically helped, 4 = no difference, 1 = references act
 
 ### 1.2 Paper 2 — Deng et al. 2026 (arXiv:2602.04770)
 
-**Domain:** Generative modeling (learns to produce new samples, e.g., images, by iteratively transforming noise into data)
-**Reference supplied:** Tibshirani et al. 2020 (arXiv:1904.06019) — conformal prediction under covariate shift
-**Relevance:** UNRELATED (negative control; reference domain is orthogonal to target paper)
+**Domain:** Generative modeling — learns to produce new data samples (e.g., images) by transforming random noise into realistic outputs
+**Reference supplied:** Tibshirani et al. 2020 (arXiv:1904.06019) — same statistical inference paper as Paper 1 (completely unrelated to generative modeling)
+**Relevance:** UNRELATED (negative control; reference domain has no overlap with target paper)
 
 #### Independent Scoring (n=3 runs: 06, 07, 08)
 
@@ -156,19 +156,20 @@ impact 5.67/7) that was absent in v0.3.1. See
 
 ### 2.2 Reference Impact Signal
 
-For Paper 1, the Tibshirani et al. reference on weighted conformal prediction
-consistently enables the student to identify the target paper's methodological
-foundation. The pairwise evaluator identifies the specific mechanism: the
-reference provides the weighted conformal framework that the student then
-extends to causal inference, correctly identifying propensity score
-reweighting, doubly robust coverage properties, and the reduction of
-counterfactual inference to a covariate shift problem.
+For Paper 1, the reference consistently helps the student identify the target
+paper's methodological foundation. The pairwise evaluator pinpoints why: the
+reference describes a general technique for making predictions valid under
+distribution shift, and the target paper's key insight is recognizing that
+causal inference *is* a distribution shift problem. With the reference in
+hand, the student makes this connection; without it, the student proposes
+generic approaches that miss the paper's core trick.
 
-The effect is most pronounced in structured modes — mindmap (+0.27 mean delta,
-sd 0.12) and problem (+0.23, sd 0.25) — where the reference scaffolds
-conceptual organization. The effect is weakest in full_guided (+0.03, sd 0.25)
-and full_freestyle (+0.13, sd 0.23), where unconstrained generation introduces
-noise that dilutes the reference signal.
+The effect is strongest in structured modes — mindmap (+0.27 mean delta,
+sd 0.12) and problem formulation (+0.23, sd 0.25) — where the reference
+helps organize the conceptual approach. The effect is weakest in
+full_guided (+0.03, sd 0.25) and full_freestyle (+0.13, sd 0.23), where
+the open-ended format introduces enough variance to dilute the reference
+signal.
 
 ### 2.3 Negative Control Validation
 
@@ -248,25 +249,29 @@ consistent patterns across both papers:
 **Paper 1 (Lei-Candes):** Students reconstruct a generic application of
 conformal prediction to causal inference — the right domain but the wrong
 specific mechanism. The three innovations they consistently miss are:
-(i) the key insight that counterfactual prediction can be reframed as a
-covariate shift problem (a known statistical setup), enabling direct
-application of weighted conformal methods; (ii) a specific quantile-based
-scoring function that produces tighter prediction intervals than naive
-residuals; and (iii) a doubly robust coverage guarantee (valid if *either*
-the treatment model or the outcome model is correct). With the reference,
-students get closer to (i) but still miss (ii) and (iii), suggesting these
-represent genuine novelty beyond what the reference provides.
+(i) the key insight that predicting individual treatment effects can be
+reframed as a *distribution shift* problem (where treated and untreated
+groups have different characteristics), unlocking an existing statistical
+toolkit; (ii) a tighter scoring function based on conditional quantiles
+rather than simple residuals; and (iii) a "doubly robust" guarantee —
+meaning the method works correctly as long as *either* the treatment
+assignment model or the outcome prediction model is accurate (it doesn't
+need both). With the reference, students get closer to (i) but still miss
+(ii) and (iii), suggesting these represent genuine novelty beyond what the
+reference provides.
 
-**Paper 2 (Deng et al.):** Students uniformly miss the paper's core idea:
-instead of optimizing a generative model at test time (as most methods do),
-this paper evolves the model's internal sample distribution *during training*
-through a novel "drifting field" mechanism with attraction/repulsion dynamics.
-With the irrelevant reference, students produce conformal-prediction-based
-generative frameworks (which do not exist in the literature); without it,
-they default to standard generative approaches like flow matching — plausible
-but missing the paper's actual contribution. The fact that neither condition
-recovers the core concept indicates high genuine novelty: the contribution
-is not derivable from either its cited references or general domain knowledge.
+**Paper 2 (Deng et al.):** Students uniformly miss the paper's core idea.
+Most generative models learn a fixed mapping from noise to data, then use
+that mapping at test time to generate samples. This paper instead
+*continuously adjusts the mapping during training itself*, using a "drifting
+field" where generated samples are attracted toward real data and repelled
+from other generated samples, converging to an equilibrium. With the
+irrelevant reference, students produce nonsensical hybrid approaches (e.g.,
+statistical prediction intervals for image generation); without it, they
+propose standard generative methods — plausible but missing the paper's
+actual contribution. The fact that neither condition recovers the drifting
+field concept indicates high genuine novelty: the contribution is not
+derivable from either its references or general domain knowledge.
 
 ---
 
@@ -274,44 +279,46 @@ is not derivable from either its cited references or general domain knowledge.
 
 ### Title
 
-**Measuring Research Novelty via Multi-Granularity LLM Reconstruction:
-A Reference-Ablation Framework**
+**Measuring Research Novelty via Multi-Granularity LLM Reconstruction: A Reference-Ablation Framework**
 
 ### Abstract
 
-How novel is a research paper's contribution — and can we measure this
-automatically? We introduce *staged reconstruction*, a framework that
-operationalizes novelty measurement as a controlled ablation study. A
-capable language model (the "teacher") reads the target paper and extracts
-a problem statement that describes *what* the paper solves without revealing
-*how*. A second model (the "student"), which has never seen the paper, then
-attempts to reconstruct it across six levels of granularity — from abstract
-to full paper — under two conditions: with access to cited reference texts
-and without. The difference between conditions isolates the marginal
-information contribution of the references, while the gap between
-reconstruction and original quantifies residual novelty.
+How novel is a research paper, really — and can we measure this
+automatically? We propose *staged reconstruction*, a controlled experimental
+framework that quantifies novelty by asking: how much of a paper can an AI
+reconstruct if it has only the problem description and the cited references?
 
-We validate the framework on two papers that share a common reference: one
-where the reference is methodologically related (statistical inference for
-causal treatment effects, citing a directly relevant prior work) and one
-where it is unrelated (a generative modeling method, same reference — serving
-as a negative control). Across three independent runs using Claude Sonnet 4
-as student and Claude Opus 4 as evaluator, the related reference yields a
-consistent positive effect (mean composite delta +0.17 on a 5-point scale,
-pairwise reference impact 5.67/7, with 5 of 6 reconstruction modes favoring
-the reference condition). The unrelated reference yields near-zero aggregate
-effect (delta +0.02) with 2.3x higher per-mode variance, and pairwise
-evaluation unanimously favors the no-reference baseline across all 6 modes —
-confirming that the signal is genuine.
+The setup works like a structured exam. A strong language model (the
+"teacher") reads the full paper and writes a problem statement — carefully
+designed to say *what* the paper solves without revealing *how*. A weaker
+model (the "student"), which has never seen the paper, then attempts to
+reconstruct it at six levels of detail: abstract, idea map, problem
+formulation, problem + method, full paper from a template, and full paper
+from scratch. Critically, we run each reconstruction twice — once with
+access to the paper's cited references and once without. The score
+difference between these two conditions tells us how much the references
+contribute; the remaining gap to the original tells us what is genuinely
+new.
 
-Qualitative analysis reveals that student models consistently fail to recover
-paper-specific innovations, defaulting to generic domain knowledge. We
-additionally show that paired side-by-side evaluation achieves approximately
-7x higher signal-to-noise ratio than independent scoring for detecting
-reference effects, due to the elimination of rating-scale anchoring bias.
-These results suggest that reconstruction-based ablation can operationally
-distinguish genuine intellectual contributions from derivable extensions of
-prior work.
+We validate on two test papers sharing one reference: a causal inference
+paper (where the reference is directly relevant) and a generative modeling
+paper (where the same reference is unrelated, serving as a negative
+control). Across three independent runs, the relevant reference consistently
+improves reconstruction (mean delta +0.17 on a 5-point scale; paired
+side-by-side evaluation rates reference impact at 5.67/7, favoring the
+reference condition in 5 of 6 modes). The irrelevant reference shows no
+benefit (delta +0.02; 2.3x noisier; all 6 modes favor the no-reference
+baseline) — confirming the signal is real, not an artifact.
+
+Two additional findings emerge. First, student models consistently fail to
+recover each paper's core innovations, falling back on textbook-level domain
+knowledge — suggesting that true novelty is what remains after subtracting
+what references and general knowledge can provide. Second, paired
+side-by-side evaluation achieves roughly 7x higher signal-to-noise ratio
+than independent scoring, because it avoids the well-known problem of
+raters gravitating toward mid-scale scores. Our results suggest that
+reconstruction-based ablation can operationally separate genuine
+contributions from incremental extensions of prior work.
 
 ---
 
