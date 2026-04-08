@@ -1,0 +1,12 @@
+{
+  "problem_context": "In many fields including medicine, public policy, and social sciences, researchers need to understand how treatments affect different individuals differently, not just average effects across populations. While average treatment effects provide useful summaries, they can be misleading when effects vary substantially across individuals - for instance, a treatment that helps 70% of patients while harming 30% might show a positive average effect but raises serious concerns about approval and deployment. Current methods for estimating heterogeneous treatment effects rely heavily on machine learning algorithms that, while theoretically appealing for consistency and convergence, perform poorly at quantifying uncertainty. This is particularly troubling in sensitive decision-making contexts where understanding risk and variability is crucial. The challenge is compounded by the fundamental causal inference problem: for any individual, we only observe one potential outcome (either under treatment or control), never both simultaneously. This creates significant difficulties in providing reliable uncertainty quantification for individual-level causal effects, especially when sample sizes are limited, models may be misspecified, and inherent variability exists in responses.",
+  "desirable_properties": [
+    "Should provide reliable uncertainty quantification that accounts for both sampling variability and inherent response variability",
+    "Should work well with finite samples without requiring asymptotic approximations",
+    "Should be robust to model misspecification and not require strong parametric assumptions",
+    "Should handle both randomized experiments and observational studies under standard causal assumptions",
+    "Should accommodate different target populations and covariate distributions",
+    "Should provide guarantees that hold regardless of the dimensionality of covariates or complexity of the underlying relationships"
+  ],
+  "field_context": "This work sits at the intersection of causal inference and uncertainty quantification, addressing the fundamental challenge of making reliable individual-level predictions in the presence of missing counterfactual outcomes. The problem connects classical work on potential outcomes and treatment effect estimation with modern concerns about the reliability and interpretability of machine learning predictions in high-stakes applications."
+}

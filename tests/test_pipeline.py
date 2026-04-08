@@ -183,6 +183,21 @@ class TestAgentHelpers:
         assert "An abstract." in text
         assert "A. Author" in text
 
+    def test_prepare_refs_text_full_text_from_cache(self):
+        """When a .txt file exists in data/pdfs/, it should be loaded as full text."""
+        from agent import prepare_refs_text
+        refs = [
+            {"id": "arxiv-1904.06019", "title": "Conformal Prediction Under Covariate Shift",
+             "abstract": "Short abstract.", "authors": ["R. Tibshirani"],
+             "year": 2020, "venue": "NeurIPS"},
+        ]
+        text = prepare_refs_text(refs)
+        # Should contain full text, not just the short abstract
+        if (ROOT / "data" / "pdfs" / "1904.06019.txt").exists():
+            assert len(text) > 1000  # Full text is ~52K chars
+            assert "Full text:" in text
+            assert "Short abstract." not in text  # Full text replaces abstract
+
     def test_prepare_refs_text_empty(self):
         from agent import prepare_refs_text
         text = prepare_refs_text([])
@@ -448,10 +463,10 @@ class TestPdfUtils:
     def test_local_pdf_cache_lookup(self):
         """PDF cache finds locally stored PDFs by arxiv ID."""
         from infra.pdf_utils import _resolve_source, _PDF_CACHE
-        # If the 2103.04984 PDF is in the cache, it should be found
-        cached = _PDF_CACHE / "2103.04984.pdf"
+        # If the 2006.06138 PDF is in the cache, it should be found
+        cached = _PDF_CACHE / "2006.06138.pdf"
         if cached.exists():
-            path, tmp = _resolve_source("https://arxiv.org/abs/2103.04984")
+            path, tmp = _resolve_source("https://arxiv.org/abs/2006.06138")
             assert path == cached
             assert tmp is None
 

@@ -1,0 +1,11 @@
+{
+  "paper_key_insight": "Apply weighted conformal inference to construct prediction intervals for counterfactuals and individual treatment effects that achieve valid coverage under covariate shift, with doubly robust properties when either propensity scores or outcome models are well-estimated.",
+  "output_a_captures_insight": "yes \u2014 Output A correctly identifies the core contribution as extending weighted conformal prediction to ITE estimation, explicitly mentions the doubly robust property, and accurately describes the use of importance weighting for both covariate shift and treatment assignment",
+  "output_b_captures_insight": "partially \u2014 Output B captures the general idea of combining conformal prediction with causal inference but misses the specific weighted conformal framework and doesn't clearly articulate how the method handles covariate shift through importance weighting",
+  "reference_impact_score": 6,
+  "reference_impact_rationale": "The reference to Tibshirani et al.'s weighted conformal prediction paper clearly helped Output A understand the specific technical framework being extended. Output A precisely identifies weighted conformal as the key building block and correctly describes how it's adapted for causal inference, while Output B only vaguely mentions 'weighted conformal' without understanding its central role.",
+  "output_a_unique_strengths": "Correctly identifies weighted conformal prediction as the core framework, accurately describes the dual conformal framework for ITEs, properly explains the doubly-robust weighting scheme combining covariate shift and propensity adjustments",
+  "output_b_unique_strengths": "Provides broader context about causal ML uncertainty quantification challenges, mentions computational scalability concerns, discusses unmeasured confounding as a limitation",
+  "which_is_closer_to_original": "A",
+  "confidence": "high"
+}

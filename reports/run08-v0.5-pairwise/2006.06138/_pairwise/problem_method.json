@@ -1,0 +1,11 @@
+{
+  "paper_key_insight": "Using conformal inference with weighted quantiles to construct distribution-free prediction intervals for counterfactuals and individual treatment effects that achieve guaranteed coverage even under model misspecification.",
+  "output_a_captures_insight": "yes \u2014 correctly identifies weighted conformal inference for counterfactuals, mentions the doubly robust property, and accurately describes the weighted quantile approach from Tibshirani et al.",
+  "output_b_captures_insight": "partially \u2014 captures the conformal inference aspect and distribution-free intervals but misses the crucial weighted quantile approach and doubly robust property that are central to the paper's contribution.",
+  "reference_impact_score": 6,
+  "reference_impact_rationale": "The reference to Tibshirani et al. (2020) on weighted conformal prediction was crucial for Output A to correctly identify the weighted quantile mechanism that handles covariate shift. Output B attempts to handle covariate shift but proposes a different, less sophisticated approach that misses the paper's actual methodology.",
+  "output_a_unique_strengths": "Correctly identifies weighted conformal quantile regression (CQR), accurately describes the doubly robust property, properly explains the role of propensity scores in weighting, and provides the actual algorithm structure with weighted quantiles",
+  "output_b_unique_strengths": "Provides clearer problem formulation with explicit objective function, offers more detailed algorithm pseudocode, includes theoretical properties section with coverage theorems",
+  "which_is_closer_to_original": "A",
+  "confidence": "high"
+}

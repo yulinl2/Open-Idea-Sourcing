@@ -1,0 +1,13 @@
+{
+  "problem_context": "Current generative modeling approaches face fundamental challenges in mapping from one distribution to another efficiently. While discriminative models simply map individual samples to labels, generative models must learn mappings between entire distributions - a significantly more complex task. Existing approaches often require iterative procedures at inference time, performing multiple network evaluations to progressively transform samples from noise to data. This creates a fundamental tension: decomposing complex transformations into simpler steps improves modeling quality but increases computational cost at generation time. There is a need for generative models that can produce high-quality samples in a single forward pass while maintaining the modeling flexibility that iterative approaches provide.",
+  "desirable_properties": [
+    "Should generate high-quality samples in a single network evaluation",
+    "Should avoid mode collapse and capture the full data distribution",
+    "Should work effectively in high-dimensional spaces like natural images",
+    "Should not require adversarial training or complex optimization procedures",
+    "Should be trainable from scratch without requiring pre-trained models",
+    "Should support conditional generation with flexible conditioning mechanisms",
+    "Should scale efficiently with data dimensionality and dataset size"
+  ],
+  "field_context": "Generative modeling is a fundamental problem in machine learning that aims to learn the underlying distribution of data and generate new samples from it. This field has seen significant progress through various paradigms including variational methods, adversarial approaches, and more recently, score-based and flow-based models. The challenge of efficient, high-quality generation remains central to advancing applications in image synthesis, robotics, and other domains."
+}

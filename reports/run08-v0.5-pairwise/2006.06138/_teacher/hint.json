@@ -1,0 +1,13 @@
+{
+  "problem_context": "In many fields including medicine, policy evaluation, and social sciences, researchers need to move beyond estimating average treatment effects to understanding how treatments affect individuals differently. While average effects provide useful summaries, they can be misleading when treatment effects vary substantially across individuals - for instance, a treatment might help 70% of patients while harming the remaining 30%. Current methods for estimating conditional average treatment effects (CATE) using machine learning algorithms often perform poorly at quantifying uncertainty, which is crucial for reliable decision-making in sensitive environments. The fundamental challenge is that for any individual, only one potential outcome is ever observed (either under treatment or control), making it impossible to directly observe individual treatment effects. This creates two distinct inference problems: constructing reliable intervals for individuals within a study (where one potential outcome is observed) and for new individuals outside the study (where both potential outcomes are missing).",
+  "desirable_properties": [
+    "Should provide reliable uncertainty quantification with guaranteed coverage properties",
+    "Should work without strong parametric assumptions about the data generating process",
+    "Should handle both randomized experiments and observational studies",
+    "Should be robust to model misspecification",
+    "Should accommodate covariate shifts between study and target populations",
+    "Should provide valid inference for both within-study and out-of-study individuals",
+    "Should work in finite samples, not just asymptotically"
+  ],
+  "field_context": "This work sits at the intersection of causal inference and uncertainty quantification. The potential outcomes framework provides the foundation for defining causal effects, while the challenge of constructing valid prediction intervals connects to the broader literature on distribution-free inference methods. The problem is particularly relevant in settings where treatment decisions must account for individual-level heterogeneity and uncertainty."
+}

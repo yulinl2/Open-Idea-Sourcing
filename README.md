@@ -68,6 +68,10 @@ reports/
       no_refs/                         # condition: baseline without refs
         abstract/
         ...
+      _pairwise/                       # side-by-side comparison (v0.5+)
+        abstract.json                  # reference impact score (1-7)
+        abstract_audit.json
+        ...
 ```
 
 ## Usage
@@ -120,18 +124,22 @@ or pre-extracted text in `data/pdfs/<arxiv_id>.txt`.
 
 | Paper | Domain | Full Text |
 |-------|--------|-----------|
-| 2006.06138 — Distribution-Free Risk-Controlling Prediction Sets | Conformal prediction | Abstract only |
-| 2602.04770 — Conformal Prediction with Learned Features | Conformal prediction | Abstract only |
-| 2103.04984 — Conformal Inference of Counterfactuals and ITEs | Causal inference | Full PDF |
+| 2006.06138 — Conformal Inference of Counterfactuals and ITEs (Lei & Candès) | Causal inference + conformal | Full PDF |
+| 2602.04770 — Generative Modeling via Drifting (Deng et al.) | Generative models | Full PDF |
 
 ## Development Roadmap
 
 1. **v0.1**: One-off generation, 6 modes, full audit trail
 2. **v0.2**: Dual backend, with_refs/no_refs conditions
 3. **v0.3**: Teacher evaluation scoring, cross-condition comparison,
-   pymupdf + arxiv HTML extraction, 3rd test paper
-4. **v0.3.1** (current): Full 3-paper evaluation run with novelty gap analysis,
-   cached PDF text extraction for Lei-Candès paper
-5. **v0.4**: Iterative teacher-student game with feedback loops
-6. **v0.5**: Loop termination criteria (convergence detection, max rounds)
-7. **v0.6**: Cross-paper comparison and novelty ranking
+   pymupdf + arxiv HTML extraction
+4. **v0.3.1**: Full evaluation run with novelty gap analysis,
+   cached PDF text extraction (archived — used hallucinated metadata)
+5. **v0.4**: Anti-leakage teacher prompt redesign, improved eval rubric,
+   reference_usage removed from composite, reconstruction_difficulty added
+6. **v0.5.0** (current): Pairwise evaluator (side-by-side with_refs vs no_refs
+   on 1-7 impact scale), calibrated scoring rubric with concrete anchors,
+   mandatory reference-engagement instructions in all student prompts,
+   retry-with-backoff for rate limits, teacher hint caching, API key priority
+7. **v0.6** (planned): Cross-paper comparison and novelty ranking, batch API
+   mode for 50% cost reduction, multi-run variance measurement

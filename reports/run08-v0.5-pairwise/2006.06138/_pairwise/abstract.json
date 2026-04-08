@@ -1,0 +1,11 @@
+{
+  "paper_key_insight": "Using conformal inference with propensity score weighting to construct prediction intervals for counterfactuals and individual treatment effects that achieve finite-sample coverage guarantees without parametric assumptions",
+  "output_a_captures_insight": "yes \u2014 explicitly mentions weighted conformal methodology, propensity score reweighting, finite-sample coverage, and distribution-free guarantees",
+  "output_b_captures_insight": "partially \u2014 mentions conformal prediction and distribution-free intervals but misses the crucial propensity score weighting mechanism",
+  "reference_impact_score": 6,
+  "reference_impact_rationale": "Output A correctly identifies the weighted conformal approach and propensity score reweighting as central to the method, directly citing Tibshirani et al. (2020) for weighted conformal inference. Output B proposes a different 'nested conformal' approach that doesn't align with the paper's actual methodology of using weighted conformal inference.",
+  "output_a_unique_strengths": "Correctly identifies weighted conformal inference, propensity score reweighting, causal conformity scores, and the doubly-weighted procedure for new individuals",
+  "output_b_unique_strengths": "Mentions conditional conformal approach for within-study individuals and clearly articulates the missing data problem",
+  "which_is_closer_to_original": "A",
+  "confidence": "high"
+}

@@ -1854,4 +1854,1746 @@ Matthew P Fox, Sarah C Gadd, Claire Keeble, Lynsie R Ranker, Johannes Textor, Ge
 Tomova, Mark S Gilthorpe, and George T H Ellison. Use of directed acyclic graphs (dags) in
 applied health research: review and recommendations. medRxiv, 2019.
 Julie Tibshirani, Susan Athey, and Stefan Wager. grf: Generalized Random Forests, 2019a. URL
-https://CRAN.R-project.org/package=grf. R
+https://CRAN.R-project.org/package=grf. R package version 1.0.1.
+Ryan J Tibshirani, Rina Foygel Barber, Emmanuel Cand`es, and Aaditya Ramdas. Conformal
+prediction under covariate shift. In Advances in Neural Information Processing Systems, pages
+2530–2540, 2019b.
+Elizabeth Tipton. Improving generalizations from experiments using propensity score subclassi-
+ﬁcation: Assumptions, properties, and contexts. Journal of Educational and Behavioral Statis-
+tics, 38(3):239–266, 2013.
+Elizabeth Tipton. How generalizable is your experiment? An index for comparing experimental
+samples and populations.
+Journal of Educational and Behavioral Statistics, 39(6):478–501,
+2014.
+Bengt von Bahr and Carl-Gustav Esseen. Inequalities for the r-th absolute moment of a sum of
+random variables, 1 ≤r ≤2. The Annals of Mathematical Statistics, 36:299–303, 1965.
+Vladimir Vovk. Conditional validity of inductive conformal predictors. In Asian conference on
+machine learning, pages 475–490, 2012.
+Vladimir Vovk. Transductive conformal predictors. In IFIP International Conference on Artiﬁcial
+Intelligence Applications and Innovations, pages 348–360. Springer, 2013.
+Vladimir Vovk. Cross-conformal predictors. Annals of Mathematics and Artiﬁcial Intelligence,
+74(1-2):9–28, 2015.
+Vladimir Vovk, Alex Gammerman, and Glenn Shafer. Algorithmic learning in a random world.
+Springer Science & Business Media, 2005.
+Vladimir Vovk, Ilia Nouretdinov, and Alex Gammerman. On-line predictive linear regression.
+The Annals of Statistics, 37(3):1566–1590, 2009.
+Stefan Wager and Susan Athey. Estimation and inference of heterogeneous treatment eﬀects
+using random forests. Journal of the American Statistical Association, 113(523):1228–1242,
+2018.
+Stefan Wager, Trevor Hastie, and Bradley Efron. Conﬁdence intervals for random forests: The
+jackknife and the inﬁnitesimal jackknife. The Journal of Machine Learning Research, 15(1):
+1625–1651, 2014.
+Conformal Inference of Counterfactuals and Individual Treatment Effects
+25
+Stephanie Winkelbeiner, Stefan Leucht, John M Kane, and Philipp Homan. Evaluation of diﬀer-
+ences in individual treatment response in schizophrenia spectrum disorders: a meta-analysis.
+JAMA psychiatry, 76(10):1063–1073, 2019.
+Yu Xie, Jennie E Brand, and Ben Jann. Estimating heterogeneous treatment eﬀects with obser-
+vational data. Sociological methodology, 42(1):314–347, 2012.
+David S Yeager, Paul Hanselman, Gregory M Walton, Jared S Murray, Robert Crosnoe, Chandra
+Muller, Elizabeth Tipton, Barbara Schneider, Chris S Hulleman, and Cintia P Hinojosa. A
+national experiment reveals where a growth mindset improves achievement. Nature, 573(7774):
+364–369, 2019.
+Keming Yu and Rana A Moyeed. Bayesian quantile regression. Statistics & Probability Letters,
+54(4):437–447, 2001.
+26
+Lihua Lei and Emmanuel J. Cand`es
+Appendix
+A.
+Nonasymptotic Theory for Double Robustness of Weighted Split-CQR
+This section establishes the double robustness of general weighted split-CQR. We ﬁrst prove
+nonasymptotic results for two sides of the double robustness and then present a simpler asymp-
+totic result as a corollary in Section A.3.
+Theorem 3. Let (Xi, Yi) i.i.d.
+∼(X, Y ) ∼PX × PY |X and QX be another distribution on the
+domain of X. Set N = |Ztr| and n = |Zca|. Further, let ˆqβ,N(x) = ˆqβ,N(x; Ztr) be an estimate
+of the β-th conditional quantile qβ(x) of Y | X = x, ˆwN(x) = ˆwN(x; Ztr) be an estimate of
+w(x) = (dQX/dPX)(x), and ˆCN,n(x) be the conformal interval resulting from Algorithm 1. As-
+sume that E[ ˆwN(X) | Ztr] < ∞, where E denotes expectation over X ∼PX. Redeﬁne ˆwN(x) as
+ˆwN(x)/E[ ˆwN(X) | Ztr] so that E[ ˆwN(X) | Ztr] = 1. Then
+P(X,Y )∼QX×PY |X
+
+Y ∈ˆCN,n(X)
+
+≥1 −α −1
+2EX∼PX| ˆwN(X) −w(X)|.
+(A.1)
+Theorem 4. In the setting of Theorem 3, assume further that
+(1) αhi −αlo = 1 −α;
+(2) there exist r, b1, b2 > 0 such that P(Y = y | X = x) ∈[b1, b2] uniformly over all (x, y) with
+y ∈[qαlo(x) −r, qαlo(x) + r] ∪[qαhi(x) −r, qαhi(x) + r];
+(3) PX∼QX(w(X) < ∞) = 1, and there exist δ, M > 0 such that
+ E
+
+ˆwN(X)1+δ1/(1+δ) ≤M;
+(4) there exist k, ℓ> 0 such that lim
+N→∞E[ ˆwN(X)Hk
+N(X)] = lim
+N→∞E[w(X)Hℓ
+N(X)] = 0, where
+HN(x) = max{|ˆqαlo,N(x) −qαlo(x)|, |ˆqαhi,N(x) −qαhi(x)|}.
+Then there is a constant B1 that only depends on r, b1, b2, δ, M, k, ℓsuch that
+P(X,Y )∼QX×PY |X(Y ∈ˆCN,n(X)) ≥1 −α
+−B1
+(log n)(1+δ′)/2(2+δ′)
+nδ′/(2+δ′)
++
+
+E[ ˆwN(X)Hk
+N(X)]
+1/(2+k)
++
+
+E[w(X)Hℓ
+N(X)]
+1/(1+ℓ)
+,
+(A.2)
+where δ′ = min{δ, 1}. Furthermore, for any β ∈(0, 1), there is a constant B2 that only depends
+on r, b1, b2, δ, M, k, ℓ, β such that, with probability at least 1 −β,
+P(X,Y )∼QX×PY |X(Y ∈ˆCN,n(X) | X) ≥1 −α
+−B2
+(log n)(1+δ′)/2(2+δ′)
+nδ′/(2+δ′)
++
+
+E[ ˆwN(X)Hk
+N(X)]
+1/(2+k)
++
+
+E[w(X)Hℓ
+N(X)]
+1/ℓ
+.
+(A.3)
+Remark 1. If δ ≥1 and HN(X) ≤∆N almost surely for some deterministic sequence ∆N =
+o(1), by letting k, ℓ→∞, the RHS of (A.2) and (A.3) reduce to
+1 −α −B
+(log n
+n
+1/3
++ ∆N
+)
+.
+Conformal Inference of Counterfactuals and Individual Treatment Effects
+27
+A.1.
+Proof of Theorem 3
+Let Quantile(β; F) denote the β-th quantile of a distribution function F, i.e.
+Quantile(β; F) = inf{z : F(z) ≥β} = sup{z : F(z) < β}.
+We start with two lemmas.
+Lemma 1 (Equation (2) in Lemma 1 from Tibshirani et al. [2019b]). Let v1, . . . , vn+1 ∈
+R and (p1, . . . , pn+1) ∈R be non-negative reals summing to 1. Then for any β ∈[0, 1] and
+vn+1
+≤
+Quantile
+ 
+β;
+n+1
+X
+i=1
+piδvi
+!
+⇐⇒
+vn+1
+≤
+Quantile
+ 
+β;
+n
+X
+i=1
+piδvi + pn+1δ∞
+!
+.
+Lemma 2 (Equation (10) from Berrett et al. [2019]). Let dTV(Q1X, Q2X) denote the
+total-variation distance between Q1X and Q2X. Then
+dTV(Q1X × PY |X, Q2X × PY |X) = dTV(Q1X, Q2X).
+Returning to the proof of Theorem 3, we ﬁrst consider the case where QX is absolutely
+continuous with respect to PX, i.e.
+PX∼QX(w(X) < ∞) = 1.
+In this case, for any measurable function f,
+EX∼QX[f(X)] = EX∼PX[w(X)f(X)].
+(A.4)
+On the other hand, it always holds that PX∼PX(w(X) < ∞) = 1. In addition, the assumption
+EX∼PX[ ˆw(X) | Ztr] < ∞implies that PX∼PX( ˆw(X) < ∞) = 1. By (A.4),
+PX∼QX( ˆw(X) < ∞) = 1 −EX∼PX[w(X)I( ˆw(X) = ∞)].
+Since the integrand is non-negative,
+EX∼PX[w(X)I( ˆw(X) = ∞)]
+= lim
+K→∞EX∼PX[w(X)I(w(X) ≤K, ˆw(X) = ∞)] ≤lim
+K→∞KPX∼PX( ˆw(X) = ∞) = 0.
+Thus, we also have
+PX∼QX( ˆw(X) < ∞) = 1.
+Index the calibration fold by {1, . . . , n} and let (Xn+1, Yn+1) ∼QX × PY |X. Write Zi for
+(Xi, Yi) and V for (V1, . . . , Vn+1). For notational convenience, we suppress the subscripts N and
+n in ˆq, ˆw, ˆC as well as in ˆpi(x) and η(x). Next, for any permutation π on {1, . . . , n + 1} and v∗∈
+Rn+1, let v∗
+π = (v∗
+π(1), . . . , v∗
+π(n+1)). Further, let ℓ(z) be the joint density of Z = (Z1, . . . , Zn+1)
+and p(z) be the density of Z1 (with respect to a dominating measure). Letting E(v) denote the
+unordered set of v, it is easy to see that
+(V | E(V ) = E(v∗), Ztr) d= v∗
+Π,
+(A.5)
+where Π is a random permutation with
+P (Π = π | Ztr) =
+p(z∗
+π)
+P
+π p(z∗π) =
+w(Xπ(n+1))
+P
+π w(Xπ(n+1)) =
+w(Xπ(n+1))
+n! Pn+1
+i=1 w(Xi)
+.
+Note that this conditional probability is well-deﬁned because w(X) < ∞almost surely under
+both PX and QX. As a result, for any j ∈{1, 2, . . . , n + 1},
+P (Π(n + 1) = j | Ztr) =
+w(Xj)
+Pn+1
+i=1 w(Xi)
+= pj(Xn+1),
+28
+Lihua Lei and Emmanuel J. Cand`es
+where pn+1 denotes p∞for notational convenience. This gives
+(Vn+1 | E(V ) = E(v∗), Ztr) d= v∗
+Π(n+1) ∼
+n+1
+X
+i=1
+pi(Xn+1)δv∗
+i .
+(A.6)
+Note that pi involves the true likelihood ratio function w(x) and thus is diﬀerent from ˆpi.
+Let ˜QX be a measure with
+d ˜QX(x) = ˆw(x)dPX(x).
+Since EX∼PX[ ˆw(X)] = 1, PX∼PX( ˆw(X) < ∞) = 1. As a result, ˜QX is a probability measure.
+Consider now a new sample ( ˜Xn+1, ˜Yn+1) ∼˜QX × PY |X. Let ˜Vn+1 denote the non-conformity
+score of ( ˜Xn+1, ˜Yn+1) and set ˜V = (V1, . . . , Vn, ˜Vn+1). Using the same argument as for (A.6), we
+have
+
+˜Vn+1 | E( ˜V ) = E(v∗), Ztr
+
+∼
+n+1
+X
+i=1
+ˆpi( ˜Xn+1)δv∗
+i .
+(A.7)
+Note that each ˆpi( ˜Xn+1), i = 1, . . . , n + 1 is well-deﬁned since ˆw(Xi) is almost surely ﬁnite under
+both PX and QX. As a consequence,
+P
+
+˜Yn+1 ∈ˆC( ˜Xn+1) | Ztr
+
+= P
+
+˜Vn+1 ≤η( ˜Xn+1) | Ztr
+
+= P
+ 
+˜Vn+1 ≤Quantile
+ 
+1 −α;
+n
+X
+i=1
+ˆpi( ˜Xn+1)δVi + ˆp∞( ˜Xn+1)δ∞
+!
+| Ztr
+!
+(i)
+= P
+ 
+˜Vn+1 ≤Quantile
+ 
+1 −α;
+n
+X
+i=1
+ˆpi( ˜Xn+1)δVi + ˆp∞( ˜Xn+1)δ ˜Vn+1
+!
+| Ztr
+!
+= EP
+ 
+˜Vn+1 ≤Quantile
+ 
+1 −α;
+n
+X
+i=1
+ˆpi( ˜Xn+1)δVi + ˆp∞( ˜Xn+1)δ ˜Vn+1
+!
+| E( ˜V ), Ztr
+!
+(ii)
+≥1 −α,
+(A.8)
+where (i) uses Lemma 1 and (ii) uses (A.7) and the deﬁnition of Quantile(β; F). By Lemma 2,
+dTV
+
+QX × PY |X, ˜QX × PY |X
+
+= dTV
+
+QX, ˜QX
+
+,
+and as a consequence,
+P
+
+Yn+1 ∈ˆC(Xn+1) | Ztr, Zca
+
+−P
+
+˜Yn+1 ∈ˆC( ˜Xn+1) | Ztr, Zca
+  ≤dTV(QX, ˜QX),
+(A.9)
+which implies that
+P
+
+Yn+1 ∈ˆC(Xn+1) | Ztr, Zca
+
+≥P
+
+˜Yn+1 ∈ˆC( ˜Xn+1) | Ztr, Zca
+
+−dTV(QX, ˜QX).
+Taking expectation over Zca, we have
+P
+
+Yn+1 ∈ˆC(Xn+1) | Ztr
+
+≥P
+
+˜Yn+1 ∈ˆC( ˜Xn+1) | Ztr
+
+−dTV(QX, ˜QX) ≥1−α−dTV(QX, ˜QX).
+Using the integral deﬁnition of total-variation distance and (A.4),
+dTV(QX, ˜QX) = 1
+2
+Z
+| ˆw(x)dPX(x) −dQX(x)| = 1
+2
+Z
+| ˆw(x)dPX(x) −w(x)dPX(x)|
+= 1
+2EX∼PX| ˆw(X) −w(X)|
+Conformal Inference of Counterfactuals and Individual Treatment Effects
+29
+Taking expectation over Ztr, we have
+P
+
+Yn+1 ∈ˆC(Xn+1)
+
+≥1 −α −1
+2EX∼PX| ˆw(X) −w(X)|.
+This proves (A.1) when PX∼QX(w(X) < ∞) = 1.
+Next, we extend the result to the case where PX∼QX(w(X) < ∞) < 1. If PX∼PX( ˆw(X) <
+∞) < 1, it is clear that EX∼PX| ˆw(X) −w(X)| = ∞and (A.1) holds trivially. Thus, we assume
+PX∼PX( ˆw(X) < ∞) = 1 in the remainder.
+Let Q′
+X denote the distribution QX conditional on the event E∞≜{x : w(x) < ∞}; that is,
+dQ′
+X(x) = I(x ∈E∞)dQX(x)
+PX∼QX(E∞)
+.
+Further, set w′(x) = dQ′
+X(x)/dPX(x) and ˆw′(x) = ˆw(x)I(x ∈E∞)/PX∼QX(E∞). Note that
+ˆC(x) remains the same on E∞when ˆw is replaced by ˆw′ and QX is replaced by Q′
+X, because
+the weighted-split-CQR algorithm is invariant with respect to rescalings of the covariate shift
+estimate. Since PX∼Q′
+X(w(X) < ∞) = 1, (A.1) implies that
+P(X,Y )∼Q′
+X×PY |X
+
+Y ∈ˆC(X)
+
+≥1 −α −1
+2EX∼PX| ˆw′(X) −w′(X)|.
+It can be reformulated as
+P
+
+Yn+1 ∈ˆC(Xn+1) | w(Xn+1) < ∞
+
+≥1 −α −
+1
+2PX∼QX(E∞)EX∼PX| ˆw(X) −w(X)|.
+On the other hand, when w(Xn+1) = ∞, η(Xn+1) = ∞, implying that ˆC(Xn+1) = (−∞, ∞). As
+a result,
+P
+
+Yn+1 ∈ˆC(Xn+1) | w(Xn+1) = ∞
+
+= 1.
+Putting the two pieces together, we conclude that
+P
+
+Yn+1 ∈ˆC(Xn+1)
+
+= P
+
+Yn+1 ∈ˆC(Xn+1) | w(Xn+1) < ∞
+
+P (w(Xn+1) < ∞)
++ P
+
+Yn+1 ∈ˆC(Xn+1) | w(Xn+1) = ∞
+
+P (w(Xn+1) = ∞)
+≥(1 −α)PX∼QX(E∞) + PX∼QX(Ec
+∞) −1
+2EX∼PX| ˆw(X) −w(X)|
+≥1 −α −1
+2EX∼PX| ˆw(X) −w(X)|.
+A.2.
+Proof of Theorem 4
+We start with the following two Rosenthal-type inequalities for sums of independent random
+variables with ﬁnite (1 + δ)-th moments.
+Proposition 2 (Theorem 3 of Rosenthal [1970]). Let {Zi}i=1,...,n be independent mean-
+zero random variables. Then for any δ ≥1, there exists L(δ) > 0 that only depends on δ such
+that
+E
+
+n
+X
+i=1
+Zi
+
+1+δ
+≤L(δ)
+
+
+
+n
+X
+i=1
+E|Zi|1+δ +
+ n
+X
+i=1
+E|Zi|2
+!(1+δ)/2
+
+.
+Proposition 3 (Theorem 2 of von Bahr and Esseen [1965]). Let {Zi}i=1,...,n be inde-
+pendent mean-zero random variables. Then for any δ ∈[0, 1),
+E
+
+n
+X
+i=1
+Zi
+
+1+δ
+≤2
+n
+X
+i=1
+E|Zi|1+δ.
+30
+Lihua Lei and Emmanuel J. Cand`es
+For notational convenience, we suppress the subcripts N and n in ˆq, ˆw, ˆC as well as in ˆpi(x)
+and η(x). Note that Assumption (3) implies that w(X) is almost surely ﬁnite under QX and
+ˆw(X) is almost surely ﬁnite under PX. By the same reasoning as in the proof of (A.1), w(X) is
+almost surely ﬁnite under PX and ˆw(X) is almost surely ﬁnite under QX.
+Let ϵ < r/2 and ( ˜X, ˜Y ) denote a generic random vector drawn from QX × PY |X, which is
+independent of the data. Then
+P( ˜Y ∈ˆC( ˜X) | ˜X)
+= P
+
+max{ˆqαlo( ˜X) −˜Y , ˜Y −ˆqαhi( ˜X)} ≤η( ˜X) | ˜X
+
+≥P
+
+max{qαlo( ˜X) −˜Y , ˜Y −qαhi( ˜X)} ≤η( ˜X) −H( ˜X) | ˜X
+
+≥P
+
+max{qαlo( ˜X) −˜Y , ˜Y −qαhi( ˜X)} ≤−ϵ −H( ˜X) | ˜X
+
+−P(η( ˜X) < −ϵ | ˜X)
+≥P
+
+max{qαlo( ˜X) −˜Y , ˜Y −qαhi( ˜X)} ≤−ϵ −H( ˜X)I(H( ˜X) ≤ϵ) | ˜X
+
+−I(H( ˜X) > ϵ) −P(η( ˜X) < −ϵ | ˜X)
+(i)
+≥P
+
+max{qαlo( ˜X) −˜Y , ˜Y −qαhi( ˜X)} ≤0 | ˜X
+
+−b2
+n
+ϵ + H( ˜X)I(H( ˜X) ≤ϵ)
+o
+−I(H( ˜X) > ϵ) −P(η( ˜X) < −ϵ | ˜X)
+≥P
+
+max{qαlo( ˜X) −˜Y , ˜Y −qαhi( ˜X)} ≤0 | ˜X
+
+−b2
+n
+ϵ + H( ˜X)
+o
+−I(H( ˜X) > ϵ) −P(η( ˜X) < −ϵ | ˜X)
+(ii)
+= 1 −α −b2
+n
+ϵ + H( ˜X)
+o
+−I(H( ˜X) > ϵ) −P(η( ˜X) < −ϵ | ˜X);
+(A.10)
+above, (i) uses the condition that 2ϵ < r and the assumption (2), and (ii) follows from the
+assumption (1) and the deﬁnitions of qαlo and qαhi that P( ˜Y ∈[qαlo( ˜X), qαhi( ˜X)]) = αhi −αlo =
+1 −α.
+Next, we derive an upper bound on P(η( ˜X) < −ϵ | ˜X). Let G denote the cumulative distribu-
+tion function of the random distribution Pn
+i=1 ˆpi( ˜X)δVi + ˆp∞( ˜X)δ∞. Again, G implicitly depends
+on N, n and ˜X. Then η( ˜X) < −ϵ implies G(−ϵ) ≥1 −α, and thus,
+P
+
+η( ˜X) < −ϵ | ˜X
+
+≤P
+
+G(−ϵ) ≥1 −α | ˜X
+
+, a.s..
+Let G∗(−ϵ) denote the expectation of G(−ϵ) conditional on D = {Ztr, (Xi)n
+i=1, ˜X}, namely,
+G∗(−ϵ) = E[G(−ϵ) | D] =
+n
+X
+i=1
+ˆpi( ˜X)P(Vi ≤−ϵ | D).
+For any t > 0, the triangle inequality implies that
+P
+
+η( ˜X) < −ϵ | ˜X
+
+≤P
+
+G(−ϵ) −G∗(−ϵ) ≥t | ˜X
+
++P
+
+G∗(−ϵ) ≥1 −α −t | ˜X
+
+, a.s.. (A.11)
+To bound the ﬁrst term, we note that
+G(−ϵ) −G∗(−ϵ) =
+n
+X
+i=1
+ˆpi( ˜X) (I(Vi ≤−ϵ) −P(Vi ≤−ϵ | D)) .
+Conditional on D, G(−ϵ) −G∗(−ϵ) is sub-Gaussian with parameter
+ˆσ2 =
+n
+X
+i=1
+ˆpi( ˜X)2.
+Conformal Inference of Counterfactuals and Individual Treatment Effects
+31
+For any t > 0,
+P (G(−ϵ) −G∗(−ϵ) ≥t | D) ≤exp
+
+−t2
+2ˆσ2
+
+.
+Let γn be any ﬁxed sequence with γn = O(1). Taking expectation over D \ { ˜X}, we obtain that
+P
+
+G(−ϵ) −G∗(−ϵ) ≥t | ˜X
+
+≤E
+
+exp
+
+−t2
+2ˆσ2
+
+| ˜X
+
+≤exp
+
+−t2
+2γn
+
++ P
+
+ˆσ2 ≥γn | ˜X
+
+= exp
+
+−t2
+2γn
+
++ P
+
+
+
+Pn
+i=1 ˆw(Xi)2
+Pn
+i=1 ˆw(Xi) + ˆw( ˜X)
+2 ≥γn | ˜X
+
+
+
+≤exp
+
+−t2
+2γn
+
++ P
+ Pn
+i=1 ˆw(Xi)2
+(Pn
+i=1 ˆw(Xi))2 ≥γn | ˜X
+!
+(i)
+= exp
+
+−t2
+2γn
+
++ P
+ Pn
+i=1 ˆw(Xi)2
+(Pn
+i=1 ˆw(Xi))2 ≥γn
+!
+≤exp
+
+−t2
+2γn
+
++ P
+ n
+X
+i=1
+ˆw(Xi) ≤n
+2
+!
++ P
+ n
+X
+i=1
+ˆw(Xi)2 ≥n2γn
+4
+!
+≤exp
+
+−t2
+2γn
+
++ P
+ n
+X
+i=1
+| ˆw(Xi) −1| ≥n
+2
+!
++ P
+ n
+X
+i=1
+ˆw(Xi)2 ≥n2γn
+4
+!
+,
+where (i) uses the fact that ˜X is independent of ( ˆw(Xi))n
+i=1. Note that this bound holds uniformly
+with ˜X. Throughout the rest of the proof, we write a1n ⪯a2n if there exists a constant B that
+only depends on r, b1, b2, δ, M, k, ℓsuch that a1n ≤Ba2n for all n. We consider two cases:
+(1) If δ ≥1, then by Markov’s inequality,
+P
+ n
+X
+i=1
+ˆw(Xi)2 ≥n2γn
+4
+!
+≤4E[Pn
+i=1 ˆw(Xi)2]
+n2γn
+= 4E[ ˆw(X1)2]
+nγn
+⪯
+1
+nγn
+.
+Since E[ ˆw(Xi) | Ztr] = 1, we have E[ ˆw(Xi)] = 1. By Markov’s inequality and Proposition 2,
+P
+ n
+X
+i=1
+| ˆw(Xi) −1| ≥n
+2
+!
+≤21+δ
+n1+δ E
+ n
+X
+i=1
+| ˆw(Xi) −E[ ˆw(Xi)]|
+!1+δ
+⪯
+1
+n1+δ
+n
+nE| ˆw(Xi) −E[ ˆw(Xi)]|1+δ + n(1+δ)/2  E| ˆw(Xi) −E[ ˆw(Xi)]|2(1+δ)/2o
+(i)
+⪯
+1
+n1+δ
+n
+nE| ˆw(Xi)|1+δ + n(1+δ)/2(E| ˆw(Xi)|2)(1+δ)/2o
+⪯
+1
+n(1+δ)/2 ,
+(A.12)
+where (i) follows from the H¨older’s inequality which gives
+E| ˆw(Xi) −E[ ˆw(Xi)]|1+δ ≤2δ 
+E| ˆw(Xi)|1+δ + |E[ ˆw(Xi)]|1+δ
+≤21+δE| ˆw(Xi)|1+δ.
+32
+Lihua Lei and Emmanuel J. Cand`es
+Piecing things together yields
+P
+
+G(−ϵ) −G∗(−ϵ) ≥t | ˜X
+
+⪯exp
+
+−t2
+2γn
+
++
+1
+n(1+δ)/2 +
+1
+nγn
+⪯exp
+
+−t2
+2γn
+
++
+1
+nγn
+,
+where the last step follows from the fact that δ ≥1 and γn = O(1).
+(2) If δ < 1, then by Markov’s inequality,
+P
+ n
+X
+i=1
+ˆw(Xi)2 ≥n2γn
+4
+!
+≤
+E
+h Pn
+i=1 ˆw(Xi)2(1+δ)/2i
+(n2γn)(1+δ)/2
+≤E
+Pn
+i=1 ˆw(Xi)1+δ
+(n2γn)(1+δ)/2
+⪯
+1
+nδγ(1+δ)/2
+n
+,
+where the last step follows from the simple fact that ∥x∥p ≤∥x∥1 for p ≥1, with p = 2/(1+δ)
+and xi = ˆw(Xi)1+δ. By Markov’s inequality and Proposition 3,
+P
+ n
+X
+i=1
+| ˆw(Xi) −1| ≥n
+2
+!
+≤21+δ
+n1+δ E
+ n
+X
+i=1
+| ˆw(Xi) −E[ ˆw(Xi)]|
+!1+δ
+⪯2nE| ˆw(Xi) −E[ ˆw(Xi)]|1+δ
+n1+δ
+⪯1
+nδ .
+(A.13)
+Piecing things together yields
+P
+
+G(−ϵ) −G∗(−ϵ) ≥t | ˜X
+
+⪯exp
+
+−t2
+2γn
+
++ 1
+nδ +
+1
+nδγ(1+δ)/2
+n
+⪯exp
+
+−t2
+2γn
+
++
+1
+nδγ(1+δ)/2
+n
+,
+where the last step follows from γn = O(1).
+In all cases,
+P
+
+G(−ϵ) −G∗(−ϵ) ≥t | ˜X
+
+⪯exp
+
+−t2
+2γn
+
++
+1
+nδ′γ(1+δ′)/2
+n
+,
+δ′ = min{δ, 1}.
+(A.14)
+Next, we almost surely bound the term P
+
+G∗(−ϵ) ≥1 −α −t | ˜X
+
+. By the triangle inequality
+and deﬁnition of H(·),
+Vi ≥max{qαlo(Xi) −Yi, Yi −qαhi(Xi)} −H(Xi) ≜V ∗
+i −H(Xi).
+By Assumptions (1) and (2), P(V ∗
+i ≤0 | D) = αhi −αlo = 1 −α. Conditioning on D, H(Xi) is
+deterministic. Since ϵ < r/2 < 2r,
+G∗(−ϵ) ≤
+n
+X
+i=1
+ˆpi( ˜X)
+n
+I
+
+H(Xi) ≥ϵ
+2
+
++ P
+
+V ∗
+i ≤−ϵ
+2 | D
+o
+≤
+n
+X
+i=1
+ˆpi( ˜X)
+n
+I
+
+H(Xi) ≥ϵ
+2
+
++ P
+
+V ∗
+i ≤−ϵ
+2 | D
+o
+≤
+n
+X
+i=1
+ˆpi( ˜X)
+
+I
+
+H(Xi) ≥ϵ
+2
+
++ P (V ∗
+i ≤0 | D) −ϵb1
+2
+
+=
+n
+X
+i=1
+ˆpi( ˜X)
+
+I
+
+H(Xi) ≥ϵ
+2
+
++ 1 −α −ϵb1
+2
+
+≤1 −α −ϵb1
+2 +
+n
+X
+i=1
+ˆpi( ˜X)I
+
+H(Xi) ≥ϵ
+2
+
+,
+(A.15)
+Conformal Inference of Counterfactuals and Individual Treatment Effects
+33
+where the last step follows from the fact that Pn
+i=1 ˆpi( ˜X) ≤1. If t ≤ϵb1/4, (A.15) implies that
+P
+
+G∗(−ϵ) ≥1 −α −t | ˜X
+
+≤P
+ n
+X
+i=1
+ˆpi( ˜X)I
+
+H(Xi) ≥ϵ
+2
+
+≥ϵb1
+2 −t | ˜X
+!
+= P
+ Pn
+i=1 ˆw(Xi)I(H(Xi) ≥ϵ/2)
+Pn
+i=1 ˆw(Xi) + ˆw( ˜X)
+≥ϵb1
+2 −t | ˜X
+!
+≤P
+Pn
+i=1 ˆw(Xi)I(H(Xi) ≥ϵ/2)
+Pn
+i=1 ˆw(Xi)
+≥ϵb1
+2 −t | ˜X
+
+(i)
+= P
+Pn
+i=1 ˆw(Xi)I(H(Xi) ≥ϵ/2)
+Pn
+i=1 ˆw(Xi)
+≥ϵb1
+2 −t
+
+≤P
+ n
+X
+i=1
+ˆw(Xi) ≤n
+2
+!
++ P
+ n
+X
+i=1
+ˆw(Xi)I
+
+H(Xi) ≥ϵ
+2
+
+≥n(ϵb1 −2t)
+4
+!
+(ii)
+≤P
+ n
+X
+i=1
+| ˆw(Xi) −1| ≥n
+2
+!
++ P
+ n
+X
+i=1
+ˆw(Xi)I
+
+H(Xi) ≥ϵ
+2
+
+≥nϵb1
+8
+!
+,
+where (i) follows from the independence between ˜X and D \ { ˜X} and (ii) follows from the fact
+that t ≤ϵb1/4. By (A.12) and (A.13), we have that
+P
+ n
+X
+i=1
+| ˆw(Xi) −1| ≥n
+2
+!
+⪯
+1
+n(δ+δ′)/2 ,
+where δ′ = min{δ, 1}. By Markov’s inequality,
+P
+ n
+X
+i=1
+ˆw(Xi)I
+
+H(Xi) ≥ϵ
+2
+
+≥nϵb1
+8
+!
+⪯1
+ϵ E
+h
+ˆw(X)I
+
+H(X) ≥ϵ
+2
+i
+⪯E[ ˆw(X)Hk(X)]
+ϵ1+k
+,
+where the last step uses the simple fact that I(H(Xi) ≥ϵ/2) ≤(2/ϵ)kHk(Xi). Therefore, for any
+t ≤ϵb1/4, we obtain an almost sure bound of the form
+P
+
+G∗(−ϵ) ≥1 −α −t | ˜X
+
+⪯
+1
+n(δ+δ′)/2 + E[ ˆw(X)Hk(X)]
+ϵ1+k
+.
+(A.16)
+Combining (A.11), (A.14) and (A.16) together and setting t = ϵb1/4, we obtain that for any
+sequence γn = O(1),
+P
+
+η( ˜X) < −ϵ | ˜X
+
+⪯exp
+
+−b2
+1
+32
+ϵ2
+γn
+
++
+1
+nδ′γ(1+δ′)/2
+n
++
+1
+n(δ+δ′)/2 + E[ ˆw(X)Hk(X)]
+ϵ1+k
+⪯exp
+
+−b2
+1
+32
+ϵ2
+γn
+
++
+1
+nδ′γ(1+δ′)/2
+n
++ E[ ˆw(X)Hk(X)]
+ϵ1+k
+.
+(A.17)
+Substitute ϵ with ϵn and assume ϵn ≤r/2 (recall the beginning of the proof). Set
+γn = 32
+b2
+1
+ϵ2
+n
+log n.
+(A.18)
+Clearly, γn = o(1). Then the ﬁrst term of (A.17) is 1/n, and thus,
+P
+
+η( ˜X) < −ϵn | ˜X
+
+⪯(log n)(1+δ′)/2
+nδ′ϵ1+δ′
+n
++ E[ ˆw(X)Hk(X)]
+ϵ1+k
+n
+.
+34
+Lihua Lei and Emmanuel J. Cand`es
+Equivalently, there exists a constant B that only depends on r, b1, b2, δ, M, k, ℓ, such that
+P
+
+η( ˜X) < −ϵn | ˜X
+
+≤B
+(log n)(1+δ′)/2
+nδ′ϵ1+δ′
+n
++ E[ ˆw(X)Hk(X)]
+ϵ1+k
+n
+
+, a.s..
+Together with (A.10), it implies that
+P( ˜Y ∈ˆC( ˜X) | ˜X)
+≥1 −α −b2(ϵn + H( ˜X)) −I(H( ˜X) > ϵn) −B
+(log n)(1+δ′)/2
+nδ′ϵ1+δ′
+n
++ E[ ˆw(X)Hk(X)]
+ϵ1+k
+n
+
+,
+almost surely. Assume B ≥2b2 without loss of generality. Then
+P
+
+P( ˜Y ∈ˆC( ˜X) | ˜X) ≤1 −α −B
+
+ϵn + (log n)(1+δ′)/2
+nδ′ϵ1+δ′
+n
++ E[ ˆw(X)Hk(X)]
+ϵ1+k
+n
+
+≤P(H( ˜X) > ϵn).
+(A.19)
+For any β ∈(0, 1), let
+ϵn = (log n)(1+δ′)/2(2+δ′)
+nδ′/(2+δ′)
++
+
+E[ ˆw(X)Hk(X)]
+1/(2+k)
++
+ E[w(X)Hℓ(X)]
+1/ℓ
+β1/ℓ
+.
+Then
+(log n)(1+δ′)/2
+nδ′ϵ1+δ′
+n
+, E[ ˆw(X)Hk(X)]
+ϵ1+k
+n
+≤ϵn,
+(A.20)
+and by Markov’s inequality and (A.4),
+P(H( ˜X) > ϵn) ≤E[Hℓ( ˜X)]
+ϵℓn
+= E[w(X)Hℓ(X)]
+ϵℓn
+≤β.
+Furthermore, the Assumption (4) implies that ϵn ≤r/2 when N ≥N(r) and n ≥n(r) for
+some constants N(r), n(r) that only depend on r.
+Replacing B by 3B, we obtain that, for
+N ≥N(r), n ≥n(r),
+P
+
+P( ˜Y ∈ˆC( ˜X) | ˜X) ≤1 −α −Bϵn
+
+≤β.
+We can further enlarge B so that Bϵn ≥1 −α when N < N(r) or n < n(r), in which case (A.3)
+trivially holds.
+To prove the unconditional result, we note that (A.19) implies
+P( ˜Y ∈ˆC( ˜X)) ≥
+
+1 −α −B
+
+ϵn + (log n)(1+δ′)/2
+nδ′ϵ1+δ′
+n
++ E[ ˆw(X)Hk(X)]
+ϵ1+k
+n
+
+(1 −P(H( ˜X) > ϵn)).
+Let
+ϵn = (log n)(1+δ′)/2(2+δ′)
+nδ′/(2+δ′)
++
+
+E[ ˆw(X)Hk(X)]
+1/(2+k)
++
+
+E[w(X)Hℓ(X)]
+1/(1+ℓ)
+.
+Then (A.20) remains to hold. By Markov’s inequality and (A.4),
+P(H( ˜X) > ϵn) ≤E[Hℓ( ˜X)]
+ϵℓn
+= E[w(X)Hℓ(X)]
+ϵℓn
+≤ϵn.
+Furthermore, Assumption (4) implies that ϵn ≤r/2 when N and n are suﬃciently large, in which
+case,
+P( ˜Y ∈ˆC( ˜X)) ≥(1 −α −3Bϵn) (1 −ϵn) ≥1 −α −(3B + 1)ϵn.
+Similar to (A.3), we can enlarge the constant to make (A.2) hold when N or n is not suﬃciently
+large.
+Conformal Inference of Counterfactuals and Individual Treatment Effects
+35
+A.3.
+An asymptotic result
+Theorem 3 and Theorem 4 together imply the following asymptotic result, which is a generaliza-
+tion of Theorem 1 from Section 3.5.
+Corollary 1. With the same notation as in Theorem 3, assume that either B1 or B2 (or
+both) is satisﬁed:
+B1
+lim
+N→∞E| ˆwN(X) −w(X)| = 0;
+B2 the conditions (1)-(4) in Theorem 4 hold.
+Then
+lim
+N,n→∞P(X,Y )∼QX×PY |X(Y ∈ˆCN,n(X)) ≥1 −α.
+(A.21)
+Furthermore, under B2, for any ϵ > 0,
+lim
+N,n→∞PX∼QX
+
+P(Y ∈ˆCN,n(X) | X) ≤1 −α −ϵ
+
+= 0.
+(A.22)
+B.
+Proofs of Other Results
+B.1.
+Proof of Proposition 1
+Note that it remains to prove the general result since (1) and (2) are special cases. The lower
+bound is proved by (A.1). For the upper bound, we ﬁrst note that E[ ˆw(X)r] < ∞implies that
+PX∼PX( ˆw(X) < ∞) = 1 and E[ ˆw(X)] < ∞. Thus, we can assume E[ ˆw(X)] = 1 without loss of
+generality due to the invariance to rescalings of weighted split-CQR. Let ˜QX be a probability
+measure with d ˜QX = ˆw(X)dPX and ( ˜X, ˜Y ) be a sample from ˜QX × PY |X that is independent of
+the data. By H¨older’s inequality,
+E[ ˆw( ˜X)] =
+Z d ˜QX
+dPX
+d ˜QX = EX∼PX[ ˆw(X)2] ≤M2
+r < ∞,
+By (A.8) again with ( ˜X, ˜Y ) denoting ( ˜Xn+1, ˜Yn+1) for simplicity,
+P
+
+˜Y ∈ˆC( ˜X) | Ztr
+
+= EP
+ 
+˜Vn+1 ≤Quantile
+ 
+1 −α;
+n
+X
+i=1
+ˆpi( ˜X)δV ∗
+i + ˆp∞( ˜X)δ ˜Vn+1
+!
+| E( ˜V ), Ztr
+!
+≤E
+
+1 −α +
+max
+i∈[n]∪{∞} ˆpi( ˜X)
+
+.
+Let A denote the event that
+n
+X
+i=1
+ˆw(Xi) ≤n
+2 .
+By (A.12) with δ = 1, we have that
+P
+ n
+X
+i=1
+ˆw(Xi) ≤n
+2
+!
+≤c1M2
+r
+n
+,
+where c1 is an absolute constant. Note that
+max
+i∈[n]∪{∞} ˆpi( ˜X) = max{ ˆw( ˜X), maxi ˆw(Xi)}
+ˆw( ˜X) + Pn
+i=1 ˆw(Xi)
+≤1.
+Then
+E
+"
+max{ ˆw( ˜X), maxi ˆw(Xi)}
+ˆw( ˜X) + Pn
+i=1 ˆw(Xi)
+#
+36
+Lihua Lei and Emmanuel J. Cand`es
+≤E
+"
+max{ ˆw( ˜X), maxi ˆw(Xi)}
+ˆw( ˜X) + Pn
+i=1 ˆw(Xi)
+IAc
+#
++ P(A)
+≤E
+"
+2 max{ ˆw( ˜X), maxi ˆw(Xi)}
+n
+IAc
+#
++ c1M2
+r
+n
+≤2
+n
+
+E ˆw( ˜X) + E max
+i
+ˆw(Xi)
+
++ c1M2
+r
+n
+≤2
+n
+
+E ˆw( ˜X) +
+ 
+E
+n
+X
+i=1
+ˆw(Xi)r
+!1/r
++ c1M2
+r
+n
+≤2
+n
+
+M2
+r + n1/rMr
+
++ c1M2
+r
+n
+.
+This implies that
+P(X,Y )∼˜QX×PY |X(Y ∈ˆC(X)) ≤1 −α + cn1/r−1
+for some constant c that only depends on Mr and r. The upper bound is then proved by (A.9)
+and the same steps following (A.9).
+B.2.
+Proof of Theorem 1
+Since E[1/ˆeN(X) | Ztr] < ∞and E[1/e(X)] < ∞, we can here set
+ˆwN(x) =
+1/ˆeN(x)
+E[1/ˆeN(X) | Ztr], w(x) =
+dPX(x)
+dPX|T=1(x) =
+1/e(x)
+E[1/e(X)]
+=⇒E[ ˆwN(X) | Ztr] = 1 = E[w(X)].
+Thus, the assumption B1 of Corollary 1 reduces to
+lim
+N→∞E
+
+1/ˆeN(X)
+E[1/ˆeN(X) | Ztr] −
+1/e(X)
+E[1/e(X)]
+ = 0,
+and the assumptions B2 (3)-(4) of Corollary 1 reduce to
+lim sup
+N→∞
+E[1/ˆe(X)1+δ]
+(E[1/ˆe(X)])1+δ < ∞,
+lim
+N→∞
+E[HN(X)/ˆeN(X)]
+E[1/ˆeN(X)]
+= lim
+N→∞
+E[HN(X)/e(X)]
+E[1/e(X)]
+= 0.
+Clearly, A2 implies B2 since e(x), ˆeN(x) ∈[0, 1]. Now we prove that A1 implies B1. In fact,
+lim
+N→∞E
+
+1/ˆeN(X)
+E[1/ˆeN(X) | Ztr] −
+1/e(X)
+E[1/e(X)]
+
+≤lim sup
+N→∞
+1
+E[1/ˆeN(X) | Ztr]E
+
+1
+ˆeN(X) −
+1
+e(X)
+ + lim sup
+N→∞
+E
+
+1
+e(X)
+
+E
+
+1
+E[1/ˆeN(X) | Ztr] −
+1
+E[1/e(X)]
+
+(i)
+≤lim sup
+N→∞
+E
+
+1
+ˆeN(X) −
+1
+e(X)
+ + lim sup
+N→∞
+E
+
+1
+e(X)
+
+E
+E
+
+1
+ˆeN(X) | Ztr
+
+−E
+
+1
+e(X)
+ 
+≤lim sup
+N→∞
+E
+
+1
+ˆeN(X) −
+1
+e(X)
+ + lim sup
+N→∞
+E
+
+1
+e(X)
+
+E
+
+E
+
+1
+ˆeN(X) −
+1
+e(X)
+ | Ztr
+
+(ii)
+=
+
+1 + E
+
+1
+e(X)
+
+lim sup
+N→∞
+E
+
+1
+ˆeN(X) −
+1
+e(X)
+;
+(i) above uses the fact that e(x), ˆeN(x) ∈[0, 1] and (ii) uses assumption A1 and the condition
+that E[1/e(X)] < ∞.
+Conformal Inference of Counterfactuals and Individual Treatment Effects
+37
+B.3.
+Proof of Theorem 2
+Let n = |Zca| and (Xn+1, Cn+1) be an independent copy of (X, C). Further let
+Vn+1 = max{ ˆmL(Xn+1; Ztr) −CL
+n+1, CR
+n+1 −ˆmR(Xn+1; Ztr)}.
+Conditional on Ztr, V1, . . . , Vn, Vn+1 are exchangeable. Then
+P
+ 
+Vn+1 ≤Quantile
+ 
+1 −γ;
+1
+n + 1
+n+1
+X
+i=1
+δVi
+!!
+≥1 −γ.
+By deﬁnition,
+Quantile
+ 
+1 −γ;
+1
+n + 1
+n+1
+X
+i=1
+δVi
+!
+= Quantile
+ 
+(1 −γ)n + 1
+n
+; 1
+n
+n
+X
+i=1
+δVi
+!
+= η.
+As a consequence,
+P
+
+Cn+1 ∈ˆC(Xn+1)
+
+= P (Vn+1 ≤η) ≥1 −γ.
+C.
+Additional Experimental Results
+Causal Forest
+X−learner
+BART
+CQR−RF
+CQR−Boosting
+CQR−BART
+Heterosc. + Ind.
+Heterosc. + Corr.
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.00
+0.25
+0.50
+0.75
+1.00
+0.00
+0.25
+0.50
+0.75
+1.00
+Percentile of conditional variance
+Conditional Coverage of ITE (alpha = 0.05)
+Fig. 8. Estimated conditional coverage of ITE as a function of the conditional variance σ2(x) for the
+heteroscedastic cases from Section 3.6. Here, d = 100 and α = 0.05. The blue curves correspond to
+the median and the boundaries of the blue conﬁdence bands correspond to the 95% and 5% quantiles of
+these estimates across 100 replicates.
+38
+Lihua Lei and Emmanuel J. Cand`es
+Causal Forest
+X−learner
+BART
+CQR−RF
+CQR−Boosting
+CQR−BART
+Homosc. + Ind.
+Heterosc. + Ind.
+Homosc. + Corr. Heterosc. + Corr.
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.00
+0.25
+0.50
+0.75
+1.00
+0.00
+0.25
+0.50
+0.75
+1.00
+0.00
+0.25
+0.50
+0.75
+1.00
+0.00
+0.25
+0.50
+0.75
+1.00
+Percentile of CATE
+Conditional Coverage of ITE (alpha = 0.05)
+Fig. 9. Estimated conditional coverage of ITE as a function of the CATE τ(x) for all scenarios with d = 10
+from Section 3.6. Everything else is as in Figure 8.
+Causal Forest
+X−learner
+BART
+CQR−RF
+CQR−Boosting
+CQR−BART
+Homosc. + Ind.
+Heterosc. + Ind.
+Homosc. + Corr. Heterosc. + Corr.
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.1
+0.3
+0.5
+0.7
+0.9
+0.00
+0.25
+0.50
+0.75
+1.00
+0.00
+0.25
+0.50
+0.75
+1.00
+0.00
+0.25
+0.50
+0.75
+1.00
+0.00
+0.25
+0.50
+0.75
+1.00
+Percentile of CATE
+Conditional Coverage of ITE (alpha = 0.05)
+Fig. 10. Estimated conditional coverage of ITE as a function of the CATE τ(x) for all scenarios with
+d = 100 from Section 3.6. Everything else is as in Figure 8. The difference with Figure 9 is the value of
+the dimension d. Yet, we can observe a very similar behavior.
