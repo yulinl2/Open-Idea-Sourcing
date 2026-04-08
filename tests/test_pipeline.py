@@ -77,6 +77,7 @@ class TestPrompts:
             assert "{problem_context}" in text, f"{name} missing {{problem_context}}"
             assert "{evaluation_criteria}" in text, f"{name} missing {{evaluation_criteria}}"
             assert "{refs_text}" in text, f"{name} missing {{refs_text}}"
+            assert "{reference_guidance}" in text, f"{name} missing {{reference_guidance}}"
 
     def test_teacher_prompt_has_no_student_placeholders(self):
         text = (ROOT / "prompts" / "teacher_extract.txt").read_text()

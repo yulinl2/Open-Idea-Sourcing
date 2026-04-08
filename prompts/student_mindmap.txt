@@ -54,13 +54,4 @@ angles before converging on your best idea.
 
 {refs_text}
 
-## IMPORTANT: How to use references
-
-If reference papers are provided above, you MUST engage with them substantively:
-- Identify specific techniques, theorems, or frameworks from the references
-  that could be adapted or extended to address the problem
-- Build your approach ON TOP of what the references provide — don't just
-  cite them in passing
-- If a reference provides a framework (e.g., conformal prediction, kernel methods),
-  use that framework as your starting point and extend it for this problem
-- If no references are provided, rely on your own knowledge of the field
+{reference_guidance}

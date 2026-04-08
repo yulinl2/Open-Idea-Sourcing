@@ -68,6 +68,31 @@ SCRIPT_DIR = Path(__file__).parent
 PROMPTS_DIR = SCRIPT_DIR / "prompts"
 DATA_DIR = SCRIPT_DIR / "data"
 
+# Reference guidance modes — controls how the student engages with references.
+# "directive" (single-shot): forces substantive engagement, as in v0.5.
+# "neutral" (iterative): lets the student decide naturally; the teacher's
+# iterative hint refinement handles reference utilization organically.
+REFERENCE_GUIDANCE_DIRECTIVE = """\
+## IMPORTANT: How to use references
+
+If reference papers are provided above, you MUST engage with them substantively:
+- Identify specific techniques, theorems, or frameworks from the references
+  that could be adapted or extended to address the problem
+- Build your approach ON TOP of what the references provide — don't just
+  cite them in passing
+- If a reference provides a framework (e.g., conformal prediction, kernel methods),
+  use that framework as your starting point and extend it for this problem
+- If no references are provided, rely on your own knowledge of the field"""
+
+REFERENCE_GUIDANCE_NEUTRAL = """\
+## References note
+
+Reference papers are provided above for context. Use them if and as you see \
+fit — they may or may not be directly relevant to the core problem. Your \
+reconstruction should reflect your own best judgment about how to address \
+the problem, drawing on whatever knowledge (from references or otherwise) \
+you find most useful."""
+
 DEFAULT_STUDENT_MODEL = "gpt-4o"
 DEFAULT_TEACHER_MODEL = "gpt-5.4"
 
@@ -235,13 +260,23 @@ def run_teacher(client, model: str, paper_text: str, refs: list[dict],
 # ---------------------------------------------------------------------------
 
 def run_student(client, model: str, mode: str, hint: dict,
-                refs_text: str, audit) -> str:
+                refs_text: str, audit,
+                reference_guidance: str | None = None) -> str:
     """Student reconstructs a specific artifact from hint + references.
 
     Student has NO access to the paper, NO web search, NO tools.
     Pure reasoning from the provided context.
+
+    Args:
+        reference_guidance: Controls how the student engages with references.
+            None defaults to REFERENCE_GUIDANCE_DIRECTIVE (forced engagement).
+            In iterative mode, REFERENCE_GUIDANCE_NEUTRAL is passed so the
+            teacher's hint refinement handles reference utilization organically.
     """
     from infra.llm import llm_call
+
+    if reference_guidance is None:
+        reference_guidance = REFERENCE_GUIDANCE_DIRECTIVE
 
     prompt_file = PROMPT_FILES[mode]
     prompt_template = (PROMPTS_DIR / prompt_file).read_text()
@@ -264,6 +299,7 @@ def run_student(client, model: str, mode: str, hint: dict,
         .replace("{problem_context}", problem_ctx)
         .replace("{evaluation_criteria}", props_text)
         .replace("{refs_text}", refs_text)
+        .replace("{reference_guidance}", reference_guidance)
     )
 
     print(f"  [student/{mode}] Generating with {model} (max {MAX_TOKENS[mode]} tokens)...")
@@ -472,6 +508,13 @@ def dispatch_paper(
             # --- Iterative refinement path ---
             if iterative and paper_text:
                 from infra.iterative import run_iterative_refinement
+                from functools import partial
+
+                # In iterative mode, use neutral reference guidance —
+                # the teacher's hint refinement handles ref utilization.
+                iterative_student = partial(
+                    run_student, reference_guidance=REFERENCE_GUIDANCE_NEUTRAL,
+                )
 
                 try:
                     iter_dir = mode_dir / "_iterative"
@@ -485,7 +528,7 @@ def dispatch_paper(
                         paper_text=paper_text,
                         paper_id=paper_id,
                         condition=condition,
-                        run_student_fn=run_student,
+                        run_student_fn=iterative_student,
                         max_rounds=max_rounds,
                         output_dir=iter_dir,
                     )
