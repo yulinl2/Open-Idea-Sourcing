@@ -218,11 +218,9 @@ def run_teacher(client, model: str, paper_text: str, refs: list[dict],
         for r in refs
     )
 
-    user_msg = (
-        f"## Paper full text (first 40k chars)\n\n"
-        f"{paper_text[:40_000]}\n\n"
-        f"## References the student will have access to\n\n{ref_summary}"
-    )
+    # Split into cacheable prefix (paper text) and dynamic suffix (ref summary)
+    paper_prefix = f"## Paper full text (first 40k chars)\n\n{paper_text[:40_000]}"
+    user_msg = f"## References the student will have access to\n\n{ref_summary}"
 
     print(f"  [teacher] Extracting problem context with {model}...")
     response = llm_call(
@@ -233,6 +231,7 @@ def run_teacher(client, model: str, paper_text: str, refs: list[dict],
         step_name="teacher_extract",
         max_tokens=2048,
         temperature=0.3,  # Low temp for faithful extraction
+        cache_user_prefix=paper_prefix,
     )
 
     hint = _extract_json_block(response)

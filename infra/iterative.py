@@ -161,9 +161,9 @@ def refine_hint(
         )
     history_text = "\n".join(history_parts) if history_parts else "This is the first refinement round."
 
+    # Paper text is stable across all rounds — cache it as prefix
+    paper_prefix = f"## Original paper (first 30k chars)\n\n{paper_text[:30_000]}"
     user_msg = (
-        f"## Original paper (first 30k chars)\n\n"
-        f"{paper_text[:30_000]}\n\n"
         f"## Current hint given to student\n\n"
         f"```json\n{json.dumps(current_hint, indent=2)}\n```\n\n"
         f"## Student's reconstruction output\n\n"
@@ -185,6 +185,7 @@ def refine_hint(
         step_name=f"refine_hint_round_{round_num}",
         max_tokens=2048,
         temperature=0.3,
+        cache_user_prefix=paper_prefix,
     )
 
     parsed = _parse_refinement(response)

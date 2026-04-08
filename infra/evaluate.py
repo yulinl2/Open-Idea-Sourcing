@@ -178,14 +178,14 @@ def evaluate_reconstruction(
 
     Returns the parsed evaluation dict, or a fallback dict on parse failure.
     """
-    user_msg = (
+    # Paper text is stable across rounds — cache it as prefix
+    paper_prefix = (
         f"## Reconstruction type: {mode}\n"
         f"## Condition: {condition}\n\n"
         f"## Original paper (first 30k chars)\n\n"
-        f"{paper_text[:30_000]}\n\n"
-        f"## Student output\n\n"
-        f"{student_output}\n"
+        f"{paper_text[:30_000]}"
     )
+    user_msg = f"## Student output\n\n{student_output}\n"
 
     response = llm_call(
         client, teacher_model,
@@ -195,6 +195,7 @@ def evaluate_reconstruction(
         step_name=f"evaluate_{condition}_{mode}",
         max_tokens=1024,
         temperature=0.2,
+        cache_user_prefix=paper_prefix,
     )
 
     return _parse_eval(response)
@@ -213,10 +214,13 @@ def evaluate_pairwise(
 
     Returns the parsed pairwise comparison dict.
     """
-    user_msg = (
+    # Paper text is stable — cache it
+    paper_prefix = (
         f"## Reconstruction type: {mode}\n\n"
         f"## Original paper (first 30k chars)\n\n"
-        f"{paper_text[:30_000]}\n\n"
+        f"{paper_text[:30_000]}"
+    )
+    user_msg = (
         f"## Output A (student WITH reference papers)\n\n"
         f"{output_with_refs[:15_000]}\n\n"
         f"## Output B (student WITHOUT reference papers)\n\n"
@@ -231,6 +235,7 @@ def evaluate_pairwise(
         step_name=f"pairwise_{mode}",
         max_tokens=1024,
         temperature=0.2,
+        cache_user_prefix=paper_prefix,
     )
 
     return _parse_eval(response)
