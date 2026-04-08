@@ -387,6 +387,8 @@ def dispatch_paper(
     evaluate: bool = False,
     iterative: bool = False,
     max_rounds: int = 5,
+    eval_model: str | None = None,
+    parallel_modes: bool = False,
 ) -> dict:
     """Run all reconstruction modes for a single paper under each condition.
 
@@ -402,9 +404,16 @@ def dispatch_paper(
         iterative: If True, run iterative hint-refinement loop per mode.
             Implies evaluate=True.
         max_rounds: Maximum iterative refinement rounds (default 5).
+        eval_model: Model for evaluation scoring. Defaults to teacher_model.
+            Use a cheaper model (e.g. Sonnet) to reduce cost on the eval stage
+            which accounts for ~41% of total spend.
+        parallel_modes: If True, run modes concurrently within each condition
+            using a thread pool. Reduces wall-clock time by ~Nx for N modes.
 
     Returns a summary dict with paths to all outputs.
     """
+    # Resolve eval model — default to teacher
+    eval_model = eval_model or teacher_model
     if iterative:
         evaluate = True  # iterative implies evaluation
     from infra.audit import AuditLog
@@ -522,7 +531,12 @@ def dispatch_paper(
 
         print(f"\n  === Condition: {condition} ===")
 
-        for mode in modes:
+        def _run_mode(mode: str) -> tuple[str, dict]:
+            """Run a single mode and return (mode_name, result_dict).
+
+            Extracted as a function to enable parallel execution via
+            ThreadPoolExecutor when --parallel-modes is set.
+            """
             print(f"\n  --- {condition}/{mode} ---")
             mode_dir = cond_dir / mode
             mode_dir.mkdir(exist_ok=True)
@@ -554,6 +568,7 @@ def dispatch_paper(
                         max_rounds=max_rounds,
                         output_dir=iter_dir,
                         paper_context_seed_id=paper_context_seed_id,
+                        eval_model=eval_model,
                     )
 
                     # Use the BEST round's output (not just last — memoryless
@@ -590,7 +605,7 @@ def dispatch_paper(
                             encoding="utf-8",
                         )
 
-                    cond_results[mode] = {
+                    result_dict = {
                         "status": "success",
                         "output_chars": len(output),
                         "output_path": str(mode_dir / "output.md"),
@@ -604,14 +619,13 @@ def dispatch_paper(
                     }
                     scores = iter_result.score_trajectory()
                     print(f"  [iterative] Final score: {scores[-1] if scores else '?'}")
+                    return mode, result_dict
 
                 except Exception as exc:
                     error_msg = f"ERROR in iterative {condition}/{mode}: {exc}"
                     print(f"  {error_msg}")
                     (mode_dir / "error.txt").write_text(error_msg, encoding="utf-8")
-                    cond_results[mode] = {"status": "error", "error": str(exc)}
-
-                continue  # skip the single-shot path below
+                    return mode, {"status": "error", "error": str(exc)}
 
             # --- Single-shot path (original behavior) ---
             student_audit = AuditLog(
@@ -664,7 +678,7 @@ def dispatch_paper(
                     )
                     print(f"  [eval] Scoring {condition}/{mode}...")
                     eval_result, _ = evaluate_reconstruction(
-                        client, teacher_model, paper_text, output,
+                        client, eval_model, paper_text, output,
                         mode, condition, eval_audit,
                     )
                     eval_audit.mark_finished()
@@ -677,7 +691,7 @@ def dispatch_paper(
                     score = eval_result.get("composite_score", "?")
                     print(f"  [eval] Score: {score}")
 
-                cond_results[mode] = mode_result
+                return mode, mode_result
 
             except Exception as exc:
                 student_audit.mark_finished()
@@ -687,10 +701,21 @@ def dispatch_paper(
                 print(f"  {error_msg}")
                 (mode_dir / "error.txt").write_text(error_msg, encoding="utf-8")
 
-                cond_results[mode] = {
-                    "status": "error",
-                    "error": str(exc),
-                }
+                return mode, {"status": "error", "error": str(exc)}
+
+        # Execute modes — parallel or sequential
+        if parallel_modes and len(modes) > 1:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            print(f"  [parallel] Running {len(modes)} modes concurrently...")
+            with ThreadPoolExecutor(max_workers=len(modes)) as executor:
+                futures = {executor.submit(_run_mode, m): m for m in modes}
+                for future in as_completed(futures):
+                    mode_name, mode_result = future.result()
+                    cond_results[mode_name] = mode_result
+        else:
+            for mode in modes:
+                mode_name, mode_result = _run_mode(mode)
+                cond_results[mode_name] = mode_result
 
         results["conditions"][condition] = cond_results
 
@@ -902,6 +927,17 @@ def main() -> None:
         help="Teacher LLM model (default: auto-selected per backend)",
     )
     parser.add_argument(
+        "--eval-model", default=None,
+        help="Model for evaluation scoring (default: same as --teacher-model). "
+             "Use a cheaper model (e.g. Sonnet) for eval to reduce cost — eval "
+             "is structured scoring and may not need Opus-level reasoning.",
+    )
+    parser.add_argument(
+        "--parallel-modes", action="store_true",
+        help="Run reconstruction modes in parallel within each condition. "
+             "Reduces wall-clock time by ~4x with no cost change.",
+    )
+    parser.add_argument(
         "--conditions", nargs="*", default=None,
         choices=["with_refs", "no_refs"],
         help="Experimental conditions (default: both). "
@@ -953,6 +989,9 @@ def main() -> None:
         student_model = args.student_model or DEFAULT_STUDENT_MODEL
         teacher_model = args.teacher_model or DEFAULT_TEACHER_MODEL
 
+    # Eval model defaults to teacher — override with a cheaper model to save ~41% cost
+    eval_model = args.eval_model or teacher_model
+
     # Timestamp for this dispatch
     if args.timestamp:
         ts = args.timestamp
@@ -979,12 +1018,13 @@ def main() -> None:
 
     print(f"Dispatch: {len(papers)} paper(s), {len(modes)} mode(s), {len(conditions)} condition(s)")
     print(f"Backend: {backend}")
-    print(f"Student: {student_model} | Teacher: {teacher_model}")
+    print(f"Student: {student_model} | Teacher: {teacher_model} | Eval: {eval_model}")
     print(f"Output:  {output_dir}")
     print(f"Modes:   {', '.join(modes)}")
     print(f"Conditions: {', '.join(conditions)}")
     print(f"Evaluate:   {args.evaluate}")
     print(f"Iterative:  {iterative} (max {max_rounds} rounds)")
+    print(f"Parallel:   {args.parallel_modes}")
 
     # Dispatch each paper
     all_results = []
@@ -1002,6 +1042,8 @@ def main() -> None:
             evaluate=args.evaluate,
             iterative=iterative,
             max_rounds=max_rounds,
+            eval_model=eval_model,
+            parallel_modes=args.parallel_modes,
         )
         all_results.append(result)
 

@@ -306,6 +306,7 @@ def run_iterative_refinement(
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     output_dir: Path | None = None,
     paper_context_seed_id: str | None = None,
+    eval_model: str | None = None,
 ) -> IterativeResult:
     """Run the full iterative hint-refinement loop.
 
@@ -322,6 +323,10 @@ def run_iterative_refinement(
 
     Returns an IterativeResult with the full trajectory.
     """
+    # Resolve eval model — default to teacher (Opus).
+    # Using a cheaper model (Sonnet) for eval reduces cost ~41%.
+    eval_model = eval_model or teacher_model
+
     result = IterativeResult(
         paper_id=paper_id,
         mode=mode,
@@ -389,7 +394,7 @@ def run_iterative_refinement(
 
         try:
             evaluation, _eval_resp_id = evaluate_reconstruction(
-                client, teacher_model, paper_text, student_output,
+                client, eval_model, paper_text, student_output,
                 mode, condition, eval_audit,
                 previous_response_id=eval_seed_id,
             )
