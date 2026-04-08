@@ -279,46 +279,29 @@ derivable from either its references or general domain knowledge.
 
 ### Title
 
-**Measuring Research Novelty via Multi-Granularity LLM Reconstruction: A Reference-Ablation Framework**
+**Staged Reconstruction: Measuring Research Novelty by How Much an LLM Can Recover from References Alone**
 
 ### Abstract
 
-How novel is a research paper, really — and can we measure this
-automatically? We propose *staged reconstruction*, a controlled experimental
-framework that quantifies novelty by asking: how much of a paper can an AI
-reconstruct if it has only the problem description and the cited references?
-
-The setup works like a structured exam. A strong language model (the
-"teacher") reads the full paper and writes a problem statement — carefully
-designed to say *what* the paper solves without revealing *how*. A weaker
-model (the "student"), which has never seen the paper, then attempts to
-reconstruct it at six levels of detail: abstract, idea map, problem
-formulation, problem + method, full paper from a template, and full paper
-from scratch. Critically, we run each reconstruction twice — once with
-access to the paper's cited references and once without. The score
-difference between these two conditions tells us how much the references
-contribute; the remaining gap to the original tells us what is genuinely
-new.
-
-We validate on two test papers sharing one reference: a causal inference
-paper (where the reference is directly relevant) and a generative modeling
-paper (where the same reference is unrelated, serving as a negative
-control). Across three independent runs, the relevant reference consistently
-improves reconstruction (mean delta +0.17 on a 5-point scale; paired
-side-by-side evaluation rates reference impact at 5.67/7, favoring the
-reference condition in 5 of 6 modes). The irrelevant reference shows no
-benefit (delta +0.02; 2.3x noisier; all 6 modes favor the no-reference
-baseline) — confirming the signal is real, not an artifact.
-
-Two additional findings emerge. First, student models consistently fail to
-recover each paper's core innovations, falling back on textbook-level domain
-knowledge — suggesting that true novelty is what remains after subtracting
-what references and general knowledge can provide. Second, paired
-side-by-side evaluation achieves roughly 7x higher signal-to-noise ratio
-than independent scoring, because it avoids the well-known problem of
-raters gravitating toward mid-scale scores. Our results suggest that
-reconstruction-based ablation can operationally separate genuine
-contributions from incremental extensions of prior work.
+We propose *staged reconstruction*, a reference-ablation framework for
+quantifying the novelty of a research paper. A teacher LLM extracts a
+leakage-free problem statement from the target paper; a student LLM that
+has never seen the paper then reconstructs it at six granularity levels
+(abstract through full paper) under two conditions: with and without cited
+references. The delta between conditions measures reference contribution;
+the residual gap to the original measures genuine novelty. We validate on
+two papers sharing one reference — one topically related, one unrelated
+(negative control). Over three runs (Claude Sonnet 4 student, Claude Opus 4
+evaluator), the related reference yields a consistent positive signal (mean
+delta +0.17/5; LLM-as-judge pairwise impact 5.67/7; 5/6 modes favor the
+reference condition), while the unrelated reference yields near-zero effect
+(+0.02/5; 2.3x noisier; 0/6 modes favor references). Novelty-gap analysis
+shows that student models default to generic domain knowledge and
+consistently fail to recover paper-specific innovations, suggesting true
+novelty is what remains after ablating both references and parametric
+knowledge. We also find that pairwise LLM evaluation achieves ~7x higher
+SNR than pointwise scoring for detecting treatment effects, due to
+elimination of rating-scale anchoring.
 
 ---
 
