@@ -148,12 +148,31 @@ def validate_cached_paper(path: str | Path) -> PaperValidation:
     # ── 6. HTML/math corruption (the <[^>]+> bug) ────────────────────
     if full_text:
         # Detect if massive chunks were eaten: look for suspicious jumps
-        # between section numbers (e.g., section 2 → section 5)
-        section_nums = [int(m.group(1)) for m in re.finditer(r'^(\d+)\.\s+[A-Z]', full_text, re.MULTILINE)]
+        # between top-level section numbers.  Uses a strict pattern to avoid
+        # matching enumerated list items (e.g., "1. Compute the ...").
+        heading_keywords = (
+            r'(?:Introduction|Method|Result|Conclusion|Discussion|Experiment|'
+            r'Related|Background|Preliminar|Appendix|Overview|Framework|'
+            r'Notation|Setup|Model|Algorithm|Evaluation|Feature|Package|'
+            r'Proof|Theorem|Definition|Analysis|Implementation|Prediction|'
+            r'Conditional|Simulation|Training|Inference|Sampling)'
+        )
+        section_pattern = (
+            r'^(\d+)\.?\s+'
+            r'(?:' + heading_keywords + r'|_[A-Z].*?_[- ]|[A-Z][a-z]+(?:\s+[A-Za-z]+){1,})'
+        )
+        section_nums = [int(m.group(1)) for m in re.finditer(section_pattern, full_text, re.MULTILINE)]
+        # Deduplicate while preserving order
+        seen_nums = set()
+        unique_section_nums = []
+        for n in section_nums:
+            if n not in seen_nums:
+                seen_nums.add(n)
+                unique_section_nums.append(n)
         gaps = []
-        for i in range(1, len(section_nums)):
-            if section_nums[i] - section_nums[i-1] > 1:
-                gaps.append(f"{section_nums[i-1]}→{section_nums[i]}")
+        for i in range(1, len(unique_section_nums)):
+            if unique_section_nums[i] - unique_section_nums[i-1] > 1:
+                gaps.append(f"{unique_section_nums[i-1]}→{unique_section_nums[i]}")
         val.results.append(ValidationResult(
             check="no_section_gaps",
             passed=len(gaps) == 0,
@@ -166,7 +185,8 @@ def validate_cached_paper(path: str | Path) -> PaperValidation:
         concats = re.findall(r'[a-z]{4,}[A-Z][a-z]{4,}', full_text)
         # Filter known legitimate camelCase (R packages, method names)
         known_camel = {'camelCase', 'DataFrame', 'causalToolbox', 'bartMachine',
-                       'randomForest', 'cfcausalPaper'}
+                       'randomForest', 'cfcausalPaper', 'conformalInference',
+                       'ImageNet', 'ConvNeXt', 'ResNet', 'StyleGAN'}
         real = [c for c in concats if c not in known_camel]
         density = len(real) / max(len(full_text), 1) * 10000  # per 10K chars
         val.results.append(ValidationResult(
