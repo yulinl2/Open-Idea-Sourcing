@@ -102,11 +102,22 @@ def is_cached(arxiv_id: str) -> bool:
     return bool(data.get("full_text") and data.get("references"))
 
 
-def cache_single_paper(source: str, client, llm_json, llm_text=None) -> Path | None:
+def cache_single_paper(
+    source: str,
+    client,
+    llm_json,
+    llm_text=None,
+    *,
+    force: bool = False,
+) -> Path | None:
     """Fetch, extract, and cache all text data for a single paper.
 
     v2: Uses pymupdf4llm + pdfminer.six pipeline with optional LLM cleaning.
     Preserves v1 cache files for cross-check / audit.
+
+    Args:
+        force: if True, re-cache even when already cached.  The existing
+            cache file is first copied to ``<id>_v1.json`` for audit.
     """
     from geo_perplexity.reference_collector import fetch_all_citations
     from geo_perplexity.text_extractor import (
@@ -123,7 +134,12 @@ def cache_single_paper(source: str, client, llm_json, llm_text=None) -> Path | N
 
     out_path = cache_path(arxiv_id)
 
-    # Preserve v1 if it exists and we haven't already
+    # Short-circuit when already cached and --force not requested
+    if not force and is_cached(arxiv_id):
+        print(f"  Already cached (skip): {arxiv_id}")
+        return out_path
+
+    # Preserve existing cache as v1 before overwriting
     v1_path = CACHE_DIR / f"{arxiv_id.replace('/', '_')}_v1.json"
     if out_path.exists() and not v1_path.exists():
         import shutil
@@ -270,23 +286,13 @@ def main():
     if args.dry_run:
         return
 
-    # When forcing re-cache, delete existing cache entries so is_cached returns False
-    if args.force:
-        for s in sources:
-            aid = _extract_arxiv_id(s)
-            if aid:
-                p = cache_path(aid)
-                if p.exists():
-                    p.unlink()
-                    print(f"  Removed old cache: {p}")
-
     client = _get_openai_client()
     llm_json = _make_llm_json(client)
     llm_text = None if args.no_llm_clean else _make_llm_text(client)
 
     for source in sources:
         try:
-            cache_single_paper(source, client, llm_json, llm_text=llm_text)
+            cache_single_paper(source, client, llm_json, llm_text=llm_text, force=args.force)
         except Exception as exc:
             print(f"\nERROR caching {source}: {exc}", file=sys.stderr)
             import traceback

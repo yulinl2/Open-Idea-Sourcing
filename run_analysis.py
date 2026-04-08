@@ -101,7 +101,7 @@ def _parse_target_paper(pdf_path: str, llm_json) -> dict:
     """
     from geo_perplexity.text_extractor import extract_full_text
 
-    extraction = extract_full_text(pdf_path, llm_json=llm_json, use_llm_cleaning=True)
+    extraction = extract_full_text(pdf_path, llm_json=llm_json, use_llm_cleaning=False)
 
     if not extraction["full_text"]:
         print("ERROR: could not extract any text from PDF", file=sys.stderr)

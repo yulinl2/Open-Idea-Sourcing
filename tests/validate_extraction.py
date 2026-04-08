@@ -10,7 +10,7 @@ Usage:
 
 Checks performed:
     1. Structural completeness (title, abstract, full_text present and non-trivial)
-    2. Content ratio (full_text should be 20-95% of raw_text — not truncated or bloated)
+    2. Content ratio (full_text should be 15-95% of raw_text — not truncated or bloated; more extreme ratios are treated more severely)
     3. Section coverage (body text should contain numbered sections or standard headings)
     4. Reference bleed (bibliography should NOT appear in full_text)
     5. Duplicate paragraphs (no paragraph repeated verbatim)

@@ -2,15 +2,17 @@
 
 Uses **pymupdf4llm** (PyMuPDF markdown backend) as the primary extractor —
 it handles multi-column layouts, tables, math symbols, and embedded fonts
-far more accurately than pdfplumber.  Falls back to **pdfminer.six** for
-layout-based extraction when pymupdf4llm output is poor.
+far more accurately than pdfplumber.  Falls back to **pdfminer.six** when
+pymupdf4llm extraction fails or returns too little text to be useful.
 
 An optional LLM cleaning pass (GPT-4o) refines the pymupdf4llm markdown
 into plain academic prose — removing figure captions, page-break artifacts,
 table markup, and the references section — while preserving all substantive
 text.
 
-Fallback chain:  pymupdf4llm + LLM clean → pymupdf4llm raw → pdfminer → abstract.
+Fallback behavior: try pymupdf4llm first, use the cleaned result when
+available, otherwise keep the raw pymupdf4llm text; if extraction fails or
+is too short, fall back to pdfminer, then to abstract-only text.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ import re
 import signal
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -80,18 +83,30 @@ def _cache_key(identifier: str) -> str:
     return hashlib.sha256(identifier.encode()).hexdigest()[:16]
 
 
-def _load_cached(identifier: str) -> str | None:
+def _load_cached(identifier: str) -> dict[str, str] | None:
+    """Load cached extraction result.  Returns dict with 'text' and 'source', or None."""
     _ensure_cache_dir()
     path = _CACHE_DIR / f"{_cache_key(identifier)}.json"
     if path.exists():
-        return path.read_text(encoding="utf-8")
+        raw = path.read_text(encoding="utf-8")
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict) and "text" in data:
+                return data  # new structured format
+        except json.JSONDecodeError:
+            pass
+        # Legacy: file contains raw text
+        return {"text": raw, "source": "full_text_pymupdf4llm"}
     return None
 
 
-def _save_cache(identifier: str, text: str) -> None:
+def _save_cache(identifier: str, text: str, source: str = "full_text_pymupdf4llm") -> None:
     _ensure_cache_dir()
     path = _CACHE_DIR / f"{_cache_key(identifier)}.json"
-    path.write_text(text, encoding="utf-8")
+    path.write_text(
+        json.dumps({"text": text, "source": source}, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
 
 # ── PDF download ─────────────────────────────────────────────────────
@@ -154,14 +169,20 @@ def extract_text_pymupdf4llm(pdf_path: str) -> str:
         print("  [v2-extractor] pymupdf4llm not installed", file=sys.stderr)
         return ""
     try:
-        # Set alarm-based timeout
-        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-        signal.alarm(_EXTRACT_TIMEOUT)
+        _sigalrm_ok = (
+            hasattr(signal, "SIGALRM")
+            and threading.current_thread() is threading.main_thread()
+        )
+        if _sigalrm_ok:
+            # Set alarm-based timeout (Unix / main thread only)
+            old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(_EXTRACT_TIMEOUT)
         try:
             md = pymupdf4llm.to_markdown(pdf_path)
         finally:
-            signal.alarm(0)  # cancel alarm
-            signal.signal(signal.SIGALRM, old_handler)
+            if _sigalrm_ok:
+                signal.alarm(0)  # cancel alarm
+                signal.signal(signal.SIGALRM, old_handler)
 
         if not md or len(md.strip()) < _MIN_USEFUL_LENGTH:
             return ""
@@ -470,15 +491,17 @@ def batch_extract_full_text(
             cache_id = paper.arxiv_id or paper.paper_id
             cached = _load_cached(cache_id)
             if cached:
-                paper.full_text = cached
-                paper.content_source = "full_text_pymupdf4llm"
-                stats["pymupdf4llm"] += 1
+                paper.full_text = cached["text"]
+                paper.content_source = cached["source"]
+                stat_key = cached["source"].replace("full_text_", "").split("+")[0]
+                stats[stat_key] = stats.get(stat_key, 0) + 1
                 continue
 
             if not paper.arxiv_id:
                 if paper.abstract:
                     paper.full_text = paper.abstract
-                    _save_cache(cache_id, paper.abstract)
+                    # Do not cache abstract-only text — keep it in-memory only
+                    # so a later cache hit is never mislabeled as full text.
                     stats["abstract_only"] += 1
                 else:
                     stats["skipped"] += 1
@@ -489,7 +512,7 @@ def batch_extract_full_text(
             if not pdf_path:
                 if paper.abstract:
                     paper.full_text = paper.abstract
-                    _save_cache(cache_id, paper.abstract)
+                    # Do not cache abstract-only text (same reason as above)
                     stats["abstract_only"] += 1
                 else:
                     stats["skipped"] += 1
@@ -503,13 +526,13 @@ def batch_extract_full_text(
 
             if full_text and len(full_text) >= _MIN_USEFUL_LENGTH:
                 paper.full_text = full_text
-                _save_cache(cache_id, full_text)
                 method = extraction["extraction_method"]
                 paper.content_source = f"full_text_{method}"
+                _save_cache(cache_id, full_text, source=paper.content_source)
                 stats[method.split("+")[0]] = stats.get(method.split("+")[0], 0) + 1
             elif paper.abstract:
                 paper.full_text = paper.abstract
-                _save_cache(cache_id, paper.abstract)
+                # Do not cache abstract-only text
                 paper.content_source = "abstract"
                 stats["abstract_only"] += 1
             else:
