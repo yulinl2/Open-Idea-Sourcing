@@ -432,3 +432,226 @@ The theoretical floor is determined by the irreducible per-round cost of
 generating student, eval, and refine outputs, plus the dynamic per-round input
 (hint + student output). The optimizations above eliminate only the *redundant*
 re-sending of static context (paper text, system prompts).
+
+### Hybrid Backend Pairs: Mixing Per Stage for Minimum Cost
+
+The single-backend analysis above treats Anthropic vs OpenAI as an either/or
+choice. But each stage has different caching characteristics — mixing backends
+per stage can unlock further savings.
+
+**Key observation:** Anthropic caching gives 90% input discount on *static*
+context (paper text, system prompts). OpenAI has cheaper base rates for
+student-tier models. The optimal hybrid uses each backend where it's cheapest.
+
+#### Per-Stage Cost Breakdown (baseline, no optimization)
+
+| Stage | Role | Model Tier | Input | Output | Baseline Cost |
+|-------|------|-----------|-------|--------|---------------|
+| teacher | extract hint | Opus | 57K | 2K | $0.98 |
+| student | reconstruct | Sonnet | 538K | 106K | $3.21 |
+| evaluate | score output | Opus | 810K | 32K | $14.57 |
+| refine | adjust hint | Opus | 799K | 64K | $16.76 |
+
+#### Candidate Hybrid Configurations
+
+**Hybrid A: Anthropic teacher + OpenAI student**
+
+Use Anthropic (Opus, with caching) for teacher/eval/refine; use OpenAI
+(GPT-4o) for student calls.
+
+| Stage | Backend | Pricing | Input Cost | Output Cost | Caching | Stage Total |
+|-------|---------|---------|-----------|-------------|---------|-------------|
+| teacher | Anthropic Opus | $15/$75 /1M | $0.86 | $0.15 | system cached | $0.83 |
+| **student** | **OpenAI GPT-4o** | **$2.50/$10 /1M** | **$1.35** | **$1.06** | none (memoryless) | **$2.41** |
+| evaluate | Anthropic Opus | $15/$75 /1M | $12.15 | $2.40 | paper prefix cached (90% off ~520K) → -$7.02 | $7.53 |
+| refine | Anthropic Opus | $15/$75 /1M | $11.99 | $4.80 | paper prefix cached (90% off ~472K) → -$6.37 | $10.42 |
+| | | | | | **Hybrid A Total** | **$21.19** |
+
+vs. pure Anthropic with caching: $19.52.
+
+**Verdict:** Hybrid A is *worse* than pure Anthropic. GPT-4o is cheaper per
+token than Sonnet ($2.50/$10 vs $3/$15), saving ~$0.80 on student. But
+student calls lose Anthropic system-prompt caching (~65 calls × 1K tokens ×
+$15/1M × 90% = $0.88 lost). Net effect: approximately break-even.
+
+**Hybrid B: Anthropic eval/refine + OpenAI student + OpenAI teacher**
+
+Optimize further: use OpenAI for the cheap calls (teacher hint = 1 call,
+student = memoryless), Anthropic only where caching matters most (eval/refine).
+
+| Stage | Backend | Stage Total |
+|-------|---------|-------------|
+| teacher | OpenAI GPT-5.4 | $0.98 (negligible, 4 calls) |
+| student | OpenAI GPT-4o | $2.41 |
+| evaluate | Anthropic Opus (cached) | $7.53 |
+| refine | Anthropic Opus (cached) | $10.42 |
+| | **Hybrid B Total** | **$21.34** |
+
+**Verdict:** Even worse — teacher is negligible cost either way, and switching
+it to OpenAI loses the small caching benefit on 4 calls while gaining nothing.
+
+**Hybrid C: Anthropic everything + cheaper eval model (Sonnet for eval)**
+
+The most impactful lever: **downgrade eval from Opus to Sonnet**. Evaluation
+is structured scoring — less creative than hint refinement — and Sonnet may
+suffice. This is a model-tier mix, not a backend mix.
+
+| Stage | Model | Pricing | Input Cost | Output Cost | Caching Savings | Stage Total |
+|-------|-------|---------|-----------|-------------|-----------------|-------------|
+| teacher | Opus | $15/$75 | $0.86 | $0.15 | -$0.18 cached | $0.83 |
+| student | Sonnet | $3/$15 | $1.61 | $1.59 | -$0.18 cached | $3.03 |
+| **evaluate** | **Sonnet** | **$3/$15** | **$2.43** | **$0.48** | **-$1.40 cached** | **$1.51** |
+| refine | Opus | $15/$75 | $11.99 | $4.80 | -$6.37 cached | $10.42 |
+| | | | | | **Hybrid C Total** | **$15.79** |
+
+**Verdict: Best configuration.** Switching eval to Sonnet saves **$6.02** vs
+pure Anthropic Opus ($19.52 → ~$15.79), a further **18% reduction**. Eval is
+structured (JSON scoring rubric) and may not need Opus-level reasoning.
+
+*Tradeoff:* Sonnet eval may be noisier — less nuanced novelty-gap detection.
+This should be validated empirically by comparing score distributions.
+
+**Hybrid D: Hybrid C + OpenAI student (max savings)**
+
+| Stage | Backend / Model | Stage Total |
+|-------|----------------|-------------|
+| teacher | Anthropic Opus (cached) | $0.83 |
+| student | OpenAI GPT-4o | $2.41 |
+| evaluate | Anthropic Sonnet (cached) | $1.51 |
+| refine | Anthropic Opus (cached) | $10.42 |
+| | **Hybrid D Total** | **$15.17** |
+
+Marginal gain over Hybrid C ($0.62) — not worth the dual-client complexity.
+
+#### Summary: Hybrid Comparison
+
+| Configuration | Est. Cost | vs. Baseline | Complexity |
+|--------------|-----------|-------------|------------|
+| Baseline (no opt) | $35.52 | — | Single backend |
+| Pure OpenAI (chaining + seeding) | $28.90 | -19% | Single backend |
+| **Pure Anthropic (caching)** | **$19.52** | **-45%** | Single backend |
+| Hybrid A (Anthropic teacher + OpenAI student) | $21.19 | -40% | Dual client |
+| Hybrid B (Anthropic eval/refine + OpenAI rest) | $21.34 | -40% | Dual client |
+| **Hybrid C (Anthropic, Sonnet eval)** | **$15.79** | **-56%** | Single backend, model swap |
+| Hybrid D (Hybrid C + OpenAI student) | $15.17 | -57% | Dual client + model swap |
+
+**Recommendation:** Hybrid C — pure Anthropic backend with **Sonnet for eval,
+Opus for everything else**. Single backend (no dual-client wiring needed),
+simple model-tier swap, and the largest cost reduction (-56%). The dual-client
+hybrids (A, B, D) add architectural complexity for marginal gains.
+
+**Implementation:** Add an `--eval-model` CLI flag to override the eval model
+independently of the teacher model. One line in `dispatch_paper` + one in
+`run_iterative_refinement`.
+
+```python
+# agent.py — minimal change
+eval_model = args.eval_model or teacher_model  # default to teacher
+```
+
+### Batched / Parallel API Calls
+
+The current implementation runs modes **sequentially** within each condition.
+Within each mode, rounds are inherently sequential (student→eval→refine→next
+round). But several stages are **embarrassingly parallel** across modes and
+could benefit from batched API calls.
+
+#### What Can Be Parallelized
+
+| Parallelism | Currently | Potential | Wall-Clock Savings |
+|-------------|-----------|-----------|-------------------|
+| **Cross-mode student calls** (same round) | Sequential | Parallel | Each round: 4 modes × ~30s → ~30s (4x speedup) |
+| **Cross-mode eval calls** (same round) | Sequential | Parallel | Each round: 4 modes × ~25s → ~25s (4x speedup) |
+| **Cross-condition runs** | Sequential | Parallel | 2 conditions × ~25 min → ~25 min (2x speedup) |
+| **Cross-pair runs** | Sequential | Parallel | 4 pairs × ~25 min → ~25 min (4x speedup) |
+| **Within-round stages** | Sequential | **Cannot parallelize** | student→eval→refine is causally dependent |
+
+#### Approach 1: Async Concurrent Modes (within a paper)
+
+Run all 4 modes concurrently using `asyncio` or `concurrent.futures`. Each
+mode's iterative loop remains sequential internally, but modes don't depend
+on each other.
+
+```
+Current (sequential):
+  abstract R1→R2→R3→R4  →  mindmap R1→R2→R3→R4→R5  →  problem ...  →  pm ...
+  Total: sum of all mode times ≈ 95 min
+
+Parallel modes:
+  abstract R1→R2→R3→R4  ┐
+  mindmap  R1→R2→R3→R4→R5 ├→ done when slowest finishes
+  problem  R1→R2→R3     │
+  pm       R1→R2→R3→R4  ┘
+  Total: max mode time ≈ 32 min (problem_method, 5R)
+```
+
+**Wall-clock savings: ~66% (95 min → ~32 min).**  
+**Token cost: unchanged** (same total calls, just concurrent).
+
+*Rate limit consideration:* 4 concurrent modes × 1 API call at a time =
+4 concurrent requests. Well within typical tier limits (60+ RPM for Opus).
+
+#### Approach 2: Batch API (OpenAI only)
+
+OpenAI's Batch API offers **50% discount** on input/output tokens with
+24-hour turnaround. Not suitable for the iterative loop (needs real-time
+eval→refine feedback), but viable for:
+
+- **Post-hoc evaluation re-scoring** (re-evaluate all outputs with a different model)
+- **Cross-validation** (run the same student on the same hint N times for variance estimation)
+- **Pairwise comparisons** (all independent, no sequential dependency)
+
+| Use Case | Calls | Batch Savings (50% off) | Turnaround |
+|----------|-------|------------------------|------------|
+| Re-score all 16 mode outputs | 16 | ~$7.28 → $3.64 | ≤24h |
+| Variance estimation (3× student) | 48 | ~$9.63 → $4.82 | ≤24h |
+| Pairwise comparisons | 16 | ~$3.50 → $1.75 | ≤24h |
+
+**Not applicable to the core iterative loop** — each round depends on the
+previous round's evaluation.
+
+#### Approach 3: Anthropic Message Batches
+
+Anthropic's Message Batches API offers **50% discount** with ≤24h turnaround,
+same constraints as OpenAI Batch. Applicable to the same non-iterative tasks.
+
+With Anthropic caching + batch discount combined:
+- Cached input at 10% of normal, then 50% batch discount on the remaining
+- Effective rate: **5% of normal input price** on cached tokens in batch mode
+
+| Scenario | Est. Cost |
+|----------|-----------|
+| Hybrid C (Sonnet eval, real-time) | $15.79 |
+| Hybrid C + batch re-scoring (50% off eval) | $15.04 |
+| Batch-only non-iterative tasks (pairwise, variance) | 50% off applicable calls |
+
+#### Combined Prospective: Full Optimization Stack
+
+| Optimization | Cost Impact | Time Impact |
+|---|---|---|
+| Anthropic caching (Layer 1) | -45% cost | — |
+| Sonnet eval (Hybrid C) | -56% cost total | — |
+| Parallel modes (Approach 1) | — | -66% wall-clock |
+| Batch re-scoring (Approach 2/3) | -50% on batch-eligible calls | +24h latency |
+
+**Fully optimized real-time estimate:**
+
+| Config | Cost | Wall-Clock |
+|--------|------|-----------|
+| Baseline | $35.52 | ~95 min |
+| Hybrid C + parallel modes | **$15.79** | **~32 min** |
+
+**Fully optimized with batch where possible:**
+
+| Config | Cost | Wall-Clock |
+|--------|------|-----------|
+| Hybrid C + batch re-eval + batch pairwise | **~$14.00** | ~32 min + ≤24h for batch |
+
+#### Implementation Roadmap
+
+| Priority | Change | Effort | Impact |
+|----------|--------|--------|--------|
+| **P0** | `--eval-model` flag (Hybrid C) | ~10 lines | -56% cost |
+| **P1** | `asyncio` parallel modes | ~50 lines (ThreadPoolExecutor wrapper) | -66% wall-clock |
+| **P2** | Batch API for pairwise/re-scoring | ~100 lines (new batch_eval.py) | -50% on eligible |
+| P3 | Dual-client hybrid (Hybrid D) | ~80 lines (plumbing) | -2% more cost |
