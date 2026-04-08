@@ -1,0 +1,17 @@
+# Reconstruction: abstract (iterative, 3 rounds)
+**Paper:** 2602.04770  
+**Condition:** with_refs  
+**Student model:** claude-sonnet-4-20250514  
+**Teacher model:** claude-opus-4-20250514  
+**Rounds:** 3  
+**Best round:** 3 (score 3.4)  
+**Converged:** True (teacher recommended stop)  
+**Score trajectory:** 2.8 -> 2.8 -> 3.4  
+
+---
+
+# Flow-Based Generative Modeling via Training-Time Sample Dynamics
+
+## Abstract
+
+Current generative models face a fundamental challenge in learning mappings between probability distributions, often requiring computationally expensive iterative procedures at inference time. We propose **Training-Time Flow Fields** (TFF), a novel generative modeling approach that leverages the inherent iterative nature of neural network training to eliminate inference-time iteration. Our method defines a learnable vector field that governs how generated samples move through data space during training iterations. Specifically, we introduce a **sample evolution mechanism** where generated samples are treated as particles that flow according to a neural vector field, with dynamics designed to minimize a distribution matching objective. The key insight is that samples should be attracted toward real data points and repelled from other generated samples, creating a flow field that naturally guides the generated distribution toward the target distribution. We enforce that this flow field approaches zero magnitude when the generated and real distributions align, ensuring convergence. Unlike adversarial methods, our approach avoids unstable min-max optimization by directly optimizing the flow field to minimize distributional discrepancy. The method naturally prevents mode collapse through its repulsive dynamics between generated samples, while the attractive forces toward real data ensure comprehensive coverage. At inference time, our trained generator produces high-quality samples in a single forward pass, as the complex distribution mapping has been learned through the training-time sample dynamics. We demonstrate that TFF achieves competitive sample quality compared to multi-step diffusion methods while requiring only single-step generation, offering significant computational advantages for practical deployment.

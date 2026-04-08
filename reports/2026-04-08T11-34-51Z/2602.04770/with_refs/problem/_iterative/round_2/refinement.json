@@ -1,0 +1,34 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Added question about samples as particles that need to move in data space",
+        "why": "Student missed the core concept of samples drifting/moving during training according to a field"
+      },
+      {
+        "what": "Added desirable property about samples moving according to governing dynamics",
+        "why": "Student needs to understand that the method involves actual sample movement, not just abstract distribution evolution"
+      },
+      {
+        "what": "Added property about movement determined by relationship to both distributions",
+        "why": "This hints at the attraction/repulsion mechanism without revealing it directly"
+      },
+      {
+        "what": "Added property about dynamics becoming zero when aligned",
+        "why": "This is the equilibrium concept that makes the method work"
+      },
+      {
+        "what": "Added field context about physics/dynamical systems",
+        "why": "To prime thinking about fields and forces that govern particle movement"
+      }
+    ],
+    "removals": [],
+    "unchanged": "Kept all existing elements as they provide good context, but the student needs additional hints about the concrete mechanism"
+  },
+  "convergence": {
+    "hint_changed_substantially": true,
+    "estimated_residual_captured": 0.6,
+    "teacher_confidence": "medium",
+    "recommendation": "continue"
+  }
+}

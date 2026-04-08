@@ -1,0 +1,22 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Added sentence about treated units informing treated outcomes and control units informing control outcomes",
+        "why": "The student is creating hybrid pseudo-residuals that mix information from both potential outcomes, missing that the paper calibrates each potential outcome separately using only the relevant treatment group"
+      },
+      {
+        "what": "Added desirable property about respecting that each potential outcome can only be calibrated using data from the corresponding treatment group",
+        "why": "The student's approach violates this fundamental constraint by trying to use variance estimates from the opposite treatment group in their pseudo-residuals"
+      }
+    ],
+    "removals": [],
+    "unchanged": "Kept all existing elements as they successfully guided the student toward weighted conformal prediction with propensity scores, just not the correct application of it"
+  },
+  "convergence": {
+    "hint_changed_substantially": false,
+    "estimated_residual_captured": 0.7,
+    "teacher_confidence": "high",
+    "recommendation": "continue"
+  }
+}

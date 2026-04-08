@@ -1,0 +1,35 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Added phrase about importance weighting providing 'a natural framework' for addressing covariate shift in causal inference",
+        "why": "The student recognizes weighted conformal prediction exists but doesn't see it as the solution - this makes the connection more explicit"
+      },
+      {
+        "what": "Changed the likelihood ratio property to emphasize 'the natural connection between likelihood ratios that correct for covariate shift and the probability of treatment assignment'",
+        "why": "The student needs a stronger hint that propensity scores (treatment probabilities) ARE the likelihood ratios needed for the weighting"
+      },
+      {
+        "what": "Refined the robustness property to mention 'degrade gracefully' and 'maintaining validity if either the weighting mechanism or the outcome predictions are accurate'",
+        "why": "This more clearly hints at the doubly robust property without using that term explicitly"
+      },
+      {
+        "what": "Added sentence about 'convergence of these ideas' in field context",
+        "why": "The student treats inverse probability weighting and weighted conformal as separate concepts rather than recognizing they should be combined"
+      }
+    ],
+    "removals": [
+      {
+        "what": "Removed 'requires addressing the fact that' and replaced with more direct language about extension through importance weighting",
+        "why": "The previous phrasing suggested obstacles rather than solutions - the new phrasing points more directly to the mechanism"
+      }
+    ],
+    "unchanged": "The core structure emphasizing the ITE prediction problem, finite-sample guarantees, and covariate shift challenge remains unchanged as the student correctly identifies these aspects."
+  },
+  "convergence": {
+    "hint_changed_substantially": false,
+    "estimated_residual_captured": 0.7,
+    "teacher_confidence": "medium",
+    "recommendation": "continue"
+  }
+}

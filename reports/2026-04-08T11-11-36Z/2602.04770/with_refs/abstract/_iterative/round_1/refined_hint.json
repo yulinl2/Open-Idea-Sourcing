@@ -1,0 +1,13 @@
+{
+  "problem_context": "Current generative modeling approaches face fundamental challenges in mapping from one distribution to another. While discriminative models simply map individual samples to labels, generative models must learn mappings between entire distributions - a significantly more complex task. Existing approaches often require iterative procedures at inference time, involving multiple network evaluations to progressively transform samples from noise to data. This creates computational inefficiency and complexity. There is a need for generative modeling approaches that can produce high-quality samples in a single forward pass, without requiring iterative refinement procedures during generation. The key insight is that the training process itself is inherently iterative in deep learning - perhaps this iterative nature during training could be leveraged to eliminate the need for iteration at inference time. Consider how the evolution of the model during training might relate to the evolution of the generated distribution.",
+  "desirable_properties": [
+    "Should perform generation in a single forward pass without iterative refinement at inference",
+    "Should leverage the iterative nature of training to evolve the distribution mapping",
+    "Should define some form of equilibrium condition that indicates when the generated distribution matches the data distribution",
+    "Should use interactions between generated samples and real data samples to guide the learning process",
+    "Should achieve competitive sample quality compared to multi-step methods",
+    "Should avoid mode collapse through mechanisms that prevent the generated distribution from getting stuck",
+    "Should not require adversarial training or unstable optimization procedures"
+  ],
+  "field_context": "This work addresses fundamental challenges in generative modeling, where the goal is to learn mappings between probability distributions. The field has seen various paradigms including iterative refinement methods, adversarial approaches, and likelihood-based models, each with their own trade-offs between sample quality, computational efficiency, and training stability. A key observation is that while inference-time iteration has been successful, the training process itself involves iteration that could potentially be exploited in novel ways."
+}

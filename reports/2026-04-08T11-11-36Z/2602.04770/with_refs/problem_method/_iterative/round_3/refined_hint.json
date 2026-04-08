@@ -1,0 +1,16 @@
+{
+  "problem_context": "Current generative modeling approaches face fundamental challenges in mapping from one distribution to another. While discriminative models simply map individual samples to labels, generative models must learn mappings between entire distributions - a significantly more complex task. Existing approaches often require iterative procedures at inference time, involving multiple network evaluations to progressively transform samples from noise to data. This creates computational inefficiency and complexity. There is a need for generative modeling approaches that can produce high-quality samples in a single forward pass, without requiring iterative refinement procedures during generation. The challenge is to find ways to learn complex distribution mappings that traditionally require decomposition into multiple simpler transformations, but to do so in a way that admits efficient single-step inference. A key insight is that neural network training itself is an iterative process - perhaps this training-time iteration could be leveraged in a novel way, rather than requiring iteration at inference time. Consider that as the generator parameters update during training, each generated sample's position in the data space changes - this movement itself could be formalized and guided by the sample's relationship to both real and other generated samples.",
+  "desirable_properties": [
+    "Should perform generation in a single forward pass without iterative refinement at inference",
+    "Should achieve competitive sample quality compared to multi-step methods",
+    "Should work across different data modalities and domains",
+    "Should scale effectively to high-resolution data",
+    "Should avoid mode collapse and capture the full data distribution",
+    "Should support conditional generation with flexible conditioning",
+    "Should not require adversarial training or unstable optimization procedures",
+    "Should leverage the fact that the generator's output distribution naturally evolves during training",
+    "Should define some form of equilibrium condition that indicates when the generation quality is optimal",
+    "Should formalize how generated samples move through the data space as the generator updates, with this movement guided by interactions with both real and generated samples"
+  ],
+  "field_context": "This work addresses fundamental challenges in generative modeling, where the goal is to learn mappings between probability distributions. The field has seen various paradigms including iterative refinement methods, adversarial approaches, and likelihood-based models, each with their own trade-offs between sample quality, computational efficiency, and training stability. Consider that during neural network training, the output distribution of a generator naturally changes over time - this evolution process itself might be formalized and exploited. Think about how generated samples effectively 'move' through the data space as the generator parameters update from one training step to the next, and how this movement could be explicitly guided based on the current arrangement of samples."
+}

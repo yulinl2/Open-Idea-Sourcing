@@ -1,0 +1,16 @@
+{
+  "problem_context": "Current generative modeling approaches face fundamental challenges in mapping from one distribution to another efficiently. While discriminative models simply map individual samples to labels, generative models must learn mappings between entire distributions - a significantly more complex task. Existing methods often require iterative procedures at inference time, performing multiple network evaluations to progressively transform samples from noise to data. This creates a trade-off between generation quality and computational efficiency. There is a need for generative models that can produce high-quality samples in a single forward pass, without sacrificing the modeling capacity that makes iterative methods successful. The challenge is to find a training paradigm that can learn complex distribution mappings without requiring iterative refinement during generation. Consider how the iterative nature of neural network training itself might be leveraged - what if the evolution could happen during training rather than inference?",
+  "desirable_properties": [
+    "Should generate high-quality samples in a single forward pass",
+    "Should be trainable from scratch without requiring pre-trained models",
+    "Should scale effectively to high-resolution data",
+    "Should avoid mode collapse and capture the full data distribution",
+    "Should support conditional generation with flexible conditioning",
+    "Should work across different data modalities beyond just images",
+    "Should have a principled training objective that converges reliably",
+    "Should leverage the inherent iterative nature of the training process itself",
+    "Should define an equilibrium condition where the model stops improving when the target is reached",
+    "Should use interactions between generated and real samples to guide learning"
+  ],
+  "field_context": "Generative modeling is a fundamental problem in machine learning that aims to learn the underlying distribution of data and generate new samples from it. This field has seen rapid progress with various paradigms including adversarial training, variational approaches, and iterative refinement methods, each with their own trade-offs between sample quality, training stability, and inference efficiency. While most approaches focus on the inference-time computation, there may be untapped potential in how the training process itself evolves the model's capabilities."
+}
