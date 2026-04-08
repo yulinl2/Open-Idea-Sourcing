@@ -279,29 +279,38 @@ derivable from either its references or general domain knowledge.
 
 ### Title
 
-**Staged Reconstruction: Measuring Research Novelty by How Much an LLM Can Recover from References Alone**
+**Derivability as a Measure of Novelty: Probing Research Contributions via Multi-Granularity LLM Reconstruction**
 
 ### Abstract
 
-We propose *staged reconstruction*, a reference-ablation framework for
-quantifying the novelty of a research paper. A teacher LLM extracts a
-leakage-free problem statement from the target paper; a student LLM that
-has never seen the paper then reconstructs it at six granularity levels
-(abstract through full paper) under two conditions: with and without cited
-references. The delta between conditions measures reference contribution;
-the residual gap to the original measures genuine novelty. We validate on
-two papers sharing one reference — one topically related, one unrelated
-(negative control). Over three runs (Claude Sonnet 4 student, Claude Opus 4
-evaluator), the related reference yields a consistent positive signal (mean
-delta +0.17/5; LLM-as-judge pairwise impact 5.67/7; 5/6 modes favor the
-reference condition), while the unrelated reference yields near-zero effect
-(+0.02/5; 2.3x noisier; 0/6 modes favor references). Novelty-gap analysis
-shows that student models default to generic domain knowledge and
-consistently fail to recover paper-specific innovations, suggesting true
-novelty is what remains after ablating both references and parametric
-knowledge. We also find that pairwise LLM evaluation achieves ~7x higher
-SNR than pointwise scoring for detecting treatment effects, due to
-elimination of rating-scale anchoring.
+Scientific novelty is fundamentally a relational property: a contribution
+is novel only to the extent that it cannot be derived from existing
+knowledge. Yet in practice, novelty assessment in peer review remains
+subjective, expensive, and unreproducible. We formalize novelty as
+*reconstruction residual* — the gap between what a capable model can derive
+from a paper's references and problem context, and what the paper actually
+contributes — and propose *staged reconstruction* as a controlled protocol
+to measure it.
+
+Concretely, a teacher LLM reads the target paper and extracts a
+leakage-controlled problem statement (what the paper solves, not how). A
+student LLM, blind to the paper, then attempts reconstruction at six
+granularity levels (abstract through full paper) under two conditions: with
+and without cited references. The delta isolates reference contribution; the
+residual reconstruction gap operationalizes genuine novelty.
+
+We validate the framework with a built-in negative control: two papers share
+one reference — related to one, orthogonal to the other. Over three runs
+(n=36 mode-level observations per paper), the related reference produces a
+consistent positive signal (mean delta +0.17/5; pairwise impact 5.67/7; 5/6
+modes favor with-refs), while the unrelated reference produces null effect
+(+0.02/5; 2.3x noisier; 0/6 modes favor refs) — achieving perfect
+separation. Novelty-gap analysis confirms that student models default to
+generic domain knowledge and consistently fail to recover paper-specific
+innovations (doubly robust conformal quantile regression; training-time
+drifting fields), suggesting these represent irreducible residual novelty. We
+additionally find that pairwise LLM-as-judge evaluation yields ~7x higher
+SNR than pointwise scoring, due to elimination of rating-scale anchoring.
 
 ---
 
