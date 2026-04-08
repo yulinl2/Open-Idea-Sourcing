@@ -356,7 +356,9 @@ a clean signal, enabling the hint to converge to its true minimal form.
 1. **Evaluator variance.** The teacher-evaluator uses a single LLM call per
    round. Score variance across rounds (e.g., mindmap's 3.0 dip) is partly
    evaluator noise, not just student variance. Best-round selection mitigates
-   this but doesn't eliminate it.
+   this. Additionally, eval calls now **branch independently** from a shared
+   paper-context seed (rather than chaining sequentially), ensuring each
+   evaluation is unbiased by prior rounds' scores.
 
 2. **Problem mode plateau.** The `problem` mode plateaued at 2.8 across all
    3 rounds — the student consistently proposed CATE-based intervals instead
@@ -369,7 +371,10 @@ a clean signal, enabling the hint to converge to its true minimal form.
 
 4. **Cost.** Each iterative run costs 3-5x a single-shot run (multiple
    student + evaluate + refine calls per mode). The 4-mode run used ~16
-   rounds total across modes.
+   rounds total across modes. Three optimization layers mitigate this:
+   Anthropic prompt caching (~45% reduction), OpenAI stateful chaining
+   (~15%), and cross-mode paper-context seeding (~4% additional). See
+   `reports/CROSS_PAIR_COMPARISON.md` for detailed prospective estimates.
 
 5. **Teacher self-assessment bias.** The teacher's `estimated_residual_captured`
    and `recommendation` may be overconfident. The teacher recommended stop

@@ -324,3 +324,111 @@ because the evaluator reads a fixed-size paper regardless of student output leng
 
 Cost and time scale linearly with round count. Cheapest run: Pair 3 ($7.74,
 fewest total rounds at 14). Most expensive: Pair 4 ($9.20, most rounds at 18).
+
+---
+
+## Cost Optimization: Prospective Savings
+
+Three layers of optimization were implemented in v0.6.1 to reduce API costs.
+The table below estimates savings against the **observed baseline** of $35.52 /
+2,408K tokens across the 4-pair study.
+
+### Optimization Layers
+
+| Layer | Backend | Mechanism | What It Saves |
+|-------|---------|-----------|---------------|
+| **1. Prompt caching** | Anthropic | `cache_control: {"type": "ephemeral"}` on system prompts + paper-text prefix blocks | Avoids re-tokenizing system prompt (~1K tokens) and paper text (~8K tokens) on every call. Cache TTL = 5 min (ephemeral). |
+| **2. Stateful chaining** | OpenAI | `previous_response_id` on Responses API | Refine calls chain sequentially — each round's context is appended to prior, not resent. Paper text sent once per chain. |
+| **3. Cross-mode seeding** | OpenAI | `create_context_seed()` sends paper once per paper, all calls branch/chain from seed | Paper text (~8K tokens) processed exactly once per paper across all 4 modes and all rounds. |
+
+### Estimated Token Savings
+
+The following estimates are based on the observed token distribution and call
+counts from the 4-pair study. Savings compound across layers.
+
+#### Layer 1: Prompt Caching (Anthropic)
+
+| Call Type | Calls | Cached Tokens/Call | Total Saved | Cache Read Discount |
+|-----------|-------|--------------------|-------------|---------------------|
+| System prompt | 193 | ~1,000 | 193K | 90% (10% of normal price) |
+| Paper-text prefix (eval) | 65 | ~8,000 | 520K | 90% |
+| Paper-text prefix (refine) | 59 | ~8,000 | 472K | 90% |
+| **Total cached** | | | **1,185K tokens** | |
+
+At Opus input pricing ($15/1M), the full cost for 1,185K input tokens would
+be **$17.78**. With 90% cache discount, the effective cost drops to **$1.78**,
+saving **$16.00** (45% of total spend).
+
+*Note: savings apply per-session within the 5-min TTL window. Calls within
+the same mode run (avg 4 rounds × 3 calls/round = 12 calls over ~6 min)
+mostly fall within the TTL. Cross-mode sharing requires modes to run within
+5 min of each other.*
+
+#### Layer 2: Stateful Chaining (OpenAI)
+
+Refine calls chain sequentially — round N+1 references round N's response_id,
+so the API reuses the prior context without resending.
+
+| Chain Type | Chains | Rounds in Chain | Tokens Saved/Round | Total Saved |
+|------------|--------|-----------------|-------------------|-------------|
+| Refine chain | 16 modes | avg 2.7 chained rounds | ~8,000 (paper text) | 345K |
+
+Student calls are memoryless (no chaining benefit). Evaluate calls now branch
+from the seed rather than chaining (correctness fix — see below).
+
+Estimated input savings: **345K tokens → ~$5.18** at Opus rates.
+
+#### Layer 3: Cross-Mode Seeding (OpenAI)
+
+Without seeding, each of the 16 mode runs processes the full paper text on
+its first call. With seeding, the paper is sent once per paper (4 seeds for
+4 pairs), and all 16 mode runs branch from the seed.
+
+| Without Seed | With Seed | Savings |
+|---|---|---|
+| 16 first-calls × 8K tokens = 128K | 4 seeds × 8K = 32K | **96K tokens** |
+
+At Opus rates: **$1.44 saved** per study.
+
+#### Correctness Fix: Independent Evaluations
+
+Previous implementation chained eval calls sequentially (eval_round_2 from
+eval_round_1), letting the evaluator see prior rounds' scores and outputs.
+This could bias scores upward (anchoring) or create false convergence signals.
+
+The fix: all eval calls **branch from the paper-context seed** independently.
+Each evaluator sees only the paper + current student output, never prior
+evaluations. This is a **correctness** improvement, not a cost reduction — eval
+calls still send the student output each round (which varies, so can't be cached).
+
+### Prospective Budget Summary
+
+| Scenario | Input Tokens | Effective Cost | vs. Baseline |
+|----------|-------------|----------------|-------------|
+| **Baseline** (no optimization) | 2,204K | $35.52 | — |
+| **+ Anthropic caching** (Layer 1) | 2,204K (1,185K cached) | ~$19.52 | **-45%** |
+| **+ OpenAI chaining** (Layer 2) | 1,859K | ~$30.34 | **-15%** |
+| **+ Cross-mode seeding** (Layer 3) | 1,763K | ~$28.90 | **-19%** |
+| **OpenAI full stack** (L2 + L3) | 1,763K | ~$28.90 | **-19%** |
+| **Anthropic full stack** (L1) | 2,204K (1,185K cached) | ~$19.52 | **-45%** |
+
+*Layers 2+3 are OpenAI-specific; Layer 1 is Anthropic-specific. The backends
+are alternatives, not cumulative.*
+
+**Best case (Anthropic with caching):** ~$19.50 for a full 4-pair study.  
+**Best case (OpenAI with chaining + seeding):** ~$28.90 for a full 4-pair study.
+
+### Where Cost Cannot Be Reduced Further
+
+| Component | Why It's Irreducible |
+|-----------|---------------------|
+| Student output tokens (106K out) | Must be generated fresh each round (memoryless) |
+| Eval output tokens (32K out) | Must be generated fresh each round (independent) |
+| Refine output tokens (64K out) | Must be generated fresh each round |
+| Student input tokens per round | System prompt + hint + refs — all dynamic |
+| Eval student-output context | Varies per round — cannot be cached/chained |
+
+The theoretical floor is determined by the irreducible per-round cost of
+generating student, eval, and refine outputs, plus the dynamic per-round input
+(hint + student output). The optimizations above eliminate only the *redundant*
+re-sending of static context (paper text, system prompts).
