@@ -1,0 +1,34 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Added clarification that covariate shift prevents direct application of prediction methods across treatment groups",
+        "why": "Student understood covariate shift exists but didn't grasp why it specifically matters for counterfactual prediction"
+      },
+      {
+        "what": "Modified covariate shift property to mention 'reweighting observations based on the treatment assignment mechanism'",
+        "why": "Student mentioned generic 'importance weighting' but missed the specific connection to treatment assignment/propensity scores"
+      },
+      {
+        "what": "Modified randomized experiment property to emphasize 'treatment assignment probabilities are known by design'",
+        "why": "This hints more strongly at leveraging known propensity scores without naming them"
+      },
+      {
+        "what": "Added property about solving in-sample counterfactual prediction before generalizing to new subjects",
+        "why": "Student missed the paper's two-challenge framework - this makes the staged approach more explicit"
+      },
+      {
+        "what": "Added final sentence about treatment assignment mechanisms being central to identification",
+        "why": "This provides a stronger hint toward using propensity scores for the weighting scheme"
+      }
+    ],
+    "removals": [],
+    "unchanged": "The core problem framing and most desirable properties remain unchanged as they successfully guided the student toward weighted conformal prediction"
+  },
+  "convergence": {
+    "hint_changed_substantially": false,
+    "estimated_residual_captured": 0.7,
+    "teacher_confidence": "high",
+    "recommendation": "continue"
+  }
+}

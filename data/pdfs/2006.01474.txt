@@ -1,0 +1,1596 @@
+[2006.01474] Conformal prediction intervals for the individual treatment effect 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+
+## Conformal prediction intervals for the individual treatment effect
+
+ 
+ 
+ Danijel Kivaranovic a  Robin Ristl b  Martin Posch b  Hannes Leeb a,c 
+ 
+ a Department of Statistics and Operations Research, University of Vienna 
+ b Center for Medical Statistics, Informatics and Intelligent Systems,
+ Medical University of Vienna 
+ c Data Science @ Uni Vienna, University of Vienna
+ 
+ 
+
+ 
+
+## Abstract
+
+ We propose several prediction intervals procedures for the individual treatment effect with either finite-sample or asymptotic coverage guarantee in a non-parametric regression setting, where non-linear regression functions, heteroskedasticity and non-Gaussianity are allowed. The construct the prediction intervals we use the conformal method of Vovk et al., ( 2005 ) . In extensive simulations, we compare the coverage probability and interval length of our prediction interval procedures. We demonstrate that complex learning algorithms, such as neural networks, can lead to narrower prediction intervals than simple algorithms, such as linear regression, if the sample size is large enough.
+
+ 
+ 
+ 
+ 
+ 
+ Keywords: Conformal inference, individual treatment effect, machine learning.
+
+ 
+ 
+ 
+
+## 
+ 1 Introduction
+
+ 
+ In usual randomized controlled clinical trials, the average treatment effect, averaged over the population under study, is estimated and used as predictor for the expected treatment effect in a new patient.
+However, treatment effects may depend on individual patient characteristics and the personalized medicine paradigm aims to tailor treatment decisions to these characteristics (Pellegrini et al.,, 2019 ; Graf et al.,, 2020 ) . When comparing an experimental treatment to a control treatment, the relevant quantity to establish a personalized treatment decision is the so called individual treatment effect , defined as the difference between the patient’s potential outcomes under treatment and under control (Rubin,, 1974 , 2005 ) . In this paper, we propose several prediction intervals for the individual treatment effect with either finite-sample or asymptotic coverage guarantee. Our intervals are valid in a non-parametric regression setting, where non-linear regression functions, heteroskedasticity and non-Gaussianity are allowed.
+The construction of our prediction intervals relies on the conformal method of Vovk et al., ( 2005 ); Shafer and Vovk, ( 2008 ) .
+
+ 
+ 
+ To predict individual treatment effects based on a set of co-variates, regression models for, both, the response under treatment and under control can be fitted. This can be achieved, for example, if interaction terms for the treatment group indicator and the considered predictive variables are included or if separate regression models for each treatment group are fitted. Alternatively, more complex non-parametric or machine-learning models can be applied to model non-linear associations (Lamont et al.,, 2018 ) .
+The expected individual treatment effect can then be estimated as difference of predictions under treatment and under control, given a patient’s co-variate values.
+
+ 
+ 
+ In order to reliably apply this concept for decision making, the uncertainty attached to an estimated individual treatment effect needs to quantified. Ballarini et al., ( 2018 ) studied the application of confidence intervals for expected individual treatment effects to select subgroups with improved treatment benefit. While this approach covers uncertainty due to the prediction model being estimated from a finite training sample, a complete assessment of uncertainty in an individual prediction needs to take into account the residual distribution of the effect, which comprises unexplained between-patient variability and within-patient variability. (The latter reflects the possibility that the same patient may respond differently to a treatment at different occasions; but only in rare settings which allow for repeated observations of the effect in the same patient these sources of variability may be identified separately (Senn,, 2016 ) .)
+
+ 
+ 
+ A suitable way to communicate the extent of remaining uncertainty is in terms of prediction intervals. The calculation of individual prediction intervals from models for the individual treatment effect is complicated by the fact that usually each patient in the training data set is observed under one of the two treatment conditions only. Hence, residuals of the individual treatment effect cannot be observed.
+To overcome this problem, in this manuscript we propose a method to calculate
+prediction intervals for the individual treatment effect by an extension of the conformal inference framework towards the difference in hypothetical outcomes under two treatment conditions. Conformal inference allows to estimate intervals in the residual distribution of an arbitrary prediction model without distributional assumptions and take into account uncertainty in the model estimation procedure. The resulting intervals are
+exact
+in the sense that the average coverage probability across the studied population is controlled.
+
+ 
+ 
+ In Section 2 we introduce the notation and present our main results: Theorem 1 and 2 provide prediction intervals with finite-sample coverage, and Theorem 3 provides prediction intervals with asymptotic coverage. Theorem 1 and 2 have weaker assumptions but are therefore more conservative. Theorem 3 has stronger assumptions, namely, consistency of the prediction procedure and Gaussian error distribution but provides considerably shorter intervals. All three theorems assume the existence of a prediction intervals procedure for the outcome conditional on the assigned treatment. In Section 3 , we show how to construct such a prediction interval procedure using the conformal method. In Section 4 we compare the intervals in several simulation settings. The paper ends with a discussion in Section 5 . The proofs of all results are given in the appendix.
+
+ 
+ 
+ 
+
+## 
+ 2 Prediction intervals for the individual treatment effect
+
+ 
+
+## 
+ 2.1 Notation and definitions
+
+ 
+ We denote by $X$ the random covariate vector with values in $\mathbb{R}^{d}$ , $d\in\mathbb{N}$ . Let $T$ be the $\{-1,1\}$ -valued random variable that indicates whether a patient was assigned to the treatment group ( $T=1$ ) or control group ( $T=-1$ ). We assume that the random variables $X$ and $T$ are independent. This means, patients are assigned to treatment or control group independent of their condition, which is described by $X$ . (We note that this setting excludes stratified sampling, because it would introduce a dependence structure between $X$ and $T$ .) Let $Y$ denote the real-valued outcome of interest. We can decompose $Y$ into
+
+ 
+
+ 
+ 
+ $Y=f(X,T)+e_{X,T},$ 
+ 
+ 
+ 
+ where $f(X,T)=\mathbb{E}(Y|X,T)$ is called the regression function and $e_{X,T}=Y-\mathbb{E}(Y|X,T)$ the error. The $X$ and $T$ in the subscript of $e_{X,T}$ , denote the dependence of $e_{X,T}$ on $X$ and $T$ . Each patient is only assigned to one of the two treatment groups, which means that the random variable
+
+ 
+
+ 
+ 
+ $Y^{\prime}=f(X,-T)+e_{X,-T}$ 
+ 
+ 
+ 
+ is not observable. Note that $Y^{\prime}$ denotes the outcome of the patient assigned to the opposite treatment group. The individual treatment effect $\tau(X)$ is defined as $T(Y-Y^{\prime})$ or, equivalently,
+
+ 
+
+ 
+ 
+ $\tau(X)=f(X,1)-f(X,-1)+e_{X,1}-e_{X,-1}.$ 
+ 
+ 
+ 
+ Clearly, because $Y^{\prime}$ is not observable, $\tau(X)$ is also not observable. We note that $\tau(X)$ is not to be confused with $f(X,1)-f(X,-1)$ which is also sometimes referred to as (predicted) individual treatment effect in the literature. Conditional on $X$ , $f(X,1)-f(X,-1)$ is deterministic, while $\tau(X)$ is still random because of the error $e_{X,1}-e_{X,-1}$ . This also means that, in a well-defined setting, the length of confidence intervals for $f(X,1)-f(X,-1)$ converge to 0 as sample size grows while the length of prediction intervals for $\tau(X)$ cannot converge to 0 because the variance of $e_{X,1}-e_{X,-1}$ is not explainable. In Theorem 1 we make no assumption about the distribution of $e_{X,1}$ and $e_{X,-1}$ , while Theorem 2 requires conditional independence and Theorem 3 conditional positive correlation given $X$ , respectively. We note that conditional independence between $e_{X,1}$ and $e_{X,-1}$ given $X$ is often considered as worst-case scenario, because unobserved explanatory variables typically cause a positive correlation structure between the errors.
+
+ 
+ 
+ Let $D_{n}=((X_{i},Y_{i},T_{i}))_{1\leq i\leq n}$ denote a dataset of $n\in\mathbb{N}$ observations, where the $(X_{i},T_{i},Y_{i})$ s are i.i.d. copies of $(X,Y,T)$ . We only consider the non-degenerate case where $0<\mathbb{P}\left(T=1\right)<1$ . We denote by $\mathbb{D}^{n}=(\mathbb{R}^{d}\times\mathbb{R}\times\{-1,1\})^{n}$ the range of $D_{n}$ . Throughout this paper, $(X,Y,T)$ denotes a new observation that is independent of $D_{n}$ . Let $\alpha\in(0,1)$ be the confidence level. We cannot define a prediction interval procedure for the individual treatment effect $\tau(X)$ based on the unobservable vector $(\tau(X_{1}), \dots,\tau(X_{n}))^{\prime}$ . Therefore, we propose to construct a prediction interval $[l_{D_{n}}(X,-1),u_{D_{n}}(X,-1)]$ for $Y$ conditional on the event $\{T=-1\}$ and another prediction interval $[l_{D_{n}}(X,1),u_{D_{n}}(X,1)]$ for $Y$ conditional on the event $\{T=1\}$ . Then, we combine these two prediction intervals to obtain a prediction interval for $\tau(X)$ . In Section 3 , we show how to modify the conformal method ( Vovk et al., ( 2005 ); Shafer and Vovk, ( 2008 ) ) to construct prediction intervals for $Y$ with coverage probability $1-\alpha$ conditional on $\{T=-1\}$ and $\{T=1\}$ , respectively. The construction of these intervals merely requires i.i.d. data and no further assumption on the distribution of the data or the learning algorithm.
+
+ 
+ 
+ The accuracy of the proposed procedure (in terms of coverage probability and interval length), depends on how accurately we can estimate the regression function $f(x,t)$ and how accurately we can estimate the conditional distribution of $e_{X,T}$ conditional on $X$ and $T$ .
+
+ 
+ 
+
+## 
+ Definition 1 . 
+
+ 
+ A prediction procedure $\mathcal{A}_{n}$ is a mapping from $\mathbb{D}^{n}$ into the set of all measurable functions $\{f:\mathbb{R}^{d}\times\{-1,1\}\to\mathbb{R}\}$ . We set 
+
+ 
+
+ 
+ 
+ $f_{D_{n}}=\mathcal{A}_{n}(D_{n}).$ 
+ 
+ 
+ 
+ We say that $\mathcal{A}_{n}$ is a consistent prediction procedure if for any compact set $K\subseteq\mathbb{R}^{d}$ and any $\epsilon>0$ 
+
+ 
+
+ 
+ 
+ $\mathbb{P}\left(\sup_{(x,t)\in K\times\{-1,1\}}|f_{D_{n}}(x,t)-f(x,t)|<\epsilon\right)\to 1\quad\text{as }n\to\infty.$ 
+ 
+ 
+ 
+ 
+ 
+ 
+ Typically, the efficacy of the treatment $t$ interacts with the covariate vector $x$ . In the following, we give examples of prediction procedures $\mathcal{A}_{n}$ that model these interactions. Furthermore, we discuss when these procedures are consistent in the sense of Definition 1 :
+
+ 
+ 
+ (i) 
+ 
+ The least squares method is the most common and most frequently used prediction procedure. The function $f_{D_{n}}$ is of the form
+
+ 
+
+ 
+ 
+ $f_{D_{n}}(x,t)=\hat{\beta}_{0}+\hat{\beta}_{1}t+\sum_{i=1}^{d}\hat{\gamma}_{i}x_{i}+t\sum_{i=1}^{d}\hat{\delta}_{i}x_{i},$ 
+ 
+ 
+ 
+ where the $\hat{\beta}$ s, $\hat{\gamma}$ s and $\hat{\delta}$ s are chosen by minimizing the mean squared error on the dataset $D_{n}$ . Interactions between $x$ and $t$ are explicitly modeled by the last sum. The linear least squares method is only consistent if the regression function $f(x,t)$ is a linear function of $x$ and $t$ and the components of $x$ only interact with $t$ .
+
+ 
+ 
+ 
+ (ii) 
+ 
+ Kernel regression is a non-parametric prediction procedure. The function $f_{D_{n}}$ is defined as
+
+ 
+
+ 
+ 
+ $f_{D_{n}}(x,t)=\sum_{i=1}^{n}Y_{i}\hat{w}_{i}(x,t),$ 
+ 
+ 
+ 
+ where the $\hat{w}_{i}$ s are $D_{n}$ -depended weight functions such that $\hat{w}_{i}(x,t)$ is large if $(x,t)$ is close to $(X_{i},T_{i})$ and small if $(x,t)$ is far from $(X_{i},T_{i})$ . Interaction between $x$ and $t$ are implicitly modeled by the data-dependent weight functions. Sufficient conditions for consistency of kernel regression methods are given in Stone, ( 1977 ) .
+
+ 
+ 
+ 
+ (iii) 
+ 
+ The neural network is a prediction procedure that has recently gained a lot of attention because of its predictive performance. A standard neural network $f_{D_{n}}$ with one hidden layer, with $k\in\mathbb{N}$ nodes and non-linear activation function $\sigma:\mathbb{R}\to\mathbb{R}$ is defined as
+
+ 
+
+ 
+ 
+ $\displaystyle f_{D_{n}}(x,t)=\hat{W}_{2}~{}\sigma(\hat{W}_{1}(x^{\prime},t)^{\prime}+\hat{b}_{1})+\hat{b}_{2},$ 
+ 
+ 
+ 
+ where $\hat{W}_{1}$ is a $D_{n}$ -dependent $k\times(d+1)$ weight matrix; $\hat{b}_{1}$ is a $D_{n}$ -dependent $k$ -dimensional bias vector; $\sigma$ is applied component-wise; $\hat{W}_{2}$ is a $D_{n}$ -dependent $1\times k$ weight matrix and $\hat{b}_{2}$ is a $D_{n}$ -dependent $1$ -dimensional bias vector. A neural network is called deep, if the number of hidden layers and hidden nodes is large. The larger the network, the more interactions between $x$ and $t$ can be modeled. Neural networks are widely known as universal approximators (Cybenko,, 1989 ; Hornik et al.,, 1989 ) and, more recently, consistency properties from statistical perspective have been analyzed by Bauer and Kohler, ( 2019 ) .
+
+ 
+ 
+ 
+ Note that if the sample size $n$ is small, some prediction procedures are not well defined (e.g. if the number of parameters in a linear regression model is larger than $n$ ). In such cases, $f_{D_{n}}$ is simply to be interpreted as the $0$ function.
+
+ 
+ 
+
+## 
+ Definition 2 . 
+
+ 
+ An interval procedure $\mathcal{P}_{n}$ is a mapping from $\mathbb{D}^{n}$ into the set of all pairs of ordered measurable functions $\{(l,u):l,u:\mathbb{R}^{d}\times\{-1,1\}\to\mathbb{R},~{}l\leq u\}$ . We set 
+
+ 
+
+ 
+ 
+ $(l_{D_{n}},~{}u_{D_{n}})=\mathcal{P}_{n}(D_{n}).$ 
+ 
+ 
+ 
+ We say that $\mathcal{P}_{n}$ is a $T$ -conditional prediction-interval procedure at level $1-\alpha$ , if for all $n\in\mathbb{N}$ 
+
+ 
+
+ 
+ 
+ $\mathbb{P}\left(Y\in[l_{D_{n}}(X,T),u_{D_{n}}(X,T)]~{}|~{}T=t\right)\geq 1-\alpha,\quad t\in\{-1,1\}.$ 
+ 
+ 
+ 
+ 
+ 
+ 
+ The standard conformal method allows to construct unconditional prediction intervals only under the assumption that the data is i.i.d.. In Section 3 , we show how to modify the conformal method to obtain a $T$ -conditional prediction-interval procedure in the sense of Definition 2 .
+
+ 
+ 
+ 
+
+## 
+ 2.2 Theoretical results
+
+ 
+ We propose prediction intervals for $\tau(X)$ that either control finite sample coverage or asymptotic coverage.
+
+ 
+ 
+
+## 
+ Definition 3 . 
+
+ 
+ Let $\Gamma_{D_{n}}:\mathbb{R}^{d}\to\{[a,b]:a\leq b\}$ be an interval-valued function that depends on $D_{n}$ . $\Gamma_{D_{n}}(X)$ is called a prediction interval for the individual treatment effect $\tau(X)$ at level $1-\alpha$ , if for all $n\in\mathbb{N}$ 
+
+ 
+
+ 
+ 
+ $\mathbb{P}(\tau(X)\in\Gamma_{D_{n}}(X))\geq 1-\alpha.$ 
+ 
+ (1) 
+ 
+ 
+ We say that $\Gamma_{D_{n}}(X)$ is an asymptotically valid prediction interval for $\tau(X)$ at level $1-\alpha$ , if 
+
+ 
+
+ 
+ 
+ $\lim_{n\to\infty}\mathbb{P}(\tau(X)\in\Gamma_{D_{n}}(X))\geq 1-\alpha.$ 
+ 
+ (2) 
+ 
+ 
+ 
+ 
+ 
+ In all of the following results, we assume that we have a prediction $T$ -conditional prediction-interval procedure $\mathcal{P}_{n}$ in the sense of Definition 2 . Construction of such a procedure is described in Section 3 . We note that the following results hold for any $T$ -conditional prediction-interval procedure $\mathcal{P}_{n}$ (not necessarily based on the method proposed in Section 3 ).
+
+ 
+ 
+ The first result only requires the i.i.d. assumption and a $T$ -conditional prediction-interval procedure at level $1-\alpha/2$ .
+
+ 
+ 
+
+## 
+ Theorem 1 . 
+
+ 
+ Let $\mathcal{P}_{n}$ be a $T$ -conditional prediction-interval procedure at level $1-\alpha/2$ in the sense of Definition 2 . Set $(l_{D_{n}},u_{D_{n}})=\mathcal{P}_{n}(D_{n})$ and 
+
+ 
+
+ 
+ 
+ $\Gamma_{D_{n}}(X)=\left[l_{D_{n}}(X,1)-u_{D_{n}}(X,-1),u_{D_{n}}(X,1)-l_{D_{n}}(X,-1)\right].$ 
+ 
+ (3) 
+ 
+ 
+ Then $\Gamma_{D_{n}}(X)$ is a prediction interval for $\tau(X)$ at level $1-\alpha$ . 
+
+ 
+ 
+ 
+ In this result, $\Gamma_{D_{n}}(X)$ controls coverage at level $1-\alpha$ , but $\mathcal{P}_{n}$ is a $T$ -conditional prediction-interval procedure at level $1-\alpha/2$ . We can improve this result (in terms of interval length) by assuming conditional independence of the errors $e_{X,-1}$ and $e_{X,1}$ given $X$ . Under this additional assumption, a $T$ -conditional prediction-interval procedure at level $\sqrt{1-\alpha}$ (which is strictly smaller than $1-\alpha/2$ for all $\alpha\in(0,1))$ is sufficient such that inequality $(\ref{ineq1})$ continues to hold.
+
+ 
+ 
+
+## 
+ Theorem 2 . 
+
+ 
+ Let $\mathcal{P}_{n}$ be a $T$ -conditional prediction-interval procedure at level $\sqrt{1-\alpha}$ in the sense of Definition 2 . Assume that $e_{X,-1}$ and $e_{X,1}$ are conditionally independent given $X$ . Set $(l_{D_{n}},u_{D_{n}})=\mathcal{P}_{n}(D_{n})$ and let $\Gamma_{D_{n}}(X)$ be defined as in ( 3 ). Then $\Gamma_{D_{n}}(X)$ is a prediction interval for $\tau(X)$ at level $1-\alpha$ . 
+
+ 
+ 
+ 
+ Both, Theorem 1 and 2 , have strong finite-sample coverage claims under minimal assumptions. Thus, it is not surprising that these intervals are conservative in certain situations. This is especially the case if the true regression function $f(x,t)$ is simple and easy to estimate (see the simulations of Section 4 ). In Theorem 1 and 2 we made no assumption on the accuracy of the estimated regression function $f_{D_{n}}(x,t)$ . This means that these intervals do not only take the variance of the error $e_{X,1}-e_{X,-1}$ but also the estimation error of $f_{D_{n}}(x,t)$ into account.
+
+ 
+ 
+ The intervals of the next result are much shorter, but the assumptions are considerable stronger and the coverage claim is weaker.
+
+ 
+ 
+
+## 
+ Theorem 3 . 
+
+ 
+ Let $\mathcal{A}_{n}$ a be consistent prediction procedure as given in Definition 1 . Let $\mathcal{P}_{n}$ be a $T$ -conditional prediction-interval procedure at level $1-\alpha$ as given in Definition 2 . Set $(l_{D_{n}},u_{D_{n}})$ and suppose that 
+
+ 
+
+ 
+ 
+ $\mathbb{P}\left(l_{D_{n}}(X,T)\leq f_{D_{n}}(X,T)\leq u_{D_{n}}(X,T)\right)~{}=~{}1.$ 
+ 
+ (4) 
+ 
+ 
+ Assume that conditional on $X$ , $(e_{X,1},e_{X,-1})^{\prime}$ is multivariate normal-distributed with $\mathrm{Var}(e_{X,1})=\mathrm{Var}(e_{X,-1})$ and non-negative covariance. For $t\in\{-1,1\}$ , set 
+
+ 
+
+ 
+ 
+ $\displaystyle\tilde{l}_{D_{n}}(X,t)$ 
+ $\displaystyle=f_{D_{n}}(X,t)-\frac{f_{D_{n}}(X,t)-l_{D_{n}}(X,t)}{\sqrt{2}};$ 
+ 
+ 
+ 
+ 
+ $\displaystyle\tilde{u}_{D_{n}}(X,t)$ 
+ $\displaystyle=f_{D_{n}}(X,t)+\frac{u_{D_{n}}(X,t)-f_{D_{n}}(X,t)}{\sqrt{2}}$ 
+ 
+ 
+ 
+ and 
+
+ 
+
+ 
+ 
+ $\Gamma_{D_{n}}(X)=\left[\tilde{l}_{D_{n}}(X,1)-\tilde{u}_{D_{n}}(X,-1),\tilde{u}_{D_{n}}(X,1)-\tilde{l}_{D_{n}}(X,-1)\right].$ 
+ 
+ 
+ 
+ Then $\Gamma_{D_{n}}(X)$ is an asymptotically valid prediction interval for $\tau(X)$ at level $1-\alpha$ . 
+
+ 
+ 
+ 
+ An inspection of the proof and the remark after Lemma 1 shows that if the errors $e_{X,-1}$ and $e_{X,1}$ are negatively correlated then Theorem 3 continuous to hold if we omit the factor $\sqrt{2}$ in the definition of $\tilde{l}_{D_{n}}(X,t)$ and $\tilde{u}_{D_{n}}(X,t)$ . (This means, $\tilde{l}_{D_{n}}(X,t)$ and $\tilde{u}_{D_{n}}(X,t)$ reduces to $l_{D_{n}}(X,t)$ and $u_{D_{n}}(X,t)$ , respectively.)
+
+ 
+ 
+ Because $\mathcal{A}_{n}$ is a consistent prediction procedure, the proof of the theorem basically reduces to showing an elementary probabilistic inequality for Gaussian random variables which is given in Lemma 1 of the appendix.
+
+ 
+ 
+ 
+ 
+
+## 
+ 3 $T$ -conditional prediction-interval procedures
+
+ 
+ Conformal prediction intervals control coverage marginally (Vovk et al.,, 2005 ) . But it is straightforward to construct conformal prediction intervals with coverage conditional on any event with positive probability. Loosely speaking, one only needs to apply the conformal method ”conditional” on the event of interest. For completeness, this section describes in detail how to apply the conformal method to construct $T$ -conditional prediction-interval procedures $\mathcal{P}_{n}$ in the sense of Definition 2 . Because computation of conformal prediction intervals is expensive and infeasible in certain situations, we also show how to adapt the “split-conformal” procedure ( Lei et al., ( 2018 ) ). Computation of the “split-conformal” prediction intervals is much cheaper but the resulting intervals are typically longer.
+
+ 
+ 
+
+## 
+ 3.1 Nonconformity measures and scores
+
+ 
+ In the following, we define the terms conformal procedure, nonconformity measure and nonconformity score.
+
+ 
+ 
+
+## 
+ Definition 4 . 
+
+ 
+ A conformal procedure $\mathcal{M}_{n}$ is a mapping from $\mathbb{D}^{n}$ into the set of measurable functions $\{m:\mathbb{D}\to[0,\infty)\}$ . We set 
+
+ 
+
+ 
+ 
+ $m_{D_{n}}=\mathcal{M}_{n}(D_{n}),$ 
+ 
+ 
+ 
+ where we call $m_{D_{n}}$ the nonconformity measure and $m_{D_{n}}(x,y,t)$ the nonconformity score of the observation $(x,y,t)\in\mathbb{D}$ . 
+
+ 
+ 
+ $\mathcal{M}_{n}$ is called permutation invariant if, for any $n\in\mathbb{N}$ , for any permutation $\sigma_{n}:\{1,\dots,n\}\to\{1,\dots,n\}$ and for any $(x,y,t)\in\mathbb{D}$ , 
+
+ 
+
+ 
+ 
+ $\mathbb{P}\left(m_{D_{n}}(x,y,t)=m_{D_{n,\sigma_{n}}}(x,t)\right)~{}=~{}1.$ 
+ 
+ 
+ 
+ where $D_{n,\sigma_{n}}=((X_{\sigma_{n}(1)},Y_{\sigma_{n}(1)},T_{\sigma_{n}(1)}),\dots,(X_{\sigma_{n}(n)},Y_{\sigma_{n}(n)},T_{\sigma_{n}(n)}))$ . 
+
+ 
+ 
+ 
+ In the following, we give examples of different nonconformity measures.
+
+ 
+ 
+
+## 
+ Example 1 (Absolute residuals) . 
+
+ 
+ The simplest nonconformity measure is given by 
+
+ 
+
+ 
+ 
+ $m_{D_{n}}(x,y,t)=|y-f_{D_{n}}(x,t)|.$ 
+ 
+ 
+ 
+ However, this measure is not optimal if the conditional variance of $Y$ given $X$ and $T$ is not constant, i.e., if the error $e_{X,T}$ is heteroscedastic. 
+
+ 
+ 
+ 
+
+## 
+ Example 2 (Absolute standardized residuals) . 
+
+ 
+ To take heteroscedasticity into account, one can define the nonconformity measure as 
+
+ 
+
+ 
+ 
+ $m_{D_{n}}(x,y,t)=|y-f_{D_{n}}(x,t)|/\sigma_{D_{n}}(x,t),$ 
+ 
+ 
+ 
+ where $\sigma_{D_{n}}^{2}(x,t)$ is an estimator for the conditional variance of $Y$ conditional on $X$ and $T$ . Typically, a kernel-based algorithm is used to obtain $\sigma_{D_{n}}^{2}(x,t)$ . 
+
+ 
+ 
+ 
+
+## 
+ Example 3 (ML-based measures) . 
+
+ 
+ Modern machine learning algorithms, such as neural networks, are able to estimate the distribution of the error $e_{X,t}$ and one can define nonconformity measures tailored to these algorithms as shown in Kivaranovic et al., ( 2019 ); Romano et al., ( 2019 ) . 
+
+ 
+ 
+ 
+ Note that the conformal procedure in these examples are permutation invariant, if the corresponding estimation procedures are permutation invariant.
+
+ 
+ 
+ 
+
+## 
+ 3.2 $T$ -conditional conformal prediction intervals
+
+ 
+ Let $D_{n+1}(y)$ denote the augmented dataset which contains $D_{n}$ and the pseudo observation $(X,y,T)$ , where $y\in\mathbb{R}$ . Recall that
+
+ 
+
+ 
+ 
+ $m_{D_{n+1}(y)}=\mathcal{M}_{n+1}(D_{n+1}(y)),$ 
+ 
+ 
+ 
+ is the nonconformity measure of the conformal procedure $\mathcal{M}_{n+1}$ evaluated at $D_{n+1}(y)$ . Denote by $D_{n+1,T}(y)$ the subset of observations in $D_{n+1}(y)$ with treatment equal to $T$ . Note that $D_{n+1,T}(y)$ is non-empty because $(X,y,T)$ is always contained. For ease of notation, we set
+
+ 
+
+ 
+ 
+ 
+ 
+ $m_{D_{n+1}(y)}(D_{n+1,T}(y))=\left\{m_{D_{n+1}(y)}((\tilde{X},\tilde{Y},\tilde{T})):(\tilde{X},\tilde{Y},\tilde{T})\in D_{n+1,T}(y),~{}\tilde{T}=T\right\},$ 
+
+ 
+ 
+ 
+ (5) 
+ 
+ 
+ this means, $m_{D_{n+1}(y)}(D_{n+1,T}(y))$ is the set of nonconformity scores of the nonconformity measure $m_{D_{n+1}(y)}$ evaluated on the random variables in $D_{n+1,T}(y)$ . Denote by $R_{D_{n+1}(y)}(y)$ the rank of $m_{D_{n+1}(y)}(X,y,T)$ among the random variables in $m_{D_{n+1}(y)}(D_{n+1,T}(y))$ . In case of ties, we use a data-independent tie-breaking rule. Let $N_{T}=\sum_{i=1}^{n}\mathds{1}_{\{T_{i}=T\}}$ and set
+
+ 
+
+ 
+ 
+ $\Gamma^{F}_{D_{n}}(X,T)=\left\{y\in\mathbb{R}:~{}R_{D_{n+1}(y)}(y)\leq\left\lceil(1-\alpha)\left(N_{T}+1\right)\right\rceil\right\}$ 
+ 
+ (6) 
+ 
+ 
+ (Note that if $\alpha(N_{T}+1)<1$ , then $\Gamma^{F}_{D_{n}}(X,T)=(-\infty,\infty)$ .) The superscript $F$ emphasizes that the full dataset is used for computation of the nonconformity measure. This is in contrast to the “split-conformal” version of the next section, where only a subset is used for computation of the nonconformity measure.
+
+ 
+ 
+
+## 
+ Theorem 4 . 
+
+ 
+ Let $\mathcal{M}_{n}$ be a permutation invariant conformal procedure as given in Definition 4 . Let $\Gamma^{F}_{D_{n}}(X,T)$ be defined as in ( 6 ). Let $t\in\{-1,1\}$ and set $p_{t}=\mathbb{P}(T=t)$ . Then 
+
+ 
+
+ 
+ 
+ $1-\alpha~{}\leq~{}\mathbb{P}\left(Y\in\Gamma^{F}_{D_{n}}(X,T)~{}|~{}T=t\right)~{}\leq~{}1-\alpha+\frac{1-(1-p_{t})^{n+1}}{(n+1)p_{t}}.$ 
+ 
+ 
+ 
+ 
+ 
+ 
+ The upper bound in this theorem converges to $1-\alpha$ as $n\to\infty$ , therefore, the procedure is asymptotically exact. We note that $\Gamma^{F}_{D_{n}}(X,T)$ is not an interval in general. But, obviously, the interval
+
+ 
+
+ 
+ 
+ $\left[\inf~{}\Gamma^{F}_{D_{n}}(X,T),\sup~{}\Gamma^{F}_{D_{n}}(X,T)\right]$ 
+ 
+ 
+ 
+ is a $T$ -conditional prediction interval for $Y$ , because it is a superset of $\Gamma^{F}_{D_{n}}(X,T)$ . Computation of $\Gamma^{F}_{D_{n}}(X,T)$ is very expensive if a brute-force approach is used because then one needs to compute the nonconformity measure $m_{D_{n+1}(y)}$ for all augmented datasets $D_{n+1}(y)$ , where $y\in\mathbb{R}$ . Of course, practically, we do this only on a sufficiently dense grid for $y$ , but if the dataset is large and one is using a modern learning algorithm, such as a neural network, this is computationally infeasible.
+
+ 
+ 
+ 
+
+## 
+ 3.3 $T$ -conditional “split-conformal” prediction intervals
+
+ 
+ For $1\leq m<n$ , $D_{m}$ is the dataset of the first $m$ observation and denote by $D_{m:n}$ the dataset of the remaining $n-m$ observations. Let $D_{m:(n+1)}(y)$ be the augmented dataset which contains $D_{m:n}$ and the pseudo observation $(X,y,T)$ . Denote by $D_{m:(n+1),T}(y)$ the subset of observations in $D_{m:(n+1)}(y)$ with treatment equal to $T$ . Again, $D_{m:(n+1),T}(y)$ is non-empty because $(X,y,T)$ is always contained. Let $m_{D_{m}}(D_{m:(n+1),T}(y))$ be defined as in ( 5 ) with $D_{m}$ replacing $D_{n+1}(y)$ and $D_{m:(n+1),T}(y)$ replacing $D_{n+1,T}(y)$ . This means, $m_{D_{m}}(D_{m:(n+1),T}(y))$ is the set nonconformity scores of the nonconformity measure $m_{D_{m}}$ evaluated on the random variables in $D_{m:(n+1),T}(y)$ . Denote by $R_{D_{m}}(y)$ the rank of $m_{D_{m}}(X,y,T)$ among the random variables in $D_{m:(n+1),T}(y)$ . In case of ties, we use a data-independent tie-breaking rule. Let $\tilde{N}_{T}=\sum_{i=m+1}^{n}\mathds{1}_{\{T_{i}=T\}}$ and set
+
+ 
+
+ 
+ 
+ $\Gamma^{S}_{D_{n}}(X,T)=\left\{y\in\mathbb{R}:~{}R_{D_{m}}(y)\leq\left\lceil(1-\alpha)\left(\tilde{N}_{T}+1\right)\right\rceil\right\}$ 
+ 
+ (7) 
+ 
+ 
+ (Note that if $\alpha(\tilde{N}_{T}+1)<1$ then $\Gamma^{S}_{D_{n}}(X,T)=(-\infty,\infty)$ .) The superscript $S$ emphasizes that only a subset of the data is used for computation of the nonconformity measure.
+
+ 
+ 
+
+## 
+ Theorem 5 . 
+
+ 
+ Let $\mathcal{M}_{n}$ be a conformal procedure as given in Definition 4 . Let $\Gamma^{S}_{D_{n}}(X,T)$ be defined as in ( 7 ). Let $t\in\{-1,1\}$ and set $p_{t}=\mathbb{P}(T=t)$ , 
+
+ 
+
+ 
+ 
+ $1-\alpha~{}\leq~{}\mathbb{P}\left(Y\in\Gamma^{S}_{D_{n}}(X,T)~{}|~{}T=t\right)~{}\leq~{}1-\alpha+\frac{1-(1-p_{t})^{n-m+1}}{(n-m+1)p_{t}}.$ 
+ 
+ 
+ 
+ 
+ 
+ 
+ Again, the upper bound converges to $1-\alpha$ as $n-m\to\infty$ , therefore, the procedure is asymptotically exact. Note that in the “split-conformal” case, we do not need that $\mathcal{M}_{n}$ is permutation invariant. Computation of $\Gamma^{S}_{D_{n}}(X,T)$ is much cheaper, because we need to calculate the nonconformity measure only once on $D_{m}$ . The set $\Gamma^{S}_{D_{n}}(X,T)$ is an interval if the nonconformity measure $m_{D_{n}}$ is convex in $y$ , which is typically the case for the most common nonconformity measures.
+
+ 
+ 
+ 
+ 
+
+## 
+ 4 Simulation
+
+ 
+ We fixed the covariate dimension $d=10$ and the significance level $\alpha=0.1$ . Further, we set $\mathbb{P}(T=1)=1/2$ . We considered 4 different sample sizes: $n=300,700,1200,2000$ . The covariate vector $X$ is $N(0,\Sigma)$ -distributed, where $\Sigma$ is a $10\times 10$ matrix where each element on the diagonal is equal $1$ and each element off the diagonal is equal to $\rho$ . We considered two values for $\rho$ : $0.2$ (low correlation) and $0.8$ (high correlation). We considered two different regression functions:
+
+ 
+
+ 
+ 
+ $f_{1}(x,t)=x_{1}+x_{2}+x_{3}+t\quad\text{and}\quad f_{2}(x,t)=\mathrm{sign}(f_{1}(x,t))f_{1}(x,t)^{2}.$ 
+ 
+ 
+ 
+ We also considered two different distributions for the error distribution: $e_{X,t}$ conditional on $X$ is either a standard normal distributed or Laplace distributed with variance $1$ . Considering all possible combinations, we have 8 different data generating processes in total: LOW COR vs. HIGH COR, LINEAR vs. NON LINEAR and NORMAL vs. LAPLACE.
+
+ 
+ 
+ We also considered two different $T$ -conditional prediction interval procedures: The first is the linear least squares method with the absolute error as nonconformity measure (as described in Example 1). Because linear models are very fast to fit, we use the full conformal version as described in Section 3.2 to construct the prediction intervals. The second is a neural network with one hidden layer and ten hidden nodes and the same nonconformity measure as in the previous case. Because fitting a neural network is computationally more expensive, we use the split conformal approach as described in Section 3.3 . We used 2/3 of the data for training of the model and 1/3 for computation of the nonconformity scores. For both methods, we constructed the prediction interval as described in Theorem 2 and 3 . This means, in total we have 4 different prediction intervals which we label LM1, LM2, NN1 and NN2. Here LM denotes the linear least squares method, NN the neural network and 1 and 2 denote the construction as described in Theorem 2 and 3 , respectively.
+
+ 
+ 
+ For each of the $4$ sample sizes, $8$ data generating processes and $4$ prediction intervals, we repeated the following steps $1000$ times: First, we draw the dataset $D_{n}$ and the new covariate vector $X$ and the prediction interval for $\tau(X)$ . Then we draw $\tau(X)$ . And, finally, we compute the length of the prediction interval and check if it covers $\tau(X)$ . The length of the prediction intervals is computed relative to the length of the oracle which knows the underlying data generating process. To compute the conformal prediction intervals, we took a sufficiently large grid with step size $.1$ and defined the interval as the smallest and largest value in the grid that satisfied the condition ( 6 ). The results are summarized in Figure 1 and 2.
+
+ 
+ 
+ In Figure 1, all data generating processes with Gaussian error distribution are shown. We see that the methods LM1 and NN1 always control coverage. This is in line with Theorem 2 which guarantees finite sample coverage in all these situations. But, because of the strong coverage claim, these intervals are also very conservative, especially when the true regression function is a simple linear model (first and second row). Furthermore, we see that the method NN1 significantly outperforms LM1 (in terms of length) when the true model is non linear (third and fourth row) and the sample size grows. This means, the neural network is able to estimate the non linear regression function more accurately as the sample size grows and, therefore, gives more accurate intervals. The linear regression is clearly not able to do this.
+
+ 
+ 
+ On the other hand, the methods LM2 and NN2 are much closer to the nominal level of 90% and their lengths are much closer to the oracle. But we note that the assumptions of Theorem 3 are much stronger. We see that LM2 is nearly optimal (in terms of coverage and length) if the true regression function is linear. The method NN2 performs only marginally worse in these cases. This is not surprising because both, linear regression and neural networks, are able to consistently estimate linear functions. NN2 performs a bit worse because the complexity of the neural network is not required for the simple structure of the linear regression function. In the cases where the true regression function is non linear (third and fourth row), the method LM2 has coverage consistently below the nominal level. Furthermore, the length of the intervals is up to 4 times larger than of the oracle and does not improve with growing sample size. Clearly, LM2 does not satisfy the assumptions of Theorem 3 and there for it is not surprising that it does not control coverage. However, NN2 performs much better in these situations. The coverage of NN2 is close to the nominal level and the length converges to the length of the oracle as the sample size grows. This shows that the gain of complex models is very high if sufficient data is available and the true regression function not linear. NN2 controls not only the coverage more accurately, the intervals are also shorter by a factor 3 to 4.
+
+ 
+ 
+ To demonstrate the robustness of our results, Figure 2 shows the same data generating processes with Laplace error instead of Gaussian error. All four methods behave very similarly to the Gaussian case. This suggests that Theorem 3 may be valid for a wider class of distributions.
+
+ 
+ 
+ 
+
+## 
+ 5 Discussion
+
+ 
+ In this manuscript we proposed several methods to construct prediction intervals for the estimation of individual treatment effects based on complex prediction models such as regression models with variable selection or neural network algorithms. The prediction intervals give bounds for the differences between the outcomes under treatment and control for individual patients. This is in contrast to confidence intervals for the predicted individual treatment effect, which estimate the expected individual treatment effect for patients with specific baseline characteristics.
+
+ 
+ 
+ The intervals of Theorem 1 and 2 control coverage of the individual treatment effect under minimal assumptions. Theorem 3 provides considerably shorter intervals that are valid under stronger assumptions. A limitation in the interpretation of conformal prediction interval is that the coverage probabilities are guaranteed on a population level only, but not conditional on a specific vector of covariates. Especially, they are only meaningful, if predictions are made for a population with the same covariate distribution as the population from which the intervals were computed. This is in contrast to the classical prediction intervals, e.g., for linear models, that also provide conditional coverage, given the value of the covariates.
+
+ 
+ 
+ The width of the prediction intervals can be a useful measure to compare different prediction models. While more flexible models may be able to explain more variability by adjusting for more covariates or more complex function of the covariates, they also introduce variability because of increasing uncertainties in the model estimates for more extensive models. As demonstrated in the simulation study, if the sample size is low simpler models, even though they are miss-specified, can lead to narrower prediction intervals than more complex models which overfit the data and lead to highly variable model estimates.
+
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+ 
+ 
+ 
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+ 
+ 
+ Figure 1 : Empirical coverage is shown on the l.h.s. (standard error is approximately 1%). The dotted line at .9 denotes the nominal confidence level. On the r.h.s., the relative length compared to the oracle is shown. The dotted line at 1 denotes the length of the oracle. The data generating process is given above each graph. Each setting is simulated with Gaussian errors. 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+ 
+ 
+ 
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+ 
+ 
+ Figure 2 : The results of the same simulation settings as in Figure 1 are shown but with Laplace error distribution instead of Gaussian error distribution. 
+ 
+ 
+ 
+ 
+
+## 
+ Appendix A Proofs of the results
+
+ 
+
+## 
+ A.1 Proof of Theorem 1 and 2 
+
+ 
+
+## Proof of Theorem 1 .
+
+ 
+ By definition of $\Gamma_{D_{n}}(X)$ , we have
+
+ 
+
+ 
+ 
+ $\displaystyle\left\{f(X,-1)+\epsilon_{X,-1} \in[l_{D_{n}}(X,-1),u_{D_{n}}(X,-1)]\right\}$ 
+ 
+ 
+ 
+ 
+ $\displaystyle\cap~{}\left\{f(X,1)+\epsilon_{X,1} \in[l_{D_{n}}(X,1),u_{D_{n}}(X,1)]\right\}$ 
+ 
+ 
+ 
+ 
+ $\displaystyle\subseteq\left\{\tau(X)\in\Gamma_{D_{n}}(X)\right\}.$ 
+ 
+ 
+ 
+ This means, it is sufficient to show that the probability of the smaller event is larger than $1-\alpha$ . For $t\in\{-1,1\}$ , we have
+
+ 
+
+ 
+ 
+ $\displaystyle\mathbb{P}\left(Y \in[l_{D_{n}}(X,T),u_{D_{n}}(X,T)]~{}|~{}T=t\right)$ 
+ 
+ 
+ 
+ 
+ $\displaystyle=\mathbb{P}\left(f(X,t)+\epsilon_{X,t} \in[l_{D_{n}}(X,t),u_{D_{n}}(X,t)]~{}|~{}T=t\right)$ 
+ 
+ 
+ 
+ 
+ $\displaystyle=\mathbb{P}\left(f(X,t)+\epsilon_{X,t} \in[l_{D_{n}}(X,t),u_{D_{n}}(X,t)]\right),$ 
+ 
+ 
+ 
+ where the last equation follows because $T$ is independent of $D_{n}$ and $X$ . If $\mathcal{P}_{n}$ is a $T$ -conditional prediction interval procedure at level $1-\alpha/2$ , the previous equation implies that
+
+ 
+
+ 
+ 
+ $\mathbb{P}\left(f(X,t)+\epsilon_{X,t} \in[l_{D_{n}}(X,t),u_{D_{n}}(X,t)]\right)>1-\alpha/2$ 
+ 
+ 
+ 
+ for $t\in\{-1,1\}$ . Hence the probability of the intersection is bounded from below by $1-\alpha$ .
+
+ 
+ 
+ ∎
+
+ 
+ 
+ 
+
+## Proof of Theorem 2 .
+
+ 
+ Set
+
+ 
+
+ 
+ 
+ $A_{t}=\{f(X,t)+\epsilon_{X,t} \in[l_{D_{n}}(X,t),u_{D_{n}}(X,t)]\}.$ 
+ 
+ 
+ 
+ Because of the observation at the beginning of the previous proof, it is sufficient to show that
+
+ 
+
+ 
+ 
+ $\mathbb{P}(A_{-1}\cap A_{1})=\mathbb{E}\left[\mathbb{P}\left(A_{-1}\cap A_{1}~{}|~{} X,D_{n}\right)\right].$ 
+ 
+ 
+ 
+ is bounded from below by $1-\alpha$ . Observe that, conditional on $X$ and $D_{n}$ , the only random quantities in $A_{-1}$ and $A_{1}$ are $e_{X,-1}$ and $e_{X,1}$ , respectively. Because $e_{X,-1}$ and $e_{X,1}$ are conditionally independent given $X$ , it follows that
+
+ 
+
+ 
+ 
+ $\mathbb{P}\left(A_{-1}\cap A_{1}~{}|~{} X,D_{n}\right)=\mathbb{P}\left(A_{-1}~{}|~{} X,D_{n}\right)\mathbb{P}\left(A_{1}~{}|~{} X,D_{n}\right)$ 
+ 
+ 
+ 
+ and therefore it is sufficient to show that
+
+ 
+
+ 
+ 
+ $\mathbb{E}\left[\mathbb{P}\left(A_{-1}~{}|~{} X,D_{n}\right)\mathbb{P}\left(A_{1}~{}|~{} X,D_{n}\right)\right].$ 
+ 
+ 
+ 
+ is bounded from below by $1-\alpha$ . Because the product function is convex on $[0,1]^{2}$ , the Jensen inequality implies that the previous expression is bounded from below by
+
+ 
+
+ 
+ 
+ $\mathbb{E}\left[\mathbb{P}\left(A_{-1}~{}|~{} X,D_{n}\right)\right]\mathbb{E}\left[\mathbb{P}\left(A_{1}~{}|~{} X,D_{n}\right)\right]=\mathbb{P}(A_{-1})\mathbb{P}(A_{1})\geq 1-\alpha.$ 
+ 
+ 
+ 
+ ∎
+
+ 
+ 
+ 
+ 
+
+## 
+ A.2 Proof of Theorem 3 
+
+ 
+ Before we prove the theorem, we need the following two lemmas.
+
+ 
+ 
+
+## 
+ Lemma 1 . 
+
+ 
+ Let $(W_{1},W_{2})^{\prime}$ be a 2-dimensional centered Gaussian random vector with $\mathrm{Var}(W_{1})=\mathrm{Var}(W_{2})$ and non-negative covariance. For any $l_{1},l_{2}\leq 0$ and $u_{1},u_{2}\geq 0$ , we have 
+
+ 
+
+ 
+ 
+ $\displaystyle\mathbb{P}\left(\frac{l_{1}-u_{2}}{\sqrt{2}}\leq W_{1}-W_{2}~{}\leq~{}\frac{u_{1}-l_{2}}{\sqrt{2}}\right)~{}$ 
+ $\displaystyle\geq~{}\frac{1}{2}~{}\mathbb{P}\left(l_{1}\leq W_{1}\leq u_{1}\right)$ 
+ 
+ 
+ 
+ 
+ 
+ $\displaystyle+~{}\frac{1}{2}~{}\mathbb{P}\left(l_{2}\leq W_{2}\leq u_{2}\right).$ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+## Proof.
+
+ 
+ We set $\sigma^{2}=\mathrm{Var}(W_{1})=\mathrm{Var}(W_{2})$ . Because the covariance of $W_{1}$ and $W_{2}$ is non-negative, it follows that the variance of $W_{1}-W_{2}$ is bounded from above by $2\sigma^{2}$ . This implies that the probability on the l.h.s. of the inequality of the lemma
+is bounded from below by
+
+ 
+
+ 
+ 
+ $\Phi\left(\frac{u_{1}-l_{2}}{2\sigma}\right)-\Phi\left(\frac{l_{1}-u_{2}}{2\sigma}\right)=\Phi\left(\frac{u_{1}-l_{2}}{2\sigma}\right)+\Phi\left(\frac{u_{2}-l_{1}}{2\sigma}\right)-1,$ 
+ 
+ 
+ 
+ where $\Phi(x)$ is the cumulative distribution function of the standard normal distribution. Because $\Phi(x)$ is concave on the non-negative real numbers and $u_{1}$ and $-l_{1}$ are non-negative, it follows that
+
+ 
+
+ 
+ 
+ $\Phi\left(\frac{u_{1}-l_{2}}{2\sigma}\right)\geq\frac{1}{2}\Phi\left(\frac{u_{1}}{\sigma}\right)+\frac{1}{2}\Phi\left(\frac{-l_{2}}{\sigma}\right).$ 
+ 
+ 
+ 
+ and likewise for the second summand on the r.h.s. of the previous equation. But this implies the inequality of the lemma.
+∎
+
+ 
+ 
+ 
+ If the random variables $W_{1}$ and $W_{2}$ are negatively correlated, an inspection of the proof shows that the lemma continuous to hold if we replace $(l_{1}-u_{2})/\sqrt{2}$ and $(u_{1}-l_{2})/\sqrt{2}$ by $l_{1}-u_{2}$ and $u_{1}-l_{2}$ on the l.h.s. of the inequality, respectively.
+
+ 
+ 
+
+## 
+ Lemma 2 . 
+
+ 
+ Let $W$ be a centered Gaussian distribution. Let $l,u\in \mathbb{R}$ with $l \leq u$ . Then for all $\epsilon>0$ , we have 
+
+ 
+
+ 
+ 
+ $\mathbb{P}(l+\epsilon\leq W\leq u-\epsilon)\geq\mathbb{P}(l\leq W\leq u)-2\mathbb{P}(-\epsilon/2\leq W\leq\epsilon/2).$ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+## Proof.
+
+ 
+ We can write the probability on the r.h.s. as
+
+ 
+
+ 
+ 
+ $\mathbb{P}(l\leq W\leq u)-\mathbb{P}(u-\epsilon\leq W\leq u)-\mathbb{P}(l\leq W\leq l+\epsilon).$ 
+ 
+ 
+ 
+ Because the p.d.f. of a centered Gaussian distribution is symmetric around $0$ and is strictly decreasing on the positive reals, it follows that the second and third probability are bounded from above by $\mathbb{P}(-\epsilon/2\leq W\leq\epsilon/2)$ .
+∎
+
+ 
+ 
+ 
+ We continue now with the proof of Theorem 3 .
+
+ 
+ 
+
+## Proof.
+
+ 
+ Fix an $\epsilon>0$ . Let $K\subset\mathbb{R}^{d}$ be compact and set
+
+ 
+
+ 
+ 
+ $B_{1}=\{X\in K\}$ 
+ 
+ 
+ 
+ and
+
+ 
+
+ 
+ 
+ $B_{2,n}=\left\{\sup_{(x,t)\in K\times\{-1,1\}}|f_{D_{n}}(x,t)-f(x,t)|<\epsilon\right\}.$ 
+ 
+ 
+ 
+ Since $X$ is stochastically bounded (it is $\mathbb{R}^{d}$ -valued), we can choose $K$ large enough such that $\mathbb{P}(B_{1})$ is arbitrarily close to 1. Because $\mathcal{A}_{n}$ is a consistent prediction procedure, we can choose $n$ large enough such that $\mathbb{P}(B_{2,n})$ is arbitrarily close to 1. This means, we can choose $K$ and $n$ large enough such that $\mathbb{P}(B_{1}\cap B_{2,n})$ is arbitrarily close to $1$ . Note that proving $\mathbb{P}(\tau(X)\in\Gamma_{D_{n}}(X))\geq 1-\alpha$ as $n\to\infty$ is equivalent to proving that
+
+ 
+
+ 
+ 
+ $\mathbb{P}\left(\tau(X)\in\Gamma_{D_{n}}(X)~{}|~{}B_{1}\cap B_{2,n}\right)$ 
+ 
+ 
+ 
+ is bounded from below by $1-\alpha$ as $\mathbb{P}(B_{1}\cap B_{2,n})$ converges to 1. Observe that we can write the conditional probability as
+
+ 
+
+ 
+ 
+ $\frac{\mathbb{E}\left[\mathbb{E}[\mathds{1}_{\{\tau(X)\in\Gamma_{D_{n}}(X)\}}\mathds{1}_{B_{1}\cap B_{2,n}}~{}|~{}X,D_{n}]\right]}{\mathbb{P}(B_{1}\cap B_{2,n})}.$ 
+ 
+ 
+ 
+ Because the event $B_{1}\cap B_{2,n}$ only depends on $X$ and $D_{n}$ (and is therefore measurable with respect to the $\sigma$ -Algebra generated by $X$ and $D_{n}$ ), the conditional expectation in the numerator is equal to $\mathbb{P}(\tau(X)\in\Gamma_{D_{n}}(X)|X,D_{n})\mathds{1}_{B_{1}\cap B_{2,n}}$ . But this implies that the conditional probability is equal to
+
+ 
+
+ 
+ 
+ $\mathbb{E}\left[\mathbb{P}(\tau(X)\in\Gamma_{D_{n}}(X)~{}|~{}X,D_{n})|B_{1}\cap B_{2,n}\right].$ 
+ 
+ (8) 
+ 
+ 
+ Observe that
+
+ 
+
+ 
+ 
+ $\displaystyle\{\tau(X)\in\Gamma_{D_{n}}(X)\}~{}=~{}\bigg{\{}$ 
+ $\displaystyle(\tilde{l}_{D_{n}}(X,1)-f(X,1))-(\tilde{u}_{D_{n}}(X,-1)-f(X,-1))$ 
+ 
+ 
+ 
+ 
+ 
+ $\displaystyle\leq~{}e_{X,1}-e_{X,-1}~{}$ 
+ 
+ 
+ 
+ 
+ 
+ $\displaystyle\leq~{}(\tilde{u}_{D_{n}}(X,1)-f(X,1))-(\tilde{l}_{D_{n}}(X,-1)-f(X,-1))\bigg{\}}.$ 
+ 
+ 
+ 
+ On the event $B_{1}\cap B_{2,n}$ , we have $|f(X,t)-f_{D_{n}}(X,t)|<\epsilon$ for all $t\in\{-1,1\}$ . This means that ( 8 ) becomes only smaller if we replace $\{\tau(X)\in\Gamma_{D_{n}}(X)\}$ by
+
+ 
+
+ 
+ 
+ $\displaystyle\bigg{\{}$ 
+ $\displaystyle(\tilde{l}_{D_{n}}(X,1)-f_{D_{n}}(X,1))-(\tilde{u}_{D_{n}}(X,-1)-f_{D_{n}}(X,-1))+2\epsilon$ 
+ 
+ 
+ 
+ 
+ 
+ $\displaystyle\leq~{}e_{X,1}-e_{X,-1}~{}$ 
+ 
+ 
+ 
+ 
+ 
+ $\displaystyle\leq~{}(\tilde{u}_{D_{n}}(X,1)-f_{D_{n}}(X,1))-(\tilde{l}_{D_{n}}(X,-1)-f_{D_{n}}(X,-1))-2\epsilon\bigg{\}}.$ 
+ 
+ 
+ 
+ By definition of $\tilde{l}_{D_{n}}(X,t)$ and $\tilde{u}_{D_{n}}(X,t)$ , $t\in\{-1,1\}$ , the previous set is equal to
+
+ 
+
+ 
+ 
+ $\displaystyle\bigg{\{}$ 
+ $\displaystyle-\frac{f_{D_{n}}(X,1)-l_{D_{n}}(X,1))}{\sqrt{2}}-\frac{u_{D_{n}}(X,-1)-f_{D_{n}}(X,-1)}{\sqrt{2}}+2\epsilon$ 
+ 
+ 
+ 
+ 
+ 
+ $\displaystyle\leq~{}e_{X,1}-e_{X,-1}~{}$ 
+ 
+ 
+ 
+ 
+ 
+ $\displaystyle\leq~{}\frac{u_{D_{n}}(X,1)-f_{D_{n}}(X,1)}{\sqrt{2}}+\frac{f_{D_{n}}(X,-1)-l_{D_{n}}(X,-1)}{\sqrt{2}}-2\epsilon\bigg{\}}.$ 
+ 
+ 
+ 
+ Observe that conditional on $X$ and $D_{n}$ , the only random quantities remaining are $e_{X,-1}$ and $e_{X,1}$ . For $t\in\{-1,1\}$ , we have by assumption that $e_{X,t}$ given $X$ is a centered Gaussian. Because $D_{n}$ is independent of $e_{X,t}$ , the same follows for $e_{X,t}$ given $X$ and $D_{n}$ . Therefore, Lemma 2 implies that ( 8 ) becomes only smaller if we replace the conditional probability in ( 8 ) by
+
+ 
+
+ 
+ 
+ $\displaystyle\mathbb{P}\bigg{(}$ 
+ $\displaystyle-\frac{f_{D_{n}}(X,1)-l_{D_{n}}(X,1))}{\sqrt{2}}-\frac{u_{D_{n}}(X,-1)-f_{D_{n}}(X,-1)}{\sqrt{2}}$ 
+ 
+ 
+ 
+ 
+ 
+ $\displaystyle\leq~{}e_{X,1}-e_{X,-1}$ 
+ 
+ 
+ 
+ 
+ 
+ $\displaystyle\leq~{}\frac{u_{D_{n}}(X,1)-f_{D_{n}}(X,1)}{\sqrt{2}}+\frac{f_{D_{n}}(X,-1)-l_{D_{n}}(X,-1)}{\sqrt{2}}~{}|~{}X,D_{n}\bigg{)}$ 
+ 
+ 
+ 
+ 
+ 
+ $\displaystyle+2\mathbb{P}\left(-\epsilon\leq e_{X,1}-e_{X,-1}\leq\epsilon~{} |~{}X,D_{n}\right).$ 
+ 
+ 
+ 
+ In view of ( 4 ), we have $f_{D_{n}}(X,t)-l_{D_{n}}(X,t)\geq 0$ a.s. and $u_{D_{n}}(X,t)-f_{D_{n}}(X,t)\geq 0$ a.s. for all $t\in\{-1,1\}$ . By assumption, $\epsilon_{X,-1}$ and $\epsilon_{X,1}$ , conditional on $X$ , are centered multivariate Gaussian with the same variance and non-negative correlation. Because $D_{n}$ is independent of $e_{X,t}$ , the same follows for $\epsilon_{X,-1}$ and $\epsilon_{X,1}$ given $X$ and $D_{n}$ . Lemma 1 implies that the first summand in the previous expression is bounded from below by
+
+ 
+
+ 
+ 
+ $\frac{1}{2}\sum_{t\in\{-1,1\}}\mathbb{P}\left(l_{D_{n}}(X,t)-f_{D_{n}}(X,t)\leq e_{X,t}\leq u_{D_{n}}(X,t)-f_{D_{n}}(X,t)~{} |~{}X,D_{n}\right).$ 
+ 
+ 
+ 
+ Because $|f(X,t)-f_{D_{n}}(X,t)|<\epsilon$ on the event $B_{1}\cap B_{2,n}$ , conditional on $B_{1}\cap B_{2,n}$ , the previous sum is bounded from below by
+
+ 
+
+ 
+ 
+ $\displaystyle\frac{1}{2}\sum_{t\in\{-1,1\}}\mathbb{P}\left(l_{D_{n}}(X,t)-f(X,t)\leq e_{X,t}\leq u_{D_{n}}(X,t)-f(X,t)~{} |~{}X,D_{n}\right)$ 
+ 
+ 
+ 
+ 
+ $\displaystyle-~{}\sum_{t\in\{-1,1\}}\mathbb{P}\left(-\epsilon/2\leq e_{X,t}\leq\epsilon/2~{} |~{}X,D_{n}\right).$ 
+ 
+ 
+ 
+ (We replace the first $f_{D_{n}}(X,t)$ by $f(X,t)-\epsilon$ and the second by $f(X,t)+\epsilon$ and then apply Lemma 2 .) Using the same argumentation as in the paragraph above ( 8 ) (only in the reverse direction), we can conclude that ( 8 ) is bounded from below by
+
+ 
+
+ 
+ 
+ $\displaystyle\frac{1}{2}\sum_{t\in\{-1,1\}}\mathbb{P}\left(l_{D_{n}}(X,t)-f(X,t)\leq e_{X,t}\leq u_{D_{n}}(X,t)-f(X,t)~{}|~{}B_{1}\cap B_{2,n}\right)$ 
+ 
+ 
+ 
+ 
+ $\displaystyle-~{}\sum_{t\in\{-1,1\}}\mathbb{P}\left(-\epsilon/2\leq e_{X,t}\leq\epsilon/2~{} |~{}B_{1}\cap B_{2,n}\right)$ 
+ 
+ 
+ 
+ 
+ $\displaystyle-2\mathbb{P}\left(-\epsilon\leq e_{X,1}-e_{X,-1}\leq\epsilon~{} |~{}B_{1}\cap B_{2,n}\right).$ 
+ 
+ 
+ 
+ Since we want to show that this is bounded from below by $1-\alpha$ as $\mathbb{P}(B_{1}\cap B_{2,n})$ converges to $1$ , it is equivalent to showing that
+
+ 
+
+ 
+ 
+ $\displaystyle\frac{1}{2}\sum_{t\in\{-1,1\}}\mathbb{P}\left(l_{D_{n}}(X,t)-f(X,t)\leq e_{X,t}\leq u_{D_{n}}(X,t)-f(X,t)\right)$ 
+ 
+ 
+ 
+ 
+ $\displaystyle-~{}\sum_{t\in\{-1,1\}}\mathbb{P}\left(-\epsilon/2\leq e_{X,t}\leq\epsilon/2\right)$ 
+ 
+ 
+ 
+ 
+ $\displaystyle-2\mathbb{P}\left(-\epsilon\leq e_{X,1}-e_{X,-1}\leq\epsilon\right).$ 
+ 
+ 
+ 
+ is bounded from below by $1-\alpha$ as $n\to\infty$ . Observe that the first summand is equal to
+
+ 
+
+ 
+ 
+ $\frac{1}{2}\sum_{t\in\{-1,1\}}\mathbb{P}\left(Y\in[l_{D_{n}}(X,t),u_{D_{n}}(X,t)]~{}|~{}T=t\right)$ 
+ 
+ 
+ 
+ which is bounded from below by $1-\alpha$ for every $n$ by assumption. Since $(e_{X,-1},e_{X,1})^{\prime}$ conditional on $X$ is multivariate Gaussian, it follows that $(e_{X,-1},e_{X,1})^{\prime}$ has no point mass unconditionally. Because $\epsilon$ was arbitrary, we can make the second and third summand arbitrarily small.
+
+ 
+ 
+ ∎
+
+ 
+ 
+ 
+ 
+
+## 
+ A.3 Proofs of Theorem 4 and 5 
+
+ 
+
+## Proof of Theorem 4 .
+
+ 
+ Set
+
+ 
+
+ 
+ 
+ $N_{t}=\sum_{i=1}^{n}\mathds{1}_{\{T_{i}=t\}}.$ 
+ 
+ 
+ 
+ Observe that $N_{t}$ is $\mathrm{Binom}(n,p_{t})$ -distributed. Conditional on $\{N_{t},T=t\}$ , the set $D_{n+1,T}(Y)$ has cardinality $N_{t}+1$ and the conditional joint distribution of the random variables in $m_{D_{n+1}(Y)}(D_{n+1,T}(Y))$ is exchangeable. This implies that the conditional distribution of $R_{D_{n+1}(Y)}(Y)$ is a discrete uniform distribution on $\{1,\dots,N_{t}+1\}$ . Hence, it follows that
+
+ 
+
+ 
+ 
+ $\displaystyle 1-\alpha~{}$ 
+ $\displaystyle\leq~{}\frac{\lceil(1-\alpha)(N_{t}+1)\rceil}{N_{t}+1}$ 
+ 
+ 
+ 
+ 
+ 
+ $\displaystyle=~{}\mathbb{P}\left(R_{D_{n+1}(Y)}(Y)\leq\lceil(1-\alpha)(N_{t}+1)\rceil~{}|~{}N_{t},T=t\right)$ 
+ 
+ 
+ 
+ 
+ 
+ $\displaystyle\leq~{}1-\alpha+\frac{1}{N_{t}+1}$ 
+ 
+ 
+ 
+ This means that the conditional probability
+
+ 
+
+ 
+ 
+ $\mathbb{P}\left(R_{D_{n+1}(Y)}(Y)\leq\lceil(1-\alpha)N_{t}\rceil~{}|~{}T=t\right)$ 
+ 
+ 
+ 
+ is also bounded from below by $1-\alpha$ . For the upper bound, we need to compute the first moment of $(N_{t}+1)^{-1}$ , where $N_{t}$ is $\mathrm{Binom}(n,p_{t})$ -distributed. Chao and Strawderman, ( 1972 ) showed that this is equal to $(1-(1-p_{t})^{n+1})/((n+1)p_{t})$ .
+∎
+
+ 
+ 
+ 
+
+## Proof of Theorem 5 .
+
+ 
+ Set
+
+ 
+
+ 
+ 
+ $\tilde{N}_{t}=\sum_{i=m+1}^{n}\mathds{1}_{\{T_{i}=t\}}.$ 
+ 
+ 
+ 
+ Observe that $\tilde{N}_{t}$ is $\mathrm{Binom}(n-m,p_{t})$ -distributed. Conditional on $\{\tilde{N}_{t},T=t\}$ , the set $D_{m:(n+1),T}(Y)$ has cardinality $\tilde{N}_{t}+1$ and the random variables in $m_{D_{m}}(D_{m:(n+1),T}(Y))$ are exchangeable because the dataset $D_{m}$ is independent of the random variables in $D_{m:(n+1),T}(Y))$ . This implies that the conditional distribution of $R_{D_{m}}(Y)$ is a discrete uniform on $\{1,\dots,\tilde{N}_{t}+1\}$ and therefore
+
+ 
+
+ 
+ 
+ $\displaystyle 1-\alpha~{}$ 
+ $\displaystyle\leq~{}\frac{\lceil(1-\alpha)(\tilde{N}_{t}+1)\rceil}{\tilde{N}_{t}+1}$ 
+ 
+ 
+ 
+ 
+ 
+ $\displaystyle=~{}\mathbb{P}\left(R_{D_{m}}(Y)\leq\lceil(1-\alpha)(\tilde{N}_{t}+1)\rceil~{}|~{}\tilde{N}_{t},T=t\right)$ 
+ 
+ 
+ 
+ 
+ 
+ $\displaystyle\leq 1-\alpha+\frac{1}{(\tilde{N}_{t}+1)}.$ 
+ 
+ 
+ 
+ The claim now follows by the same argument as in the proof of Theorem 4 .
+∎
+
+ 
+ 
+ 
+ 
+ 
+
+## References
+
+ 
+ 
+ Ballarini et al., (2018) 
+ 
+Ballarini, N. M., Rosenkranz, G. K., Jaki, T., König, F., and Posch, M.
+(2018).
+
+ 
+ Subgroup identification in clinical trials via the predicted
+individual treatment effect.
+
+ 
+ PloS one , 13(10).
+
+ 
+ 
+ 
+ Bauer and Kohler, (2019) 
+ 
+Bauer, B. and Kohler, M. (2019).
+
+ 
+ On deep learning as a remedy for the curse of dimensionality in
+nonparametric regression.
+
+ 
+ The Annals of Statistics , 47(4):2261–2285.
+
+ 
+ 
+ 
+ Chao and Strawderman, (1972) 
+ 
+Chao, M. T. and Strawderman, W. E. (1972).
+
+ 
+ Negative moments of positive random variables.
+
+ 
+ Journal of the American Statistical Association ,
+67(338):429–431.
+
+ 
+ 
+ 
+ Cybenko, (1989) 
+ 
+Cybenko, G. (1989).
+
+ 
+ Approximation by superpositions of a sigmoidal function.
+
+ 
+ Mathematics of control, signals and systems , 2(4):303–314.
+
+ 
+ 
+ 
+ Graf et al., (2020) 
+ 
+Graf, A. C., Magirr, D., Dmitrienko, A., and Posch, M. (2020).
+
+ 
+ Optimized multiple testing procedures for nested sub-populations
+based on a continuous biomarker.
+
+ 
+ Statistical Methods in Medical Research , page 0962280220913071.
+
+ 
+ 
+ 
+ Hornik et al., (1989) 
+ 
+Hornik, K., Stinchcombe, M., and White, H. (1989).
+
+ 
+ Multilayer feedforward networks are universal approximators.
+
+ 
+ Neural Networks , 2(5):359 – 366.
+
+ 
+ 
+ 
+ Kivaranovic et al., (2019) 
+ 
+Kivaranovic, D., Johnson, K. D., and Leeb, H. (2019).
+
+ 
+ Adaptive, distribution-free prediction intervals for deep neural
+networks.
+
+ 
+ arXiv preprint arXiv:1905.10634 .
+
+ 
+ 
+ 
+ Lamont et al., (2018) 
+ 
+Lamont, A., Lyons, M. D., Jaki, T., Stuart, E., Feaster, D. J., Tharmaratnam,
+K., Oberski, D., Ishwaran, H., Wilson, D. K., and Van Horn, M. L. (2018).
+
+ 
+ Identification of predicted individual treatment effects in
+randomized clinical trials.
+
+ 
+ Statistical methods in medical research , 27(1):142–157.
+
+ 
+ 
+ 
+ Lei et al., (2018) 
+ 
+Lei, J., G’Sell, M., Rinaldo, A., Tibshirani, R. J., and Wasserman, L. (2018).
+
+ 
+ Distribution-free predictive inference for regression.
+
+ 
+ Journal of the American Statistical Association ,
+113(523):1094–1111.
+
+ 
+ 
+ 
+ Pellegrini et al., (2019) 
+ 
+Pellegrini, F., Copetti, M., Bovis, F., Cheng, D., Hyde, R., de Moor, C.,
+Kieseier, B. C., and Sormani, M. P. (2019).
+
+ 
+ A proof-of-concept application of a novel scoring approach for
+personalized medicine in multiple sclerosis.
+
+ 
+ Multiple Sclerosis Journal , page 1352458519849513.
+
+ 
+ 
+ 
+ Romano et al., (2019) 
+ 
+Romano, Y., Patterson, E., and Candes, E. (2019).
+
+ 
+ Conformalized quantile regression.
+
+ 
+ In Advances in Neural Information Processing Systems , pages
+3538–3548.
+
+ 
+ 
+ 
+ Rubin, (1974) 
+ 
+Rubin, D. B. (1974).
+
+ 
+ Estimating causal effects of treatments in randomized and
+nonrandomized studies.
+
+ 
+ Journal of educational Psychology , 66(5):688.
+
+ 
+ 
+ 
+ Rubin, (2005) 
+ 
+Rubin, D. B. (2005).
+
+ 
+ Causal inference using potential outcomes: Design, modeling,
+decisions.
+
+ 
+ Journal of the American Statistical Association ,
+100(469):322–331.
+
+ 
+ 
+ 
+ Senn, (2016) 
+ 
+Senn, S. (2016).
+
+ 
+ Mastering variation: variance components and personalised medicine.
+
+ 
+ Statistics in medicine , 35(7):966–977.
+
+ 
+ 
+ 
+ Shafer and Vovk, (2008) 
+ 
+Shafer, G. and Vovk, V. (2008).
+
+ 
+ A tutorial on conformal prediction.
+
+ 
+ Journal of Machine Learning Research , 9(3):371–421.
+
+ 
+ 
+ 
+ Stone, (1977) 
+ 
+Stone, C. J. (1977).
+
+ 
+ Consistent nonparametric regression.
+
+ 
+ The Annals of Statistics , 5(4):595–620.
+
+ 
+ 
+ 
+ Vovk et al., (2005) 
+ 
+Vovk, V., Gammerman, A., and Shafer, G. (2005).
+
+ 
+ Algorithmic learning in a random world .
+
+ 
+ Springer Science & Business Media.
+
+ 
+ 
+ 
+ 
+ 
+ 
+ ◄ 
+ 
+ Feeling
+lucky? 
+ 
+ Conversion
+report 
+ Report
+an issue 
+ View original
+on arXiv ►

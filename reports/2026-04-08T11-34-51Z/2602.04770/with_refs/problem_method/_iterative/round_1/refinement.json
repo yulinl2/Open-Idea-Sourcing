@@ -1,0 +1,30 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Added hint about leveraging the iterative nature of training itself",
+        "why": "Student completely missed that the paper's key innovation is about training-time evolution, not inference-time computation"
+      },
+      {
+        "what": "Added desirable property about leveraging iterative training in a novel way",
+        "why": "To steer thinking toward how training iterations could be central to the method"
+      },
+      {
+        "what": "Added desirable property about equilibrium conditions",
+        "why": "The paper's drifting field reaches equilibrium when distributions match - this abstract hint might guide toward that concept"
+      },
+      {
+        "what": "Extended field context to mention that training involves iterative updates that evolve model behavior",
+        "why": "To prime thinking about training-time dynamics rather than just inference-time procedures"
+      }
+    ],
+    "removals": [],
+    "unchanged": "Kept all original elements as they correctly frame the general problem and constraints"
+  },
+  "convergence": {
+    "hint_changed_substantially": true,
+    "estimated_residual_captured": 0.3,
+    "teacher_confidence": "medium",
+    "recommendation": "continue"
+  }
+}

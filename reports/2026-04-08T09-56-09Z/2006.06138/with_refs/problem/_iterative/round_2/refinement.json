@@ -1,0 +1,31 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Added explicit contrast between individuals in the study (one outcome observed) versus new individuals (both unobserved)",
+        "why": "Student failed to recognize that the paper treats these as fundamentally different problems, focusing on leveraging the observed outcome"
+      },
+      {
+        "what": "Added desirable property about recognizing the specific pattern of how potential outcomes are observed",
+        "why": "Student missed that the treatment assignment creates a specific covariate shift pattern that can be exploited"
+      },
+      {
+        "what": "Strengthened the field context to emphasize that missingness follows a specific pattern determined by treatment assignment",
+        "why": "To guide toward recognizing this as a covariate shift problem with known structure rather than generic missing data"
+      }
+    ],
+    "removals": [
+      {
+        "what": "Removed the generic phrase 'special case of prediction under covariate shift'",
+        "why": "This was too vague and didn't help the student understand the specific structure of the problem"
+      }
+    ],
+    "unchanged": "Kept the emphasis on individual-level effects, finite-sample guarantees, and the connection to conformal prediction, as these remain core to understanding the paper's contribution"
+  },
+  "convergence": {
+    "hint_changed_substantially": false,
+    "estimated_residual_captured": 0.7,
+    "teacher_confidence": "medium",
+    "recommendation": "continue"
+  }
+}

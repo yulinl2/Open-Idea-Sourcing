@@ -1,0 +1,20 @@
+{
+  "problem_context": "Current generative modeling approaches face fundamental challenges in mapping from one distribution to another efficiently. While discriminative models simply map individual samples to labels, generative models must learn mappings between entire distributions - a significantly more complex task. Existing methods often require iterative procedures at inference time, performing multiple network evaluations to progressively transform samples from noise to data. This creates a trade-off between generation quality and computational efficiency. There is a need for generative models that can produce high-quality samples in a single forward pass, without sacrificing the modeling capacity that makes iterative methods successful. The challenge is to find a training paradigm that can learn complex distribution mappings without requiring iterative refinement during generation. Consider that neural network training itself is an iterative process - what if we could leverage the inherent iterative nature of training to evolve the generated distribution, rather than requiring iteration at inference time? A key insight is that samples from a generator could be viewed as particles that need to move in the data space during training. What forces or fields could govern such movement to ensure convergence to the target distribution? Consider how particles might be influenced by other particles - both those from the target distribution and those being generated.",
+  "desirable_properties": [
+    "Should generate high-quality samples in a single forward pass",
+    "Should be trainable from scratch without requiring pre-trained models",
+    "Should scale effectively to high-resolution data",
+    "Should avoid mode collapse and capture the full data distribution",
+    "Should support conditional generation with flexible conditioning",
+    "Should work across different data modalities beyond just images",
+    "Should have a principled training objective that converges reliably",
+    "The training process itself should drive the evolution of the generated distribution toward the target",
+    "Should reach an equilibrium state where the generated and target distributions match",
+    "Generated samples should move or drift during training according to some governing dynamics",
+    "The movement of samples should be determined by interactions with both data samples and other generated samples",
+    "The governing dynamics should exhibit a symmetry property that ensures equilibrium when distributions align",
+    "The field governing sample movement should balance opposing forces that cancel out at equilibrium",
+    "Sample interactions should be based on similarity or distance relationships between points"
+  ],
+  "field_context": "Generative modeling is a fundamental problem in machine learning that aims to learn the underlying distribution of data and generate new samples from it. This field has seen rapid progress with various paradigms including adversarial training, variational approaches, and iterative refinement methods, each with their own trade-offs between sample quality, training stability, and inference efficiency. Most approaches focus on the inference-time computation, but the training process itself involves iterative updates that could be leveraged differently. In physics and dynamical systems, particles often move according to fields or forces - could similar principles apply to how generated samples evolve during training? In many physical systems, equilibrium is achieved when opposing forces balance out. Consider also how contrastive learning uses positive and negative samples to shape representations - could similar principles apply to shaping distributions?"
+}

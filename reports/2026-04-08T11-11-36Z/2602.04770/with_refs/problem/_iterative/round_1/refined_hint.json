@@ -1,0 +1,16 @@
+{
+  "problem_context": "Current generative modeling approaches face fundamental challenges in mapping from one distribution to another. While discriminative models simply map individual samples to labels, generative models must learn mappings between entire distributions - a significantly more complex task. Existing approaches often require iterative procedures at inference time, involving multiple network evaluations to progressively transform samples from noise to data. This creates computational inefficiency and complexity. There is a need for generative modeling approaches that can produce high-quality samples in a single forward pass, without requiring iterative refinement procedures during generation. The challenge is to find ways to learn complex distribution mappings that traditionally require decomposition into multiple simpler transformations, but to do so in a way that admits efficient single-step inference. A key insight is that while inference should be single-step, the training process itself is inherently iterative - perhaps this iterative nature of training could be leveraged to progressively evolve something that enables single-step generation.",
+  "desirable_properties": [
+    "Should perform generation in a single forward pass without iterative refinement at inference time",
+    "Should achieve competitive sample quality compared to multi-step methods",
+    "Should work across different data modalities and domains",
+    "Should scale effectively to high-resolution data",
+    "Should avoid mode collapse and capture the full data distribution",
+    "Should support conditional generation with flexible conditioning",
+    "Should not require adversarial training or unstable optimization procedures",
+    "Should leverage the inherently iterative nature of neural network training in a principled way",
+    "Should have a clear notion of when the training process has reached its goal (equilibrium or convergence)",
+    "Should enable tracking how the generated distribution evolves during training"
+  ],
+  "field_context": "This work addresses fundamental challenges in generative modeling, where the goal is to learn mappings between probability distributions. The field has seen various paradigms including iterative refinement methods, adversarial approaches, and likelihood-based models, each with their own trade-offs between sample quality, computational efficiency, and training stability. Recent work has explored kernel-based methods for distribution matching and the use of positive/negative sample contrasts in various contexts. There's growing interest in methods that can characterize and control how distributions evolve or move in high-dimensional spaces."
+}

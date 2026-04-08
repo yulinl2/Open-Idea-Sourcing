@@ -1,0 +1,12 @@
+{
+  "problem_context": "In many fields including medicine, public policy, and social sciences, researchers need to move beyond estimating average treatment effects to understanding how treatments affect individuals differently. While average effects provide useful summaries, they can be misleading when treatment effects vary substantially across individuals - for instance, a treatment might help some while harming others. Current methods for estimating conditional average treatment effects (CATE) rely heavily on machine learning algorithms, but these methods struggle with uncertainty quantification. In sensitive decision-making environments, reliable assessment of uncertainty is crucial, yet existing approaches often fail to provide trustworthy interval estimates even in simple settings. The fundamental challenge is that for any individual, only one potential outcome is ever observed while the other remains counterfactual, making it difficult to quantify uncertainty about individual-level causal effects.",
+  "desirable_properties": [
+    "Should provide reliable uncertainty quantification in finite samples without requiring asymptotic approximations",
+    "Should work without strong modeling assumptions about the data generating process",
+    "Should handle both randomized experiments and observational studies under standard causal assumptions",
+    "Should accommodate settings where the study population differs from the target population",
+    "Should provide coverage guarantees that hold regardless of model misspecification",
+    "Should be applicable when either treatment assignment mechanisms or outcome models are well-understood but not necessarily both"
+  ],
+  "field_context": "This work sits at the intersection of causal inference and uncertainty quantification. The potential outcomes framework provides the foundation for defining causal effects, while the challenge of constructing reliable prediction intervals connects to the broader statistical problem of valid inference in complex settings. Recent advances in machine learning have enabled flexible estimation of treatment effect heterogeneity, but principled uncertainty quantification for these estimates remains an open challenge."
+}

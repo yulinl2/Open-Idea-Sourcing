@@ -11,6 +11,7 @@ on:
       - agent-staged-reconstruct
       - claude/agent-staged-reconstruct-*
       - claude/archive-results-fetch-papers-*
+      - claude/advanced-algorithm-testing-*
 
 jobs:
   test:

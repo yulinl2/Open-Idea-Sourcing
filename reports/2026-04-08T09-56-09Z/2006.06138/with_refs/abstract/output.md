@@ -1,0 +1,19 @@
+# Reconstruction: abstract (iterative, 4 rounds)
+**Paper:** 2006.06138  
+**Condition:** with_refs  
+**Student model:** claude-sonnet-4-20250514  
+**Teacher model:** claude-opus-4-20250514  
+**Rounds:** 4  
+**Best round:** 4 (score 3.4)  
+**Converged:** True (teacher recommended stop)  
+**Score trajectory:** 3.2 -> 3.2 -> 3.2 -> 3.4  
+
+---
+
+# Doubly Robust Conformal Prediction for Individual Treatment Effects
+
+Understanding treatment effect heterogeneity is crucial in medicine, policy, and social sciences, yet existing methods for estimating conditional average treatment effects (CATE) struggle with reliable uncertainty quantification. While machine learning approaches can flexibly estimate individual-level treatment effects, they typically fail to provide valid prediction intervals, particularly in finite samples. This limitation is especially problematic in high-stakes decision-making contexts where practitioners need trustworthy uncertainty estimates alongside point predictions.
+
+We propose a novel approach that reframes individual treatment effect inference as a covariate shift problem within the conformal prediction framework. Our key insight is that treatment groups naturally exhibit different covariate distributions, making weighted conformal prediction particularly well-suited for this setting. We develop a doubly robust conformal procedure that constructs prediction intervals for individual treatment effects by: (1) separately applying weighted conformal prediction to estimate quantiles of each potential outcome, using propensity score-based weights to account for treatment-induced covariate shift; (2) combining these intervals through a principled difference operation that preserves finite-sample validity; and (3) leveraging a doubly robust score function that remains valid when either the outcome model or propensity score model is correctly specified.
+
+Our method provides distribution-free coverage guarantees without requiring asymptotic approximations or strong modeling assumptions. The approach naturally handles both randomized experiments and observational studies under standard unconfoundedness assumptions, while accommodating population shift through the same reweighting mechanism. Unlike existing approaches that focus on mean-based inference, our quantile-based method directly targets the desired coverage probability. The doubly robust property ensures that interval validity is maintained even under partial model misspecification, making the approach practically robust while theoretically grounded. This work bridges causal inference and conformal prediction, offering a principled solution for uncertainty quantification in personalized treatment effect estimation.

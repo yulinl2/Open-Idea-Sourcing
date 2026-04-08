@@ -1,0 +1,39 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Added observation about systematic covariate distribution differences between treatment/control groups",
+        "why": "Student missed that counterfactual inference IS a covariate shift problem - this is the paper's key insight"
+      },
+      {
+        "what": "Simplified desirable property about handling covariate distribution differences",
+        "why": "Previous hint was too complex; student needs to recognize the covariate shift structure first"
+      },
+      {
+        "what": "Added note about treatment assignment creating structured relationships between subpopulations",
+        "why": "To guide toward seeing how propensity scores define the specific covariate shift weights"
+      }
+    ],
+    "removals": [
+      {
+        "what": "Removed explicit distinction between study participants vs new individuals",
+        "why": "This was distracting from the core insight and can be derived once the main mechanism is understood"
+      },
+      {
+        "what": "Removed detailed specification of exact guarantees for stratified experiments",
+        "why": "Too specific - student should first grasp the general mechanism before these refinements"
+      },
+      {
+        "what": "Simplified the doubly robust property description",
+        "why": "The detailed specification was preventing recognition of the simpler underlying structure"
+      }
+    ],
+    "unchanged": "Kept the emphasis on finite-sample guarantees and the challenge of counterfactual inference, as these frame the problem correctly"
+  },
+  "convergence": {
+    "hint_changed_substantially": true,
+    "estimated_residual_captured": 0.7,
+    "teacher_confidence": "medium",
+    "recommendation": "continue"
+  }
+}

@@ -12,5 +12,19 @@
     "year": 2020,
     "venue": "NeurIPS",
     "url": "https://arxiv.org/abs/1904.06019"
+  },
+  {
+    "id": "arxiv-2006.01474",
+    "title": "Conformal Prediction Intervals for the Individual Treatment Effect",
+    "abstract": "We propose a conformal inference procedure for creating prediction intervals for individual treatment effects in the potential outcomes framework with binary treatments. A key advantage of our proposal is that it combines information from both treatment groups and can exploit treatment effect heterogeneity. Prediction intervals are valid in finite samples when treatment is assigned randomly and asymptotically valid under unconfoundedness. Our methods are quite general and existing estimates of individual treatment effects, for example based on causal forests, can be used as input. The proposed methods are illustrated on simulated and real data.",
+    "authors": [
+      "Danijel Kivaranovic",
+      "Robin Ristl",
+      "Martin Posch",
+      "Hannes Leeb"
+    ],
+    "year": 2020,
+    "venue": "arXiv",
+    "url": "https://arxiv.org/abs/2006.01474"
   }
 ]

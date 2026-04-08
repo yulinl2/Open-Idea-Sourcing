@@ -91,6 +91,12 @@ python agent.py --backend anthropic --evaluate
 
 # Specific conditions only
 python agent.py --conditions with_refs
+
+# Iterative hint-refinement (v0.6) — extract conceptual residual
+python agent.py --iterative --modes abstract --conditions with_refs
+
+# Iterative with custom max rounds
+python agent.py --iterative --max-rounds 3 --modes abstract problem_method
 ```
 
 Requires `OPENAI_API_KEY` or Anthropic auth (auto-detected).
@@ -127,6 +133,46 @@ or pre-extracted text in `data/pdfs/<arxiv_id>.txt`.
 | 2006.06138 — Conformal Inference of Counterfactuals and ITEs (Lei & Candès) | Causal inference + conformal | Full PDF |
 | 2602.04770 — Generative Modeling via Drifting (Deng et al.) | Generative models | Full PDF |
 
+## Data Formats
+
+### `data/test_papers.ndjson` — Target papers
+
+One JSON object per line. Required fields:
+
+```json
+{"url": "https://arxiv.org/abs/2006.06138",
+ "paper_id": "2006.06138",
+ "title": "Conformal Inference of Counterfactuals and Individual Treatment Effects",
+ "authors": ["Lihua Lei", "Emmanuel J. Candès"],
+ "year": 2021,
+ "venue": "JRSS-B",
+ "abstract": "Individualized causal/treatment effects are..."}
+```
+
+### `data/references.json` — User-provided references
+
+JSON array of reference objects:
+
+```json
+[
+  {"id": "arxiv-1904.06019",
+   "title": "Conformal Prediction Under Covariate Shift",
+   "abstract": "We extend conformal prediction...",
+   "authors": ["Ryan Tibshirani", "..."],
+   "year": 2020,
+   "venue": "NeurIPS",
+   "url": "https://arxiv.org/abs/1904.06019"}
+]
+```
+
+The `id` field should follow `arxiv-<arxiv_id>` format. Full text is loaded
+from `data/pdfs/<arxiv_id>.txt` when available, falling back to the abstract.
+
+### `data/pdfs/` — Cached paper texts
+
+- `<arxiv_id>.txt` — pre-extracted full text (preferred)
+- `<arxiv_id>.pdf` — PDF for extraction via pymupdf
+
 ## Development Roadmap
 
 1. **v0.1**: One-off generation, 6 modes, full audit trail
@@ -137,9 +183,19 @@ or pre-extracted text in `data/pdfs/<arxiv_id>.txt`.
    cached PDF text extraction (archived — used hallucinated metadata)
 5. **v0.4**: Anti-leakage teacher prompt redesign, improved eval rubric,
    reference_usage removed from composite, reconstruction_difficulty added
-6. **v0.5.0** (current): Pairwise evaluator (side-by-side with_refs vs no_refs
+6. **v0.5.0**: Pairwise evaluator (side-by-side with_refs vs no_refs
    on 1-7 impact scale), calibrated scoring rubric with concrete anchors,
    mandatory reference-engagement instructions in all student prompts,
    retry-with-backoff for rate limits, teacher hint caching, API key priority
-7. **v0.6** (planned): Cross-paper comparison and novelty ranking, batch API
+7. **v0.6.0**: Iterative hint-refinement for conceptual residual
+   extraction. Multi-round teacher-student loop: teacher refines the hint
+   based on student performance, fresh student regenerates each round.
+   Converges to the paper's "conceptual residual" — ideas that cannot be
+   derived from references alone. `--iterative` flag, `--max-rounds` control.
+8. **v0.6.2** (current): Cost optimization (`--eval-model`, `--parallel-modes`),
+   eval independence fix, cross-mode paper-context seeding, Anthropic prompt
+   caching, OpenAI stateful chaining. 83 unit tests.
+   See [docs/ITERATIVE_REFINEMENT.md](docs/ITERATIVE_REFINEMENT.md) and
+   [reports/CROSS_PAIR_COMPARISON.md](reports/CROSS_PAIR_COMPARISON.md).
+9. **v0.7** (planned): Cross-paper comparison and novelty ranking, batch API
    mode for 50% cost reduction, multi-run variance measurement
