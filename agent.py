@@ -223,7 +223,7 @@ def run_teacher(client, model: str, paper_text: str, refs: list[dict],
     user_msg = f"## References the student will have access to\n\n{ref_summary}"
 
     print(f"  [teacher] Extracting problem context with {model}...")
-    response = llm_call(
+    response, _ = llm_call(
         client, model,
         system=prompt,
         user=user_msg,
@@ -302,7 +302,7 @@ def run_student(client, model: str, mode: str, hint: dict,
     )
 
     print(f"  [student/{mode}] Generating with {model} (max {MAX_TOKENS[mode]} tokens)...")
-    response = llm_call(
+    response, _ = llm_call(
         client, model,
         system=filled,
         user="Begin your reconstruction now.",
@@ -639,7 +639,7 @@ def dispatch_paper(
                         config={"condition": condition},
                     )
                     print(f"  [eval] Scoring {condition}/{mode}...")
-                    eval_result = evaluate_reconstruction(
+                    eval_result, _ = evaluate_reconstruction(
                         client, teacher_model, paper_text, output,
                         mode, condition, eval_audit,
                     )

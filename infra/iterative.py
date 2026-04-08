@@ -137,7 +137,8 @@ def refine_hint(
     evaluation: dict,
     round_history: list[RoundRecord],
     audit: AuditLog,
-) -> tuple[dict, dict, dict]:
+    previous_response_id: str | None = None,
+) -> tuple[dict, dict, dict, str]:
     """Teacher refines the hint based on student performance.
 
     Returns (refined_hint, refinement_rationale, convergence_signal).
@@ -177,7 +178,7 @@ def refine_hint(
     round_num = len(round_history) + 1
     print(f"  [refine] Round {round_num}: refining hint with {teacher_model}...")
 
-    response = llm_call(
+    response, resp_id = llm_call(
         client, teacher_model,
         system=prompt,
         user=user_msg,
@@ -186,6 +187,7 @@ def refine_hint(
         max_tokens=2048,
         temperature=0.3,
         cache_user_prefix=paper_prefix,
+        previous_response_id=previous_response_id,
     )
 
     parsed = _parse_refinement(response)
@@ -193,7 +195,7 @@ def refine_hint(
     rationale = parsed.get("refinement_rationale", {})
     convergence = parsed.get("convergence_signal", {})
 
-    return refined_hint, rationale, convergence
+    return refined_hint, rationale, convergence, resp_id
 
 
 def _parse_refinement(text: str) -> dict:
@@ -322,6 +324,12 @@ def run_iterative_refinement(
 
     current_hint = copy.deepcopy(initial_hint)
 
+    # Response IDs for stateful chaining (OpenAI Responses API).
+    # Evaluate and refine calls chain across rounds to avoid re-sending
+    # the same paper text + accumulated history on each round.
+    eval_chain_id: str | None = None
+    refine_chain_id: str | None = None
+
     for round_num in range(1, max_rounds + 1):
         print(f"\n  {'~'*40}")
         print(f"  Iterative round {round_num}/{max_rounds} [{mode}]")
@@ -368,10 +376,12 @@ def run_iterative_refinement(
         )
 
         try:
-            evaluation = evaluate_reconstruction(
+            evaluation, eval_resp_id = evaluate_reconstruction(
                 client, teacher_model, paper_text, student_output,
                 mode, condition, eval_audit,
+                previous_response_id=eval_chain_id,
             )
+            eval_chain_id = eval_resp_id  # chain next round's eval
             eval_audit.mark_finished()
         except Exception as exc:
             eval_audit.mark_finished()
@@ -418,11 +428,13 @@ def run_iterative_refinement(
         )
 
         try:
-            refined_hint, rationale, convergence = refine_hint(
+            refined_hint, rationale, convergence, refine_resp_id = refine_hint(
                 client, teacher_model, paper_text,
                 current_hint, student_output, evaluation,
                 result.rounds, refine_audit,
+                previous_response_id=refine_chain_id,
             )
+            refine_chain_id = refine_resp_id  # chain next round's refine
             refine_audit.mark_finished()
 
             record.refined_hint = refined_hint

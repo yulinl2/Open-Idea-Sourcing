@@ -173,10 +173,12 @@ def evaluate_reconstruction(
     mode: str,
     condition: str,
     audit: AuditLog,
-) -> dict[str, Any]:
+    previous_response_id: str | None = None,
+) -> tuple[dict[str, Any], str]:
     """Teacher evaluates a single student reconstruction.
 
-    Returns the parsed evaluation dict, or a fallback dict on parse failure.
+    Returns (parsed_eval_dict, response_id). The response_id can be passed
+    back to chain subsequent evaluation calls for the same mode/paper.
     """
     # Paper text is stable across rounds — cache it as prefix
     paper_prefix = (
@@ -187,7 +189,7 @@ def evaluate_reconstruction(
     )
     user_msg = f"## Student output\n\n{student_output}\n"
 
-    response = llm_call(
+    response, resp_id = llm_call(
         client, teacher_model,
         system=EVAL_PROMPT,
         user=user_msg,
@@ -196,9 +198,10 @@ def evaluate_reconstruction(
         max_tokens=1024,
         temperature=0.2,
         cache_user_prefix=paper_prefix,
+        previous_response_id=previous_response_id,
     )
 
-    return _parse_eval(response)
+    return _parse_eval(response), resp_id
 
 
 def evaluate_pairwise(
@@ -227,7 +230,7 @@ def evaluate_pairwise(
         f"{output_no_refs[:15_000]}\n"
     )
 
-    response = llm_call(
+    response, _ = llm_call(
         client, teacher_model,
         system=PAIRWISE_PROMPT,
         user=user_msg,

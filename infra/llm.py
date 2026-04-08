@@ -6,9 +6,11 @@ All calls are recorded into the AuditLog for full reproducibility.
 Backend is auto-detected from the client type.
 Includes retry-with-backoff for rate limit (429) errors.
 
-Anthropic prompt caching: system prompts and large stable user-message
-prefixes are marked with cache_control to avoid re-processing repeated
-content across rounds. See https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+Caching strategies:
+- Anthropic: system prompts and large stable user-message prefixes are
+  marked with cache_control (ephemeral) to avoid re-processing.
+- OpenAI: stateful multi-turn via previous_response_id chains repeated
+  context (paper text, round history) across calls within a mode.
 """
 
 from __future__ import annotations
@@ -39,17 +41,24 @@ def llm_call(
     max_tokens: int = 4096,
     temperature: float = 0.7,
     cache_user_prefix: str | None = None,
-) -> str:
+    previous_response_id: str | None = None,
+) -> tuple[str, str]:
     """Make a single LLM call and record it in the audit log.
 
     Auto-detects whether client is OpenAI or Anthropic.
     Retries up to MAX_RETRIES times on rate limit errors with exponential backoff.
 
     Args:
-        cache_user_prefix: If provided, this string is sent as a separate
-            content block BEFORE the main user message, marked for Anthropic
-            prompt caching. Use for large stable content (paper text, reference
-            text, round history prefix) that repeats across calls.
+        cache_user_prefix: (Anthropic) Sent as a separate cached content block
+            BEFORE the main user message. Use for large stable content (paper
+            text) that repeats across calls.
+        previous_response_id: (OpenAI) Chain this call to a previous response,
+            enabling the API to reuse cached context. When set, only the new
+            user message is sent — the API already has prior turns in memory.
+
+    Returns:
+        (response_text, response_id) — response_id can be passed as
+        previous_response_id to subsequent calls for stateful chaining.
     """
     backend = _detect_backend(client)
     t0 = time.time()
@@ -57,7 +66,7 @@ def llm_call(
     call_fn = _call_anthropic if backend == "anthropic" else _call_openai
     text, input_tokens, output_tokens, resp_id = _call_with_retry(
         call_fn, client, model, system, user, max_tokens, temperature,
-        step_name, cache_user_prefix,
+        step_name, cache_user_prefix, previous_response_id,
     )
 
     duration = time.time() - t0
@@ -74,20 +83,25 @@ def llm_call(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         duration_seconds=round(duration, 2),
-        metadata={"response_id": resp_id, "backend": backend},
+        metadata={
+            "response_id": resp_id,
+            "backend": backend,
+            "chained_from": previous_response_id or "",
+        },
     )
     audit.add_step(step)
-    return text
+    return text, resp_id
 
 
 def _call_with_retry(call_fn, client, model, system, user, max_tokens,
-                     temperature, step_name, cache_user_prefix=None):
+                     temperature, step_name, cache_user_prefix=None,
+                     previous_response_id=None):
     """Retry an LLM call on rate limit errors with exponential backoff."""
     last_err = None
     for attempt in range(MAX_RETRIES + 1):
         try:
             return call_fn(client, model, system, user, max_tokens,
-                           temperature, cache_user_prefix)
+                           temperature, cache_user_prefix, previous_response_id)
         except Exception as e:
             if _is_rate_limit(e) and attempt < MAX_RETRIES:
                 wait = INITIAL_BACKOFF_SECONDS * (2 ** attempt)
@@ -126,15 +140,12 @@ def _call_anthropic(
     client, model: str, system: str, user: str,
     max_tokens: int, temperature: float,
     cache_user_prefix: str | None = None,
+    previous_response_id: str | None = None,
 ) -> tuple[str, int, int, str]:
     """Call the Anthropic Messages API with prompt caching.
 
-    Caching strategy:
-    - System prompt is always marked for caching (it repeats across all calls
-      of the same type within a run).
-    - If cache_user_prefix is provided, it's sent as a separate content block
-      before the main user message, also marked for caching. This is useful
-      for large stable content like paper text or reference text.
+    Note: previous_response_id is ignored for Anthropic (stateless API).
+    Caching is handled via cache_control markers instead.
     """
     # System prompt: use content-block format with cache_control
     system_blocks = [
@@ -160,7 +171,6 @@ def _call_anthropic(
         ]
     else:
         # No prefix or prefix too small to cache — send as single block.
-        # If the user message itself is large, still just a plain string.
         if cache_user_prefix:
             user_content = f"{cache_user_prefix}\n\n{user}"
         else:
@@ -188,17 +198,34 @@ def _call_openai(
     client, model: str, system: str, user: str,
     max_tokens: int, temperature: float,
     cache_user_prefix: str | None = None,
+    previous_response_id: str | None = None,
 ) -> tuple[str, int, int, str]:
-    """Call the OpenAI Responses API."""
-    # OpenAI handles caching automatically; just combine prefix + user
+    """Call the OpenAI Responses API with optional stateful chaining.
+
+    When previous_response_id is set, the API reuses cached context from
+    the referenced response. Only the new user input needs to be sent,
+    dramatically reducing input tokens for repeated-context scenarios
+    like iterative refinement rounds.
+    """
     full_user = f"{cache_user_prefix}\n\n{user}" if cache_user_prefix else user
-    response = client.responses.create(
-        model=model,
-        instructions=system,
-        input=full_user,
-        max_output_tokens=max_tokens,
-        temperature=temperature,
-    )
+
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "input": full_user,
+        "max_output_tokens": max_tokens,
+        "temperature": temperature,
+    }
+
+    if previous_response_id:
+        # Stateful chain: API already has system + prior turns in memory.
+        # We still pass instructions for safety, but input tokens for the
+        # cached prefix are not re-charged.
+        kwargs["previous_response_id"] = previous_response_id
+        kwargs["instructions"] = system
+    else:
+        kwargs["instructions"] = system
+
+    response = client.responses.create(**kwargs)
     text = _extract_openai_text(response)
 
     input_tokens = 0
