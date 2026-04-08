@@ -1,0 +1,54 @@
+[
+  {
+    "paper_id": "2006.06138",
+    "paper_url": "https://arxiv.org/abs/2006.06138",
+    "text_source": "pdf",
+    "conditions": {
+      "with_refs": {
+        "abstract": {
+          "status": "success",
+          "output_chars": 2365,
+          "output_path": "reports/2026-04-08T09-50-33Z/2006.06138/with_refs/abstract/output.md",
+          "iterative": true,
+          "total_rounds": 2,
+          "converged": true,
+          "convergence_reason": "teacher recommended stop",
+          "score_trajectory": [
+            3.4,
+            3.2
+          ],
+          "eval": {
+            "scores": {
+              "problem_understanding": 4,
+              "technical_depth": 2,
+              "novelty_alignment": 3,
+              "writing_quality": 4,
+              "completeness": 3
+            },
+            "composite_score": 3.2,
+            "key_insight_identified": "Paper's key insight: Using weighted conformal inference to construct prediction intervals for counterfactuals and individual treatment effects, where weights are inverse propensity scores. Student captured: partially",
+            "novelty_alignment_rationale": "The student correctly identifies weighted conformal prediction for causal inference but misses the specific connection to inverse propensity weighting and the exact doubly robust property formulation.",
+            "novelty_gap": "The paper specifically uses inverse propensity score weighting within conformal inference (w(x) = 1/e(x) for treatment group) and proves finite-sample coverage guarantees. The student mentions 'doubly-weighted' and propensity scores but doesn't capture that the weights ARE the inverse propensity scores, nor the specific coverage guarantees for randomized trials.",
+            "reconstruction_difficulty": 4,
+            "reference_impact": "N/A",
+            "strongest_aspect": "Correctly identifies the core challenge of uncertainty quantification for individual treatment effects and the general approach of extending conformal prediction to causal settings.",
+            "weakest_aspect": "Lacks mathematical rigor and specific technical details about how the weighted conformal procedure works, missing the crucial inverse propensity score weighting mechanism."
+          },
+          "final_hint": {
+            "problem_context": "In causal inference, researchers often need to move beyond average treatment effects to understand how treatments affect individuals differently. While average effects provide useful population-level summaries, they can be misleading when treatment effects vary substantially across individuals - for instance, a treatment might help 70% of patients while harming the remaining 30%. Current methods for estimating conditional average treatment effects (CATE) using machine learning algorithms suffer from poor uncertainty quantification, which is problematic for decision-making in sensitive environments where assessing risk is crucial. The fundamental challenge is that for any individual, only one potential outcome is ever observed (either under treatment or control), making it difficult to construct reliable intervals for individual-level causal effects. This is compounded by two sources of variability: the inherent variability in responses around regression functions, and the uncertainty in finite-sample estimates. A key consideration is that in practice, we often have uncertainty about both the treatment assignment mechanism and the outcome models, yet existing methods typically require accurate knowledge of at least one of these components.",
+            "desirable_properties": [
+              "Should provide valid uncertainty quantification in finite samples without relying on asymptotic approximations",
+              "Should work without strong parametric modeling assumptions about the outcome distributions",
+              "Should handle both randomized experiments and observational studies under standard causal assumptions",
+              "Should account for the fundamental problem that only one potential outcome is observed per individual",
+              "Should maintain validity even when key components of the causal inference problem (treatment assignment mechanism or outcome models) are misspecified",
+              "Should handle settings where the study population differs from the target population",
+              "Should enable inference not just for counterfactuals of observed individuals, but also extend to predicting treatment effects for new individuals not in the original study"
+            ],
+            "field_context": "This work sits at the intersection of causal inference and uncertainty quantification. The potential outcomes framework provides the foundation for defining causal effects at the individual level, while the challenge of constructing valid prediction intervals connects to the broader statistical literature on distribution-free inference methods. A particularly relevant consideration is how classical robustness properties from causal inference (where validity is maintained if certain components are correctly specified) might translate to the uncertainty quantification setting."
+          }
+        }
+      }
+    }
+  }
+]

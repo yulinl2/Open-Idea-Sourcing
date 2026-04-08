@@ -1,0 +1,12 @@
+{
+  "problem_context": "In many fields including medicine, public policy, and social sciences, researchers need to understand how treatments affect specific individuals, not just averages. While methods exist for estimating average effects and even conditional averages, the fundamental challenge is quantifying uncertainty about individual-level causal effects. For any individual, we observe their outcome under the treatment they received, but the outcome under the alternative treatment remains forever unobserved - a missing data problem unique to causal inference. Current machine learning methods struggle to provide reliable uncertainty quantification for these individual effects. The challenge is particularly acute because we need intervals that cover the actual individual treatment effect with specified probability, not just intervals around some average.",
+  "desirable_properties": [
+    "Should provide reliable uncertainty quantification for individual-level effects in finite samples",
+    "Should exploit the fact that one potential outcome is actually observed for each individual",
+    "Should work without strong modeling assumptions about the data generating process",
+    "Should handle both randomized experiments and observational studies under standard causal assumptions",
+    "Should accommodate settings where the study population differs from the target population",
+    "Should provide coverage guarantees that remain valid even when models for outcomes or treatment assignment are misspecified"
+  ],
+  "field_context": "This work sits at the intersection of causal inference and uncertainty quantification. The potential outcomes framework provides the foundation, where each individual has two potential outcomes but only one is ever observed. The key insight is recognizing this as a special case of prediction under covariate shift, where the 'missingness' pattern is determined by treatment assignment. Recent advances in conformal prediction provide tools for distribution-free uncertainty quantification, but these traditionally assume the target variable is observable during calibration."
+}

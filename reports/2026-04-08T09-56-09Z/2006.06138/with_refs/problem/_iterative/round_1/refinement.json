@@ -1,0 +1,35 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Emphasized that we observe one potential outcome for each individual and added this as explicit desirable property",
+        "why": "Student completely missed that the paper leverages the observed potential outcome, treating everything as unobserved"
+      },
+      {
+        "what": "Reframed the problem explicitly around individual-level effects rather than conditional averages",
+        "why": "Student focused entirely on CATE when the paper is about individual counterfactuals and ITE"
+      },
+      {
+        "what": "Added hint about this being a 'special case of prediction under covariate shift'",
+        "why": "To guide toward the paper's key insight of using weighted conformal inference for counterfactuals"
+      }
+    ],
+    "removals": [
+      {
+        "what": "Removed explicit mention of CATE and machine learning for CATE estimation",
+        "why": "This led the student to focus on the wrong problem - CATE estimation rather than individual counterfactual inference"
+      },
+      {
+        "what": "Weakened the emphasis on 'treatment effect heterogeneity'",
+        "why": "This terminology often implies CATE in the literature, which misdirected the student"
+      }
+    ],
+    "unchanged": "Kept the emphasis on finite-sample validity, distribution-free inference, and the challenge of uncertainty quantification in causal settings"
+  },
+  "convergence": {
+    "hint_changed_substantially": true,
+    "estimated_residual_captured": 0.4,
+    "teacher_confidence": "high",
+    "recommendation": "continue"
+  }
+}

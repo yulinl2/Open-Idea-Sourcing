@@ -1,0 +1,30 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Added sentence about prediction intervals capturing the full range of potential outcomes, not just deviations from central tendency",
+        "why": "Student used simple regression residuals rather than recognizing the need for quantile-based approaches that can capture the full conditional distribution"
+      },
+      {
+        "what": "Added desirable property about robustness when at least one key modeling component is accurate",
+        "why": "Student completely missed the doubly robust property - that coverage holds when either propensity scores OR outcome models are well-specified"
+      },
+      {
+        "what": "Added desirable property about intervals targeting the range of plausible values rather than estimation uncertainty",
+        "why": "Student focused on residuals around a point estimate rather than directly modeling the range of potential outcomes"
+      },
+      {
+        "what": "Added field context about robustness in causal inference coming from validity under partial model specification",
+        "why": "Student didn't recognize that causal methods often achieve robustness by remaining valid when either treatment or outcome models are correct"
+      }
+    ],
+    "removals": [],
+    "unchanged": "Kept all existing elements as they successfully guided the student to use weighted conformal prediction with separate treatment of potential outcomes, which are necessary components of the solution"
+  },
+  "convergence": {
+    "hint_changed_substantially": true,
+    "estimated_residual_captured": 0.6,
+    "teacher_confidence": "high",
+    "recommendation": "continue"
+  }
+}

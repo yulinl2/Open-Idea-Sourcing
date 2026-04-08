@@ -1,0 +1,11 @@
+{
+  "problem_context": "In many fields including medicine and public policy, researchers need to move beyond average treatment effects to understand how treatments affect individuals differently. Current machine learning methods for estimating treatment effect heterogeneity struggle with uncertainty quantification, often failing to provide trustworthy interval estimates even in simple settings. The fundamental challenge is that for any individual, only one potential outcome is ever observed while the other remains counterfactual. A critical observation is that when trying to infer the counterfactual outcome for treated units using control units (or vice versa), the covariate distributions between these two groups may differ systematically.",
+  "desirable_properties": [
+    "Should provide reliable uncertainty quantification in finite samples without requiring asymptotic approximations",
+    "Should work without strong modeling assumptions about the data generating process",
+    "Should handle the systematic difference in covariate distributions between treatment and control groups when making counterfactual inferences",
+    "Should leverage known treatment assignment mechanisms in randomized experiments to achieve stronger guarantees",
+    "Should maintain validity even when key estimation components are misspecified, provided at least one critical component is accurately estimated"
+  ],
+  "field_context": "This work sits at the intersection of causal inference and uncertainty quantification. The potential outcomes framework provides the foundation for defining causal effects. Recent advances have shown how to handle covariate shift in prediction problems when the likelihood ratio between source and target distributions is known or can be estimated. In causal inference, the treatment assignment mechanism creates a specific, structured relationship between different subpopulations in the data."
+}

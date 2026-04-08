@@ -1,0 +1,13 @@
+{
+  "rationale": {
+    "additions": [],
+    "removals": [],
+    "unchanged": "The hint remains unchanged because the student has successfully captured the paper's main conceptual contributions. The remaining gaps are technical implementation details (like the specific weighted CQR algorithm) rather than conceptual insights that belong in the hint. Adding more specificity would risk leaking the solution rather than guiding toward the conceptual residual."
+  },
+  "convergence": {
+    "hint_changed_substantially": false,
+    "estimated_residual_captured": 0.85,
+    "teacher_confidence": "high",
+    "recommendation": "stop"
+  }
+}

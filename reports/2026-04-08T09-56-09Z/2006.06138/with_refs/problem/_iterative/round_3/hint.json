@@ -1,0 +1,13 @@
+{
+  "problem_context": "In many fields including medicine, public policy, and social sciences, researchers need to understand how treatments affect specific individuals, not just averages. While methods exist for estimating average effects and even conditional averages, the fundamental challenge is quantifying uncertainty about individual-level causal effects. For any individual, we observe their outcome under the treatment they received, but the outcome under the alternative treatment remains forever unobserved - a missing data problem unique to causal inference. Current machine learning methods struggle to provide reliable uncertainty quantification for these individual effects. The challenge is particularly acute because we need intervals that cover the actual individual treatment effect with specified probability, not just intervals around some average. A key observation is that for individuals in our study, we do observe one of their two potential outcomes directly - this is fundamentally different from predicting both outcomes for new individuals.",
+  "desirable_properties": [
+    "Should provide reliable uncertainty quantification for individual-level effects in finite samples",
+    "Should directly leverage the fact that one potential outcome is actually observed for each individual in the study",
+    "Should work without strong modeling assumptions about the data generating process",
+    "Should handle both randomized experiments and observational studies under standard causal assumptions",
+    "Should accommodate settings where the study population differs from the target population",
+    "Should provide coverage guarantees that remain valid even when models for outcomes or treatment assignment are misspecified",
+    "Should recognize that the treatment assignment mechanism creates a specific pattern in which potential outcomes are observed"
+  ],
+  "field_context": "This work sits at the intersection of causal inference and uncertainty quantification. The potential outcomes framework provides the foundation, where each individual has two potential outcomes but only one is ever observed. Recent advances in conformal prediction provide tools for distribution-free uncertainty quantification, but these traditionally assume the target variable is observable during calibration. The insight is recognizing that in causal inference, the 'missingness' of potential outcomes follows a very specific pattern determined by the treatment assignment mechanism - treated units reveal Y(1) while control units reveal Y(0). This creates a natural connection to prediction problems where the calibration and target distributions differ in a known way."
+}

@@ -1,0 +1,30 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Added hint about decomposing ITE intervals into separate potential outcome intervals",
+        "why": "Student proposed pseudo-outcomes approach instead of recognizing that the paper constructs intervals for Y(1) and Y(0) separately"
+      },
+      {
+        "what": "Added property about leveraging observed potential outcomes for treated/control units",
+        "why": "Student missed that the paper treats counterfactual inference as a prediction problem where one potential outcome is observed"
+      },
+      {
+        "what": "Emphasized reweighting in the covariate shift property",
+        "why": "Student mentioned covariate shift but didn't connect it to the weighting mechanism that's central to the paper"
+      },
+      {
+        "what": "Added context about methods handling distributional shifts",
+        "why": "To reinforce that the weighting approach is key to handling population differences"
+      }
+    ],
+    "removals": [],
+    "unchanged": "Kept the core problem framing, finite-sample guarantees, and double robustness properties as these were correctly understood by the student"
+  },
+  "convergence": {
+    "hint_changed_substantially": true,
+    "estimated_residual_captured": 0.6,
+    "teacher_confidence": "high",
+    "recommendation": "continue"
+  }
+}

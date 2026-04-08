@@ -1,0 +1,12 @@
+{
+  "problem_context": "In causal inference, researchers often need to move beyond average treatment effects to understand how treatments affect individuals differently. While average effects provide useful population-level summaries, they can be misleading when treatment effects vary substantially across individuals - for instance, a treatment might help 70% of patients while harming the remaining 30%. Current methods for estimating conditional average treatment effects (CATE) using machine learning algorithms suffer from poor uncertainty quantification, which is problematic for decision-making in sensitive environments where assessing risk is crucial. The fundamental challenge is that for any individual, only one potential outcome is ever observed (either under treatment or control), making it difficult to construct reliable intervals for individual-level causal effects. This is compounded by two sources of variability: the inherent variability in responses around regression functions, and the uncertainty in finite-sample estimates.",
+  "desirable_properties": [
+    "Should provide valid uncertainty quantification in finite samples without relying on asymptotic approximations",
+    "Should work without strong parametric modeling assumptions about the outcome distributions",
+    "Should handle both randomized experiments and observational studies under standard causal assumptions",
+    "Should account for the fundamental problem that only one potential outcome is observed per individual",
+    "Should be robust to model misspecification while maintaining theoretical guarantees",
+    "Should handle settings where the study population differs from the target population"
+  ],
+  "field_context": "This work sits at the intersection of causal inference and uncertainty quantification. The potential outcomes framework provides the foundation for defining causal effects at the individual level, while the challenge of constructing valid prediction intervals connects to the broader statistical literature on distribution-free inference methods."
+}
