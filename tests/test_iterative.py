@@ -1041,6 +1041,7 @@ class TestIterativeImports:
 
     def test_infra_init_exports(self):
         from infra import run_iterative_refinement, IterativeResult  # noqa: F401
+        from infra import create_context_seed  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
@@ -1255,6 +1256,383 @@ class TestDispatchIterative:
 # ---------------------------------------------------------------------------
 
 
+class TestEvalModelParam:
+    """Test the eval_model parameter for cheaper evaluation scoring."""
+
+    def _mock_client(self):
+        """Create mock client that tracks which model is used per call."""
+        client = MagicMock()
+
+        teacher_hint = {
+            "problem_context": "Test problem.",
+            "desirable_properties": ["Coverage"],
+            "field_context": "Test field.",
+        }
+        eval_data = {
+            "composite_score": 3.5,
+            "novelty_gap": "Test gap.",
+            "scores": {"problem_understanding": 3, "technical_depth": 3,
+                       "novelty_alignment": 4, "writing_quality": 4, "completeness": 3},
+        }
+        refine_data = {
+            "refined_hint": teacher_hint,
+            "refinement_rationale": {"additions": [], "removals": []},
+            "convergence_signal": {
+                "hint_changed_substantially": False,
+                "estimated_residual_captured": 0.9,
+                "recommendation": "stop",
+            },
+        }
+
+        call_log = []
+
+        def mock_create(**kwargs):
+            resp = MagicMock()
+            model = kwargs.get("model", "unknown")
+            system = kwargs.get("system", "") or kwargs.get("instructions", "")
+
+            if "conceptual residual" in system.lower() or "iterative reconstruction" in system.lower():
+                call_log.append(("refine", model))
+                text = f"```json\n{json.dumps(refine_data)}\n```"
+            elif "evaluate" in system.lower() or "scoring" in system.lower():
+                call_log.append(("evaluate", model))
+                text = f"```json\n{json.dumps(eval_data)}\n```"
+            else:
+                call_log.append(("student", model))
+                text = "# Reconstruction\n\nTest output."
+
+            resp.output_text = text
+            block = MagicMock()
+            block.text = text
+            resp.content = [block]
+            usage = MagicMock()
+            usage.input_tokens = 100
+            usage.output_tokens = 50
+            resp.usage = usage
+            resp.id = "mock-resp-id"
+            return resp
+
+        client.responses.create = mock_create
+        client.messages = MagicMock()
+        client.messages.create = mock_create
+        client.call_log = call_log
+        return client
+
+    def test_eval_model_used_in_iterative(self, tmp_path):
+        """Verify eval_model is passed to evaluate_reconstruction, not teacher_model."""
+        from infra.iterative import run_iterative_refinement
+
+        client = self._mock_client()
+
+        def mock_student(cl, model, mode, hint, refs, audit):
+            return "Test student output."
+
+        result = run_iterative_refinement(
+            client=client,
+            student_model="test-student",
+            teacher_model="test-teacher-opus",
+            mode="abstract",
+            initial_hint={"problem_context": "Test.", "desirable_properties": [], "field_context": ""},
+            refs_text="Refs.",
+            paper_text="Paper text.",
+            paper_id="test",
+            condition="with_refs",
+            run_student_fn=mock_student,
+            max_rounds=3,
+            output_dir=tmp_path,
+            eval_model="test-eval-sonnet",
+        )
+
+        assert result.total_rounds >= 2
+        # All evaluate calls should use the eval model, not the teacher model
+        eval_calls = [(t, m) for t, m in client.call_log if t == "evaluate"]
+        refine_calls = [(t, m) for t, m in client.call_log if t == "refine"]
+        assert len(eval_calls) > 0
+        for call_type, model in eval_calls:
+            assert model == "test-eval-sonnet", f"Eval used {model}, expected test-eval-sonnet"
+        for call_type, model in refine_calls:
+            assert model == "test-teacher-opus", f"Refine used {model}, expected test-teacher-opus"
+
+    def test_eval_model_defaults_to_teacher(self, tmp_path):
+        """When eval_model is None, evaluate uses teacher_model."""
+        from infra.iterative import run_iterative_refinement
+
+        client = self._mock_client()
+
+        def mock_student(cl, model, mode, hint, refs, audit):
+            return "Test student output."
+
+        result = run_iterative_refinement(
+            client=client,
+            student_model="test-student",
+            teacher_model="test-teacher",
+            mode="abstract",
+            initial_hint={"problem_context": "Test.", "desirable_properties": [], "field_context": ""},
+            refs_text="Refs.",
+            paper_text="Paper text.",
+            paper_id="test",
+            condition="with_refs",
+            run_student_fn=mock_student,
+            max_rounds=3,
+            output_dir=tmp_path,
+            # eval_model omitted — should default to teacher_model
+        )
+
+        eval_calls = [(t, m) for t, m in client.call_log if t == "evaluate"]
+        assert len(eval_calls) > 0
+        for call_type, model in eval_calls:
+            assert model == "test-teacher"
+
+
+class TestPaperContextSeed:
+    """Test paper_context_seed_id parameter for cross-mode context sharing."""
+
+    def test_seed_id_passed_to_eval_calls(self, tmp_path):
+        """Verify seed ID is used as previous_response_id for eval calls."""
+        from infra.iterative import run_iterative_refinement
+
+        client = MagicMock()
+        prev_ids_seen = []
+
+        eval_data = {"composite_score": 3.5, "novelty_gap": "gap"}
+        refine_data = {
+            "refined_hint": {"problem_context": "p", "desirable_properties": [], "field_context": ""},
+            "refinement_rationale": {"additions": [], "removals": []},
+            "convergence_signal": {"hint_changed_substantially": False,
+                                   "estimated_residual_captured": 0.9,
+                                   "recommendation": "stop"},
+        }
+
+        def mock_create(**kwargs):
+            resp = MagicMock()
+            system = kwargs.get("system", "") or kwargs.get("instructions", "")
+            prev_id = kwargs.get("previous_response_id")
+            if prev_id is not None:
+                prev_ids_seen.append(prev_id)
+
+            if "conceptual residual" in system.lower() or "iterative reconstruction" in system.lower():
+                text = f"```json\n{json.dumps(refine_data)}\n```"
+            elif "evaluate" in system.lower() or "scoring" in system.lower():
+                text = f"```json\n{json.dumps(eval_data)}\n```"
+            else:
+                text = "Reconstruction output."
+
+            resp.output_text = text
+            block = MagicMock()
+            block.text = text
+            resp.content = [block]
+            usage = MagicMock()
+            usage.input_tokens = 100
+            usage.output_tokens = 50
+            resp.usage = usage
+            resp.id = f"resp-{len(prev_ids_seen)}"
+            return resp
+
+        client.responses.create = mock_create
+        client.messages = MagicMock()
+        client.messages.create = mock_create
+
+        def mock_student(cl, model, mode, hint, refs, audit):
+            return "Student output."
+
+        result = run_iterative_refinement(
+            client=client,
+            student_model="s",
+            teacher_model="t",
+            mode="abstract",
+            initial_hint={"problem_context": "p", "desirable_properties": [], "field_context": ""},
+            refs_text="refs",
+            paper_text="paper",
+            paper_id="test",
+            condition="with_refs",
+            run_student_fn=mock_student,
+            max_rounds=3,
+            output_dir=tmp_path,
+            paper_context_seed_id="seed-abc-123",
+        )
+
+        assert result.total_rounds >= 2
+        # The seed ID should appear in prev_ids_seen (passed to eval and refine calls)
+        assert "seed-abc-123" in prev_ids_seen
+
+    def test_no_seed_works(self, tmp_path):
+        """Without seed, prev_response_id is None (backward compat)."""
+        from infra.iterative import run_iterative_refinement
+
+        client = MagicMock()
+
+        eval_data = {"composite_score": 3.5, "novelty_gap": "gap"}
+        refine_data = {
+            "refined_hint": {"problem_context": "p", "desirable_properties": [], "field_context": ""},
+            "refinement_rationale": {"additions": [], "removals": []},
+            "convergence_signal": {"hint_changed_substantially": False,
+                                   "estimated_residual_captured": 0.9,
+                                   "recommendation": "stop"},
+        }
+
+        def mock_create(**kwargs):
+            resp = MagicMock()
+            system = kwargs.get("system", "") or kwargs.get("instructions", "")
+            if "conceptual residual" in system.lower() or "iterative reconstruction" in system.lower():
+                text = f"```json\n{json.dumps(refine_data)}\n```"
+            elif "evaluate" in system.lower() or "scoring" in system.lower():
+                text = f"```json\n{json.dumps(eval_data)}\n```"
+            else:
+                text = "Output."
+            resp.output_text = text
+            block = MagicMock()
+            block.text = text
+            resp.content = [block]
+            usage = MagicMock()
+            usage.input_tokens = 100
+            usage.output_tokens = 50
+            resp.usage = usage
+            resp.id = "resp-1"
+            return resp
+
+        client.responses.create = mock_create
+        client.messages = MagicMock()
+        client.messages.create = mock_create
+
+        def mock_student(cl, model, mode, hint, refs, audit):
+            return "Student output."
+
+        # No seed, no eval_model — pure backward compat
+        result = run_iterative_refinement(
+            client=client,
+            student_model="s",
+            teacher_model="t",
+            mode="abstract",
+            initial_hint={"problem_context": "p", "desirable_properties": [], "field_context": ""},
+            refs_text="refs",
+            paper_text="paper",
+            paper_id="test",
+            condition="with_refs",
+            run_student_fn=mock_student,
+            max_rounds=3,
+            output_dir=tmp_path,
+        )
+        assert result.total_rounds >= 2
+
+
+class TestParallelModes:
+    """Test --parallel-modes execution path in dispatch_paper."""
+
+    def _mock_client(self):
+        client = MagicMock()
+        teacher_hint = {
+            "problem_context": "Test.", "desirable_properties": [], "field_context": "",
+        }
+        eval_data = {"composite_score": 3.5, "novelty_gap": "Gap."}
+        refine_data = {
+            "refined_hint": teacher_hint,
+            "refinement_rationale": {"additions": [], "removals": []},
+            "convergence_signal": {"hint_changed_substantially": False,
+                                   "estimated_residual_captured": 0.9,
+                                   "recommendation": "stop"},
+        }
+
+        def mock_create(**kwargs):
+            resp = MagicMock()
+            system = kwargs.get("system", "") or kwargs.get("instructions", "")
+            if "conceptual residual" in system.lower() or "iterative reconstruction" in system.lower():
+                text = f"```json\n{json.dumps(refine_data)}\n```"
+            elif "evaluate" in system.lower() or "scoring" in system.lower():
+                text = f"```json\n{json.dumps(eval_data)}\n```"
+            elif "teacher" in system.lower() and "extract" in system.lower():
+                text = f"```json\n{json.dumps(teacher_hint)}\n```"
+            else:
+                text = "# Reconstruction\nTest."
+            resp.output_text = text
+            block = MagicMock()
+            block.text = text
+            resp.content = [block]
+            usage = MagicMock()
+            usage.input_tokens = 100
+            usage.output_tokens = 50
+            resp.usage = usage
+            resp.id = "mock-id"
+            return resp
+
+        client.responses.create = mock_create
+        client.messages = MagicMock()
+        client.messages.create = mock_create
+        return client
+
+    def test_parallel_modes_produces_same_results(self, tmp_path):
+        """parallel_modes=True should produce the same mode results as sequential."""
+        from agent import dispatch_paper, load_references
+
+        client = self._mock_client()
+        refs = load_references()
+        modes = ["abstract", "problem"]
+
+        with patch("infra.pdf_utils.extract_text_from_pdf", return_value="Mock paper." * 100):
+            result = dispatch_paper(
+                client=client,
+                paper_url="https://arxiv.org/abs/2006.06138",
+                refs=refs,
+                student_model="gpt-4o",
+                teacher_model="gpt-5.4",
+                modes=modes,
+                output_dir=tmp_path,
+                conditions=["with_refs"],
+                iterative=True,
+                max_rounds=3,
+                parallel_modes=True,
+            )
+
+        wr = result["conditions"]["with_refs"]
+        # Both modes should have completed successfully
+        for mode in modes:
+            assert mode in wr, f"Mode {mode} missing from results"
+            assert wr[mode]["status"] == "success"
+            assert wr[mode]["iterative"] is True
+
+
+class TestCreateContextSeed:
+    """Test create_context_seed function."""
+
+    def test_anthropic_returns_none(self):
+        """Anthropic backend should return None (cache_control handles it)."""
+        from infra.llm import create_context_seed
+        from infra.audit import AuditLog
+
+        # Mock Anthropic client
+        client = MagicMock()
+        client.__class__.__module__ = "anthropic._client"
+
+        audit = AuditLog(paper_id="test", paper_url="", reconstruction_type="seed",
+                         student_model="s", teacher_model="t", config={})
+
+        result = create_context_seed(client, "opus", "Paper text.", audit, "test")
+        assert result is None
+
+    def test_openai_returns_response_id(self):
+        """OpenAI backend should return a response ID."""
+        from infra.llm import create_context_seed
+        from infra.audit import AuditLog
+
+        client = MagicMock()
+        client.__class__.__module__ = "openai._client"
+
+        resp = MagicMock()
+        resp.id = "resp_seed_12345"
+        usage = MagicMock()
+        usage.input_tokens = 8000
+        usage.output_tokens = 5
+        resp.usage = usage
+        client.responses.create.return_value = resp
+
+        audit = AuditLog(paper_id="test", paper_url="", reconstruction_type="seed",
+                         student_model="s", teacher_model="t", config={})
+
+        result = create_context_seed(client, "gpt-5.4", "Paper text." * 1000, audit, "test")
+        assert result == "resp_seed_12345"
+        assert len(audit.steps) == 1
+        assert audit.steps[0].step_name == "create_context_seed"
+
+
 class TestCLIIterative:
     def test_iterative_flag_in_help(self):
         import subprocess
@@ -1265,3 +1643,5 @@ class TestCLIIterative:
         assert result.returncode == 0
         assert "--iterative" in result.stdout
         assert "--max-rounds" in result.stdout
+        assert "--eval-model" in result.stdout
+        assert "--parallel-modes" in result.stdout

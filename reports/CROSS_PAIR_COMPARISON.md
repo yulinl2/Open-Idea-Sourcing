@@ -93,7 +93,7 @@ much from an irrelevant reference, so the teacher must hint more.
 | | Ref 1 | Ref 2 |
 |---|---|---|
 | **Target A** | **3.35** | **3.50** |
-| **Target B** | **2.95** | **3.40** |
+| **Target B** | **3.20** | **3.40** |
 
 ---
 
@@ -158,7 +158,7 @@ confirming that for truly novel work, the residual is ref-independent.
 | Metric | Close Ref Pairs (1,2) | Distant Ref Pairs (3,4) |
 |--------|----------------------|------------------------|
 | Avg peak score | 4.1 | 3.6 |
-| Avg score across modes | 3.43 | 3.18 |
+| Avg score across modes | 3.42 | 3.30 |
 | Residual identified? | Yes | Yes |
 | Residual content changed? | No | No |
 
@@ -649,9 +649,9 @@ With Anthropic caching + batch discount combined:
 
 #### Implementation Roadmap
 
-| Priority | Change | Effort | Impact |
-|----------|--------|--------|--------|
-| **P0** | `--eval-model` flag (Hybrid C) | ~10 lines | -56% cost |
-| **P1** | `asyncio` parallel modes | ~50 lines (ThreadPoolExecutor wrapper) | -66% wall-clock |
-| **P2** | Batch API for pairwise/re-scoring | ~100 lines (new batch_eval.py) | -50% on eligible |
-| P3 | Dual-client hybrid (Hybrid D) | ~80 lines (plumbing) | -2% more cost |
+| Priority | Change | Effort | Impact | Status |
+|----------|--------|--------|--------|--------|
+| **P0** | `--eval-model` flag (Hybrid C) | ~10 lines | -56% cost | **Implemented** |
+| **P1** | `--parallel-modes` (ThreadPoolExecutor) | ~50 lines | -66% wall-clock | **Implemented** |
+| **P2** | Batch API for pairwise/re-scoring | ~100 lines (new batch_eval.py) | -50% on eligible | Planned |
+| P3 | Dual-client hybrid (Hybrid D) | ~80 lines (plumbing) | -2% more cost | Low priority |

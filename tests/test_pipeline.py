@@ -235,6 +235,8 @@ class TestCLI:
         assert "--modes" in result.stdout
         assert "--student-model" in result.stdout
         assert "--teacher-model" in result.stdout
+        assert "--eval-model" in result.stdout
+        assert "--parallel-modes" in result.stdout
 
     def test_mode_choices_in_help(self):
         import subprocess

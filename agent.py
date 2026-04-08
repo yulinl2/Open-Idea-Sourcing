@@ -25,12 +25,11 @@ import json
 import os
 import re
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-IMPL_ID = "staged_reconstruct_v0_6_0"
+IMPL_ID = "staged_reconstruct_v0_6_2"
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -754,7 +753,7 @@ def dispatch_paper(
             try:
                 print(f"  [pairwise] Comparing {mode}...")
                 pw_result = evaluate_pairwise(
-                    client, teacher_model, paper_text,
+                    client, eval_model, paper_text,
                     wr_text, nr_text, mode, pw_audit,
                 )
                 pw_audit.mark_finished()

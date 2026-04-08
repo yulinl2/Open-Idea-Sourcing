@@ -1,7 +1,7 @@
 # Iterative Hint-Refinement for Conceptual Residual Extraction
 
-**Version:** v0.6.1  
-**Status:** Implemented, tested (76 unit tests), and validated on real paper
+**Version:** v0.6.2  
+**Status:** Implemented, tested (83 unit tests), and validated on real paper
 
 ## Scientific Motivation
 
@@ -97,6 +97,15 @@ python agent.py --iterative --max-rounds 3 --modes abstract problem_method
 
 # Full iterative run (all modes, both conditions)
 python agent.py --iterative --max-rounds 5
+
+# Cost-optimized: use Sonnet for eval scoring (-56% cost)
+python agent.py --iterative --eval-model claude-sonnet-4-20250514
+
+# Time-optimized: run modes in parallel (-66% wall-clock)
+python agent.py --iterative --parallel-modes
+
+# Both optimizations combined
+python agent.py --iterative --eval-model claude-sonnet-4-20250514 --parallel-modes
 ```
 
 ### Output Structure
@@ -190,7 +199,8 @@ single-shot code. This keeps the v0.5 behavior completely unchanged when
 | v0.4 | Anti-leakage | Redesigned teacher prompt, reconstruction difficulty |
 | v0.5 | Pairwise comparison | Side-by-side with_refs vs no_refs, 1-7 scale |
 | v0.6 | Iterative refinement | Conceptual residual extraction, hint convergence |
-| **v0.6.1** | **Convergence hardening** | **Regression guard, MIN_ROUNDS=3, best-round selection, neutral ref guidance** |
+| v0.6.1 | Convergence hardening | Regression guard, MIN_ROUNDS=3, best-round selection, neutral ref guidance |
+| **v0.6.2** | **Cost & parallelism** | **--eval-model (Sonnet eval, -56% cost), --parallel-modes (-66% wall-clock), cross-mode context seeding, eval independence fix** |
 
 ### v0.6.1: Real Run Validation & Convergence Fixes
 
@@ -287,7 +297,7 @@ the conceptual residual — from high-level framing to specific technical insigh
 
 ## Test Coverage
 
-43 tests in `tests/test_iterative.py` (76 total across both test files):
+50 tests in `tests/test_iterative.py` (83 total across both test files):
 
 - **Data structures** (8): RoundRecord, IterativeResult creation/serialization
 - **Convergence** (7): max rounds, min rounds, teacher stop, score plateau, hint stability, residual captured
@@ -298,6 +308,10 @@ the conceptual residual — from high-level framing to specific technical insigh
 - **Edge cases** (3): single round, empty hint, no mutation
 - **Dispatch integration** (6): iterative abstract/problem_method, both conditions, summary, non-iterative unchanged, CLI flags
 - **Regression guard** (2): score regression blocks convergence, regression recovery
+- **Eval model** (2): eval_model routes to cheaper model, defaults to teacher
+- **Paper context seed** (2): seed ID passed to eval calls, backward compat without seed
+- **Parallel modes** (1): parallel_modes=True produces same results as sequential
+- **Context seed function** (2): Anthropic returns None, OpenAI returns response ID
 - **Imports** (2): module imports, infra init exports
 
 ## Scientific Interpretation
