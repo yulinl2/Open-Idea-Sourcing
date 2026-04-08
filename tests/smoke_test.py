@@ -16,6 +16,8 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 RESULTS_DIR = Path(__file__).parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 
@@ -164,7 +166,6 @@ def test_mini_perplexity():
         _save("03_mini_perplexity", {"pass": False, "error": err})
         return False
 
-    sys.path.insert(0, str(Path(__file__).parent.parent))
     from geo_perplexity.perplexity import estimate_perplexity
 
     results = {}
@@ -244,7 +245,6 @@ def test_mini_perplexity():
 def test_text_extraction():
     """Check whether PDF download + extraction works for a known arXiv paper."""
     print("\n[Test 4] Text extraction pipeline ...")
-    sys.path.insert(0, str(Path(__file__).parent.parent))
 
     from geo_perplexity.text_extractor import download_arxiv_pdf, extract_text_pymupdf4llm
 
@@ -308,7 +308,6 @@ def test_text_extraction():
 def test_reference_collection():
     """Check Semantic Scholar API and see how many refs have arXiv IDs."""
     print("\n[Test 5] Reference collection ...")
-    sys.path.insert(0, str(Path(__file__).parent.parent))
 
     from geo_perplexity.reference_collector import fetch_all_citations
 

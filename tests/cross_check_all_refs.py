@@ -14,8 +14,10 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
 
@@ -133,7 +135,10 @@ def cross_check_paper(cache_path: Path) -> dict:
     arxiv_id = data.get("arxiv_id", cache_path.stem)
     refs = data.get("references", [])
 
-    pdf_dir = Path("/tmp/geo_perplexity_pdfs")
+    pdf_dir = Path(os.environ.get(
+        "GEO_PERPLEXITY_PDF_CACHE",
+        Path(tempfile.gettempdir()) / "geo_perplexity_pdfs",
+    ))
     results = {"paper": arxiv_id, "n_refs": len(refs), "checks": []}
 
     for ref in refs:

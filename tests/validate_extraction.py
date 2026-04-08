@@ -62,7 +62,15 @@ class PaperValidation:
 def validate_cached_paper(path: str | Path) -> PaperValidation:
     """Run all validation checks on a single cached paper JSON."""
     path = Path(path)
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        val = PaperValidation(paper_id=path.stem, path=str(path))
+        val.results.append(ValidationResult(
+            check="json_valid", passed=False,
+            message=f"Corrupt cache file: {exc}",
+        ))
+        return val
     paper_id = data.get("arxiv_id", path.stem)
     val = PaperValidation(paper_id=paper_id, path=str(path))
 
