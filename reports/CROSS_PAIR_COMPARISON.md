@@ -261,3 +261,66 @@ Prices: Sonnet $3/$15 per 1M in/out, Opus $15/$75 per 1M in/out.
 Round time scales with output length — problem_method (~10K chars) takes ~1.7x
 longer per round than abstract (~2.5K chars). The dominant cost is serial:
 student → evaluate → refine must run sequentially within each round.
+
+### Per-Stage Breakdown (aggregated across all 4 pairs)
+
+| Stage | API Calls | Tokens In | Tokens Out | Cost | Time | Avg/Call | % Cost |
+|-------|-----------|-----------|------------|------|------|----------|--------|
+| teacher | 4 | 57K | 2K | $0.98 | 69s | 17s | 2.8% |
+| student | 65 | 538K | 106K | $3.21 | 2,163s | 33s | 9.0% |
+| evaluate | 65 | 810K | 32K | $14.57 | 1,257s | 19s | 41.0% |
+| refine | 59 | 799K | 64K | $16.76 | 2,204s | 37s | 47.2% |
+| **Total** | **193** | **2,204K** | **204K** | **$35.52** | **5,694s** | | **100%** |
+
+**Key observations:**
+- **Refine is the most expensive stage** (47% of cost, 39% of time) — Opus
+  processes the full round history on each call, so context grows across rounds
+- **Evaluate is the second most expensive** (41% of cost) — also Opus, but
+  faster per call (19s vs 37s) because it doesn't need the full hint history
+- **Student is cheap but slow** (9% of cost, 38% of time) — Sonnet generates
+  long outputs (avg 1,636 tokens out) but at $3/$15 per 1M rates
+- **Teacher hint is negligible** (2.8% of cost) — one Opus call per pair
+
+### Per-Round Detail (example: Pair 2 / mindmap)
+
+```
+Round | student        | evaluate       | refine         | Round Total
+------+----------------+----------------+----------------+-----------
+  1   | 8K/1K $0.04 27s| 12K/0.4K $0.21 17s| 12K/1K $0.26 35s| $0.51  79s
+  2   | 8K/1K $0.04 26s| 12K/0.4K $0.21 16s| 13K/1K $0.26 31s| $0.51  73s
+  3   | 8K/1K $0.04 26s| 12K/0.5K $0.21 18s| 13K/1K $0.28 39s| $0.53  83s
+  4   | 8K/1K $0.04 23s| 12K/0.4K $0.20 15s| 13K/1K $0.28 37s| $0.52  75s
+------+----------------+----------------+----------------+-----------
+Total |       $0.16    |       $0.83    |       $1.08    | $2.05 310s
+```
+
+Pattern: student cost is flat (~$0.04/round), evaluate/refine grow slightly
+as the hint accumulates additions across rounds. Refine grows fastest because
+it receives the full history of all prior rounds.
+
+### Per-Mode Breakdown (aggregated across all 4 pairs)
+
+| Mode | Rounds | API Calls | Tokens | Cost | Time | student | evaluate | refine |
+|------|--------|-----------|--------|------|------|---------|----------|--------|
+| abstract | 15 | 44 | 493K | $7.29 | 16.5m | $0.46 / 3.0m | $3.09 / 4.8m | $3.75 / 8.7m |
+| mindmap | 16 | 47 | 553K | $7.96 | 20.0m | $0.64 / 7.0m | $3.35 / 4.7m | $3.97 / 8.4m |
+| problem | 17 | 49 | 621K | $9.17 | 25.8m | $0.90 / 10.4m | $3.89 / 5.6m | $4.37 / 9.8m |
+| problem_method | 17 | 49 | 682K | $10.12 | 31.4m | $1.21 / 15.7m | $4.24 / 5.9m | $4.67 / 9.9m |
+
+**Scaling pattern:** problem_method costs 1.39x more and takes 1.90x longer
+than abstract, driven primarily by student generation time (5.2x longer) and
+refine context growth. Evaluate time is relatively stable across modes (~5m)
+because the evaluator reads a fixed-size paper regardless of student output length.
+
+### Per-Pair Per-Mode Cost & Time
+
+| Mode | Pair 1 (A+R1) | Pair 2 (A+R2) | Pair 3 (B+R1) | Pair 4 (B+R2) |
+|------|---------------|---------------|---------------|---------------|
+| abstract | $2.02 / 4.4m (4R) | $1.49 / 3.3m (3R) | $1.50 / 3.3m (3R) | $2.28 / 5.4m (5R) |
+| mindmap | $2.28 / 5.6m (5R) | $2.05 / 5.2m (4R) | $2.07 / 5.2m (4R) | $1.57 / 4.0m (3R) |
+| problem | $1.65 / 4.3m (3R) | $2.61 / 7.5m (5R) | $2.33 / 6.6m (4R) | $2.58 / 7.5m (5R) |
+| problem_method | $2.54 / 7.5m (4R) | $2.97 / 9.6m (5R) | $1.84 / 5.6m (3R) | $2.77 / 8.7m (5R) |
+| **Total** | **$8.49 / 22.1m** | **$9.12 / 25.9m** | **$7.74 / 20.9m** | **$9.20 / 25.9m** |
+
+Cost and time scale linearly with round count. Cheapest run: Pair 3 ($7.74,
+fewest total rounds at 14). Most expensive: Pair 4 ($9.20, most rounds at 18).
