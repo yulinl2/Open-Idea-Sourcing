@@ -251,6 +251,22 @@ def _strip_markdown_artifacts(text: str) -> str:
     return text.strip()
 
 
+def _strip_running_headers(text: str, title: str) -> str:
+    """Remove repeated page headers (page number + paper title on each page)."""
+    if not title or len(title) < 10:
+        return text
+    # Escape title for regex and allow minor variations
+    esc = re.escape(title[:60])
+    # Match: page number line, blank line, title line
+    text = re.sub(
+        r'^\d{1,3}\s*\n\n' + esc + r'\s*\n',
+        '\n', text, flags=re.MULTILINE,
+    )
+    # Also match: "N Author Name" style headers (e.g. "4 Lihua Lei and Emmanuel J. Candès")
+    text = re.sub(r'^\d{1,3}\s+_[A-Z][a-z]+.*?_\s*$', '', text, flags=re.MULTILINE)
+    return text
+
+
 def _extract_abstract_from_md(md_text: str) -> str:
     """Try to extract the abstract from markdown text."""
     # Pattern 1: "Abstract"/"Summary" heading (possibly bold) followed by text
@@ -302,6 +318,7 @@ def clean_extracted_text(
     md_text: str,
     *,
     llm_json: Optional[Callable[[str, str], str]] = None,
+    title: str = "",
 ) -> str:
     """Clean extracted markdown into plain academic prose.
 
@@ -333,6 +350,8 @@ def clean_extracted_text(
 
     # Rule-based fallback cleaning
     text = _strip_markdown_artifacts(text)
+    if title:
+        text = _strip_running_headers(text, title)
     return text[:_MAX_FULL_TEXT_CHARS]
 
 
@@ -372,7 +391,9 @@ def extract_full_text(
         result["abstract"] = _extract_abstract_from_md(raw_md)
 
         lj = llm_json if (use_llm_cleaning and llm_json) else None
-        result["full_text"] = clean_extracted_text(raw_md, llm_json=lj)
+        result["full_text"] = clean_extracted_text(
+            raw_md, llm_json=lj, title=result["title"],
+        )
         result["extraction_method"] = "pymupdf4llm+llm" if lj else "pymupdf4llm"
         return result
 
