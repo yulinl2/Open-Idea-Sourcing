@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-IMPL_ID = "staged_reconstruct_v0_5_0"
+IMPL_ID = "staged_reconstruct_v0_6_0"
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -350,6 +350,8 @@ def dispatch_paper(
     paper_metadata: dict | None = None,
     conditions: list[str] | None = None,
     evaluate: bool = False,
+    iterative: bool = False,
+    max_rounds: int = 5,
 ) -> dict:
     """Run all reconstruction modes for a single paper under each condition.
 
@@ -362,9 +364,14 @@ def dispatch_paper(
             - "with_refs": student receives hint + reference texts
             - "no_refs":   student receives hint only (baseline)
         evaluate: If True, teacher evaluates each student output after generation.
+        iterative: If True, run iterative hint-refinement loop per mode.
+            Implies evaluate=True.
+        max_rounds: Maximum iterative refinement rounds (default 5).
 
     Returns a summary dict with paths to all outputs.
     """
+    if iterative:
+        evaluate = True  # iterative implies evaluation
     from infra.audit import AuditLog
     from infra.pdf_utils import extract_text_from_pdf
 
@@ -462,6 +469,78 @@ def dispatch_paper(
             mode_dir = cond_dir / mode
             mode_dir.mkdir(exist_ok=True)
 
+            # --- Iterative refinement path ---
+            if iterative and paper_text:
+                from infra.iterative import run_iterative_refinement
+
+                try:
+                    iter_dir = mode_dir / "_iterative"
+                    iter_result = run_iterative_refinement(
+                        client=client,
+                        student_model=student_model,
+                        teacher_model=teacher_model,
+                        mode=mode,
+                        initial_hint=hint,
+                        refs_text=refs_text,
+                        paper_text=paper_text,
+                        paper_id=paper_id,
+                        condition=condition,
+                        run_student_fn=run_student,
+                        max_rounds=max_rounds,
+                        output_dir=iter_dir,
+                    )
+
+                    # Use the LAST round's output as the final output
+                    last_round = iter_result.rounds[-1] if iter_result.rounds else None
+                    output = last_round.student_output if last_round else ""
+
+                    # Save final output
+                    (mode_dir / "output.md").write_text(
+                        f"# Reconstruction: {mode} (iterative, {iter_result.total_rounds} rounds)\n"
+                        f"**Paper:** {paper_id}  \n"
+                        f"**Condition:** {condition}  \n"
+                        f"**Student model:** {student_model}  \n"
+                        f"**Teacher model:** {teacher_model}  \n"
+                        f"**Rounds:** {iter_result.total_rounds}  \n"
+                        f"**Converged:** {iter_result.converged} ({iter_result.convergence_reason})  \n"
+                        f"**Score trajectory:** {' -> '.join(f'{s:.1f}' for s in iter_result.score_trajectory())}  \n\n"
+                        f"---\n\n"
+                        f"{output}\n",
+                        encoding="utf-8",
+                    )
+
+                    # Use last round's eval as the mode eval
+                    eval_result = last_round.evaluation if last_round else {}
+                    if eval_result:
+                        (mode_dir / "eval.json").write_text(
+                            json.dumps(eval_result, indent=2, default=str),
+                            encoding="utf-8",
+                        )
+
+                    cond_results[mode] = {
+                        "status": "success",
+                        "output_chars": len(output),
+                        "output_path": str(mode_dir / "output.md"),
+                        "iterative": True,
+                        "total_rounds": iter_result.total_rounds,
+                        "converged": iter_result.converged,
+                        "convergence_reason": iter_result.convergence_reason,
+                        "score_trajectory": iter_result.score_trajectory(),
+                        "eval": eval_result,
+                        "final_hint": iter_result.final_hint,
+                    }
+                    scores = iter_result.score_trajectory()
+                    print(f"  [iterative] Final score: {scores[-1] if scores else '?'}")
+
+                except Exception as exc:
+                    error_msg = f"ERROR in iterative {condition}/{mode}: {exc}"
+                    print(f"  {error_msg}")
+                    (mode_dir / "error.txt").write_text(error_msg, encoding="utf-8")
+                    cond_results[mode] = {"status": "error", "error": str(exc)}
+
+                continue  # skip the single-shot path below
+
+            # --- Single-shot path (original behavior) ---
             student_audit = AuditLog(
                 paper_id=paper_id,
                 paper_url=paper_url,
@@ -648,11 +727,20 @@ def write_dispatch_summary(results: list[dict], output_dir: Path,
                         ev = info.get("eval", {})
                         score = ev.get("composite_score", "—")
                         score_str = f" {score} |"
-                    lines.append(
-                        f"| {mode} | OK | {info['output_chars']:,} | "
-                        f"{info['input_tokens']:,}/{info['output_tokens']:,} | "
-                        f"{info['duration_s']:.1f}s |{score_str}"
-                    )
+                    if info.get("iterative"):
+                        traj = info.get("score_trajectory", [])
+                        traj_str = "->".join(f"{s:.1f}" for s in traj)
+                        rounds = info.get("total_rounds", "?")
+                        lines.append(
+                            f"| {mode} | OK ({rounds}R) | {info['output_chars']:,} | "
+                            f"— | — |{score_str}"
+                        )
+                    else:
+                        lines.append(
+                            f"| {mode} | OK | {info['output_chars']:,} | "
+                            f"{info['input_tokens']:,}/{info['output_tokens']:,} | "
+                            f"{info['duration_s']:.1f}s |{score_str}"
+                        )
                 else:
                     err_cols = " — |" if has_eval else ""
                     lines.append(f"| {mode} | ERROR | — | — | — |{err_cols}")
@@ -688,6 +776,28 @@ def write_dispatch_summary(results: list[dict], output_dir: Path,
                 if gap:
                     lines.append(f"**{mode}:** {gap}")
                     lines.append("")
+
+        # Iterative refinement trajectory
+        has_iterative = any(
+            info.get("iterative")
+            for cond in r.get("conditions", {}).values()
+            for info in cond.values()
+        )
+        if has_iterative:
+            lines.append(f"### Iterative Refinement Trajectories")
+            lines.append("")
+            for condition, modes_data in r.get("conditions", {}).items():
+                for mode, info in modes_data.items():
+                    if info.get("iterative") and info.get("status") == "success":
+                        traj = info.get("score_trajectory", [])
+                        traj_str = " -> ".join(f"{s:.1f}" for s in traj)
+                        conv = info.get("convergence_reason", "?")
+                        rounds = info.get("total_rounds", "?")
+                        lines.append(
+                            f"**{condition}/{mode}** ({rounds} rounds): "
+                            f"{traj_str} | {conv}"
+                        )
+                        lines.append("")
 
     (output_dir / "SUMMARY.md").write_text("\n".join(lines), encoding="utf-8")
     print(f"\nSummary written to {output_dir / 'SUMMARY.md'}")
@@ -733,6 +843,17 @@ def main() -> None:
         help="Run teacher evaluation scoring on each student output",
     )
     parser.add_argument(
+        "--iterative", action="store_true",
+        help="Run iterative hint-refinement loop to extract conceptual residual. "
+             "Implies --evaluate. Each round: student generates -> teacher evaluates "
+             "-> teacher refines hint -> fresh student regenerates.",
+    )
+    parser.add_argument(
+        "--max-rounds", type=int, default=5,
+        help="Maximum number of iterative refinement rounds (default: 5). "
+             "Only used with --iterative.",
+    )
+    parser.add_argument(
         "--output-dir", default="reports",
         help="Base output directory (default: reports/)",
     )
@@ -745,6 +866,8 @@ def main() -> None:
 
     modes = args.modes or RECONSTRUCTION_MODES
     conditions = args.conditions or ["with_refs", "no_refs"]
+    iterative = args.iterative
+    max_rounds = args.max_rounds
 
     # Initialize LLM client
     client, backend = _make_client(args.backend)
@@ -788,6 +911,7 @@ def main() -> None:
     print(f"Modes:   {', '.join(modes)}")
     print(f"Conditions: {', '.join(conditions)}")
     print(f"Evaluate:   {args.evaluate}")
+    print(f"Iterative:  {iterative} (max {max_rounds} rounds)")
 
     # Dispatch each paper
     all_results = []
@@ -803,6 +927,8 @@ def main() -> None:
             paper_metadata=paper,
             conditions=conditions,
             evaluate=args.evaluate,
+            iterative=iterative,
+            max_rounds=max_rounds,
         )
         all_results.append(result)
 

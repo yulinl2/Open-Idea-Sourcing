@@ -91,6 +91,12 @@ python agent.py --backend anthropic --evaluate
 
 # Specific conditions only
 python agent.py --conditions with_refs
+
+# Iterative hint-refinement (v0.6) — extract conceptual residual
+python agent.py --iterative --modes abstract --conditions with_refs
+
+# Iterative with custom max rounds
+python agent.py --iterative --max-rounds 3 --modes abstract problem_method
 ```
 
 Requires `OPENAI_API_KEY` or Anthropic auth (auto-detected).
@@ -137,9 +143,15 @@ or pre-extracted text in `data/pdfs/<arxiv_id>.txt`.
    cached PDF text extraction (archived — used hallucinated metadata)
 5. **v0.4**: Anti-leakage teacher prompt redesign, improved eval rubric,
    reference_usage removed from composite, reconstruction_difficulty added
-6. **v0.5.0** (current): Pairwise evaluator (side-by-side with_refs vs no_refs
+6. **v0.5.0**: Pairwise evaluator (side-by-side with_refs vs no_refs
    on 1-7 impact scale), calibrated scoring rubric with concrete anchors,
    mandatory reference-engagement instructions in all student prompts,
    retry-with-backoff for rate limits, teacher hint caching, API key priority
-7. **v0.6** (planned): Cross-paper comparison and novelty ranking, batch API
+7. **v0.6.0** (current): Iterative hint-refinement for conceptual residual
+   extraction. Multi-round teacher-student loop: teacher refines the hint
+   based on student performance, fresh student regenerates each round.
+   Converges to the paper's "conceptual residual" — ideas that cannot be
+   derived from references alone. `--iterative` flag, `--max-rounds` control,
+   42 new unit tests. See [docs/ITERATIVE_REFINEMENT.md](docs/ITERATIVE_REFINEMENT.md).
+8. **v0.7** (planned): Cross-paper comparison and novelty ranking, batch API
    mode for 50% cost reduction, multi-run variance measurement
