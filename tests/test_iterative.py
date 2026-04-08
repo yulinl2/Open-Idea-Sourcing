@@ -177,16 +177,20 @@ class TestConvergence:
         assert "max rounds" in reason
 
     def test_min_rounds_enforced(self):
-        from infra.iterative import check_convergence
+        from infra.iterative import check_convergence, MIN_ROUNDS
         rounds = self._make_rounds([4.5])
         stop, reason = check_convergence(rounds, max_rounds=5)
         assert stop is False
         assert "more rounds" in reason
+        # Also check with MIN_ROUNDS-1 rounds
+        rounds2 = self._make_rounds([4.0] * (MIN_ROUNDS - 1))
+        stop2, reason2 = check_convergence(rounds2, max_rounds=10)
+        assert stop2 is False
 
     def test_teacher_recommends_stop(self):
         from infra.iterative import check_convergence
-        signals = [{}, {"recommendation": "stop"}]
-        rounds = self._make_rounds([3.0, 3.5], signals=signals)
+        signals = [{}, {}, {"recommendation": "stop"}]
+        rounds = self._make_rounds([3.0, 3.3, 3.5], signals=signals)
         stop, reason = check_convergence(rounds, max_rounds=5)
         assert stop is True
         assert "teacher recommended" in reason
@@ -195,9 +199,10 @@ class TestConvergence:
         from infra.iterative import check_convergence
         signals = [
             {},
+            {},
             {"hint_changed_substantially": False},
         ]
-        rounds = self._make_rounds([3.5, 3.6], signals=signals)
+        rounds = self._make_rounds([3.0, 3.5, 3.6], signals=signals)
         stop, reason = check_convergence(rounds, max_rounds=5, score_threshold=0.3)
         assert stop is True
         assert "plateau" in reason
@@ -206,9 +211,10 @@ class TestConvergence:
         from infra.iterative import check_convergence
         signals = [
             {},
+            {},
             {"hint_changed_substantially": True},
         ]
-        rounds = self._make_rounds([3.5, 3.6], signals=signals)
+        rounds = self._make_rounds([3.0, 3.5, 3.6], signals=signals)
         stop, reason = check_convergence(rounds, max_rounds=5, score_threshold=0.3)
         # Should NOT stop because hint is still changing
         assert stop is False
@@ -217,9 +223,10 @@ class TestConvergence:
         from infra.iterative import check_convergence
         signals = [
             {},
+            {},
             {"estimated_residual_captured": 0.9, "hint_changed_substantially": True},
         ]
-        rounds = self._make_rounds([3.0, 4.5], signals=signals)
+        rounds = self._make_rounds([3.0, 3.8, 4.5], signals=signals)
         stop, reason = check_convergence(rounds, max_rounds=5)
         assert stop is True
         assert "residual captured" in reason
@@ -228,12 +235,27 @@ class TestConvergence:
         from infra.iterative import check_convergence
         signals = [
             {},
+            {},
             {"hint_changed_substantially": True, "estimated_residual_captured": 0.4,
              "recommendation": "continue"},
         ]
-        rounds = self._make_rounds([2.0, 3.5], signals=signals)
+        rounds = self._make_rounds([2.0, 3.0, 3.5], signals=signals)
         stop, reason = check_convergence(rounds, max_rounds=5)
         assert stop is False
+
+    def test_score_regression_blocks_convergence(self):
+        """If latest score dropped below best, don't converge even if teacher says stop."""
+        from infra.iterative import check_convergence
+        signals = [
+            {},
+            {},
+            {"recommendation": "stop", "estimated_residual_captured": 0.9},
+        ]
+        # Score dropped from 3.4 to 3.2 — should NOT stop
+        rounds = self._make_rounds([3.0, 3.4, 3.2], signals=signals)
+        stop, reason = check_convergence(rounds, max_rounds=5)
+        assert stop is False
+        assert "regressed" in reason
 
 
 # ---------------------------------------------------------------------------

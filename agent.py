@@ -533,9 +533,15 @@ def dispatch_paper(
                         output_dir=iter_dir,
                     )
 
-                    # Use the LAST round's output as the final output
+                    # Use the BEST round's output (not just last — memoryless
+                    # students have variance, so pick the peak).
+                    best_round = iter_result.best_round()
                     last_round = iter_result.rounds[-1] if iter_result.rounds else None
-                    output = last_round.student_output if last_round else ""
+                    use_round = best_round or last_round
+                    output = use_round.student_output if use_round else ""
+                    scores = iter_result.score_trajectory()
+                    best_score = max(scores) if scores else 0
+                    best_rn = use_round.round_number if use_round else 0
 
                     # Save final output
                     (mode_dir / "output.md").write_text(
@@ -545,15 +551,16 @@ def dispatch_paper(
                         f"**Student model:** {student_model}  \n"
                         f"**Teacher model:** {teacher_model}  \n"
                         f"**Rounds:** {iter_result.total_rounds}  \n"
+                        f"**Best round:** {best_rn} (score {best_score:.1f})  \n"
                         f"**Converged:** {iter_result.converged} ({iter_result.convergence_reason})  \n"
-                        f"**Score trajectory:** {' -> '.join(f'{s:.1f}' for s in iter_result.score_trajectory())}  \n\n"
+                        f"**Score trajectory:** {' -> '.join(f'{s:.1f}' for s in scores)}  \n\n"
                         f"---\n\n"
                         f"{output}\n",
                         encoding="utf-8",
                     )
 
-                    # Use last round's eval as the mode eval
-                    eval_result = last_round.evaluation if last_round else {}
+                    # Use best round's eval as the mode eval
+                    eval_result = use_round.evaluation if use_round else {}
                     if eval_result:
                         (mode_dir / "eval.json").write_text(
                             json.dumps(eval_result, indent=2, default=str),

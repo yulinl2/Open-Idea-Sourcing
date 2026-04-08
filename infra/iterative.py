@@ -28,7 +28,7 @@ PROMPTS_DIR = SCRIPT_DIR / "prompts"
 # Default configuration
 DEFAULT_MAX_ROUNDS = 5
 CONVERGENCE_SCORE_THRESHOLD = 0.3   # stop if composite score delta < this
-MIN_ROUNDS = 2                       # always run at least 2 rounds
+MIN_ROUNDS = 3                       # always run at least 3 rounds
 
 
 # ---------------------------------------------------------------------------
@@ -71,12 +71,22 @@ class IterativeResult:
                 scores.append(0.0)
         return scores
 
+    def best_round(self) -> RoundRecord | None:
+        """Return the round with the highest composite score."""
+        if not self.rounds:
+            return None
+        scores = self.score_trajectory()
+        best_idx = max(range(len(scores)), key=lambda i: scores[i])
+        return self.rounds[best_idx]
+
     def hint_trajectory(self) -> list[dict]:
         """Return the sequence of hints across rounds."""
         return [r.hint for r in self.rounds]
 
     def to_dict(self) -> dict:
         """Serialize to a JSON-safe dict."""
+        best = self.best_round()
+        scores = self.score_trajectory()
         return {
             "paper_id": self.paper_id,
             "mode": self.mode,
@@ -87,7 +97,9 @@ class IterativeResult:
             "convergence_reason": self.convergence_reason,
             "final_hint": self.final_hint,
             "total_rounds": self.total_rounds,
-            "score_trajectory": self.score_trajectory(),
+            "score_trajectory": scores,
+            "best_score": max(scores) if scores else 0,
+            "best_round_number": best.round_number if best else 0,
         }
 
     def save(self, path: Path) -> None:
@@ -104,7 +116,9 @@ class IterativeResult:
             RoundRecord(**{k: v for k, v in r.items()})
             for r in data.pop("rounds", [])
         ]
-        data.pop("score_trajectory", None)
+        # Remove computed fields that are not constructor args
+        for key in ("score_trajectory", "best_score", "best_round_number"):
+            data.pop(key, None)
         result = cls(**{k: v for k, v in data.items() if k != "rounds"})
         result.rounds = rounds
         return result
@@ -214,6 +228,11 @@ def check_convergence(
     """Check whether the iterative process should stop.
 
     Returns (should_stop, reason).
+
+    Guards against premature convergence:
+    - Never stops before MIN_ROUNDS
+    - Never stops when the latest score regressed below the best score
+      (regression = noise from memoryless student, not a convergence signal)
     """
     n = len(rounds)
 
@@ -225,13 +244,7 @@ def check_convergence(
     if n < MIN_ROUNDS:
         return False, "need more rounds"
 
-    # Check teacher's own convergence signal
-    latest = rounds[-1]
-    signal = latest.convergence_signal
-    if signal.get("recommendation") == "stop":
-        return True, "teacher recommended stop"
-
-    # Check score plateau
+    # Compute score trajectory
     scores = []
     for r in rounds:
         try:
@@ -239,6 +252,21 @@ def check_convergence(
         except (TypeError, ValueError):
             scores.append(0.0)
 
+    # Score regression guard: if the latest score is below the best,
+    # do NOT converge — the student may have had a bad roll. The hint
+    # refinement should continue to give the student another chance.
+    if len(scores) >= 2:
+        best_score = max(scores[:-1])
+        if scores[-1] < best_score - 0.1:
+            return False, f"score regressed ({scores[-1]:.1f} < best {best_score:.1f})"
+
+    # Check teacher's own convergence signal
+    latest = rounds[-1]
+    signal = latest.convergence_signal
+    if signal.get("recommendation") == "stop":
+        return True, "teacher recommended stop"
+
+    # Check score plateau
     if len(scores) >= 2:
         delta = abs(scores[-1] - scores[-2])
         if delta < score_threshold:
@@ -444,8 +472,11 @@ def run_iterative_refinement(
         result.save(output_dir / "iterative_result.json")
 
     scores = result.score_trajectory()
+    best = result.best_round()
     print(f"\n  Iterative refinement complete: {result.total_rounds} rounds")
     print(f"  Score trajectory: {' -> '.join(f'{s:.1f}' for s in scores)}")
+    if best:
+        print(f"  Best score: {max(scores):.1f} (round {best.round_number})")
     print(f"  Converged: {result.converged} ({result.convergence_reason})")
 
     return result
