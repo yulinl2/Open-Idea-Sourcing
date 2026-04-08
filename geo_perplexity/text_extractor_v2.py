@@ -233,6 +233,8 @@ def _strip_markdown_artifacts(text: str) -> str:
         r'\*{0,2}=+>\s*picture\s*\[[^\]]*\]\s*intentionally omitted\s*<?=+\*{0,2}',
         '', text,
     )
+    # Remove pymupdf4llm picture-text blocks: ----- Start/End of picture text -----
+    text = re.sub(r'-{3,}\s*(?:Start|End) of picture text\s*-{3,}', '', text)
     # Remove image references: ![...](...)
     text = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', text)
     # Remove bold/italic markers but keep the text
@@ -246,6 +248,8 @@ def _strip_markdown_artifacts(text: str) -> str:
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
     # Remove only real HTML tags (short, with known tag names) — NOT math < > symbols
     text = re.sub(r'<(?:br|hr|/?\w{1,10})(?:\s[^>]{0,50})?/?>', '', text)
+    # Remove standalone page numbers (isolated 1-3 digit numbers between blank lines)
+    text = re.sub(r'\n\n\d{1,3}\s*\n\n', '\n\n', text)
     # Collapse runs of blank lines
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
