@@ -48,6 +48,17 @@ def create_context_seed(
     Anthropic path: returns None. Anthropic's cache_control with ephemeral
     TTL (5 min) already handles cross-call caching automatically — no
     explicit seed is needed.
+
+    CAVEAT (OpenAI Responses API): Downstream calls pass their own
+    `instructions` (system prompt) which differs from the seed's trivial
+    prompt. The API is expected to use the new `instructions` parameter
+    when provided, but this behavior should be validated empirically if
+    chained calls produce unexpected results. Additionally, when
+    `previous_response_id` is set, the API may or may not automatically
+    include prior input in the context window — the code conservatively
+    re-sends paper text via `cache_user_prefix` to ensure correctness
+    regardless of API semantics. If the API does reuse prior context,
+    this results in redundant (but harmless) token usage on those calls.
     """
     backend = _detect_backend(client)
     if backend == "anthropic":
@@ -95,7 +106,8 @@ def create_context_seed(
               f"resp_id={resp_id[:20]}...)")
         return resp_id
     except Exception as e:
-        print(f"  [seed] Failed to create context seed: {e}")
+        print(f"  [seed] WARNING: Failed to create context seed: {e}")
+        print(f"  [seed] Falling back to stateless mode (paper text resent per call).")
         return None
 
 

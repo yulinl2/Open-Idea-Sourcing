@@ -496,6 +496,11 @@ def dispatch_paper(
     refs_text_with = prepare_refs_text(refs)
     refs_text_none = "No references provided. Rely on your own knowledge of the field."
 
+    # Warn if iterative mode won't actually run (falls to single-shot)
+    if iterative and not paper_text:
+        print(f"  WARNING: --iterative requires paper full text but none is available "
+              f"for {paper_id}. Falling back to single-shot mode.")
+
     # Create a paper-context seed for cross-mode context sharing (OpenAI).
     # This sends the paper text once; all subsequent iterative calls
     # (eval, refine) branch from or chain to this seed, avoiding
@@ -703,6 +708,8 @@ def dispatch_paper(
                 return mode, {"status": "error", "error": str(exc)}
 
         # Execute modes — parallel or sequential
+        if parallel_modes and len(modes) <= 1:
+            print(f"  [parallel] Only {len(modes)} mode — running sequentially.")
         if parallel_modes and len(modes) > 1:
             from concurrent.futures import ThreadPoolExecutor, as_completed
             print(f"  [parallel] Running {len(modes)} modes concurrently...")
