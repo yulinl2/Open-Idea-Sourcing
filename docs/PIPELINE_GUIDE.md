@@ -35,13 +35,20 @@ GitHub Actions minutes cost money. So: run experiments here, CI just runs tests.
 
 | Step | Where | Cost | Duration |
 |------|-------|------|----------|
-| Unit tests (`pytest -m "not slow"`) | GitHub Actions | ~$0.02/run | ~2 min |
-| Unit tests (local) | This sandbox | Free | <1 sec |
-| Teacher hint extraction | This sandbox -> API | ~$0.15/paper (Opus, 60K input) | ~30s |
-| Student reconstruction (x6 modes) | This sandbox -> API | ~$0.03/mode (Sonnet) | ~10s each |
-| Teacher evaluation (x6 modes) | This sandbox -> API | ~$0.10/mode (Opus, 30K input) | ~15s each |
-| Pairwise comparison (x6 modes) | This sandbox -> API | ~$0.10/mode (Opus, 30K input) | ~15s each |
-| **Full run (2 papers x 2 conditions x 6 modes + pairwise)** | This sandbox -> API | **~$4-6 total** | **~20-35 min** |
+| Unit tests (83 tests) | Local | Free | <1 sec |
+| Teacher hint extraction | API | ~$0.25/paper (Opus, 60K input) | ~17s |
+| Student reconstruction (per mode) | API | ~$0.05/mode (Sonnet) | ~15-35s |
+| Teacher evaluation (per mode) | API | ~$0.22/mode (Opus, 30K input) | ~19s |
+| Teacher evaluation (per mode, Sonnet) | API | ~$0.05/mode (`--eval-model`) | ~12s |
+| Pairwise comparison (per mode) | API | ~$0.10/mode (Opus, 30K input) | ~15s |
+| **Single-shot (1 paper, 4 modes, both conditions)** | API | **~$3-4** | **~15 min** |
+| **Iterative (1 paper, 4 modes, 1 condition)** | API | **~$8-9** | **~25 min** |
+| **Iterative + `--eval-model sonnet`** | API | **~$4-5** | **~25 min** |
+| **Iterative + `--parallel-modes`** | API | same cost | **~8 min** |
+
+Validated on a 4-pair (2 papers × 2 refs) cross-comparison study.
+Detailed per-stage and per-round breakdowns in
+[reports/CROSS_PAIR_COMPARISON.md](../reports/CROSS_PAIR_COMPARISON.md).
 
 ---
 
@@ -59,13 +66,15 @@ Open-Idea-Sourcing/
 |   +-- main()                  L700  CLI arg parsing + dispatch loop
 |
 +-- infra/                      <-- SUPPORTING MODULES
-|   |-- llm.py                  L1    LLM call wrapper + retry-with-backoff
+|   |-- llm.py                  L1    LLM call wrapper + caching/chaining + retry
+|   |-- iterative.py            L1    Iterative hint-refinement engine
 |   |-- evaluate.py             L1    Teacher evaluation scoring rubric
 |   |-- audit.py                L1    AuditLog for reproducibility
 |   +-- pdf_utils.py            L1    PDF download/extraction/caching
 |
 +-- prompts/                    <-- PROMPT TEMPLATES
 |   |-- teacher_extract.txt           Teacher: extract problem hint (NO leakage)
+|   |-- teacher_refine_hint.txt       Teacher: refine hint (iterative mode)
 |   |-- student_abstract.txt          Mode 1: reconstruct abstract
 |   |-- student_mindmap.txt           Mode 2: idea mindmap
 |   |-- student_problem_formulation.txt   Mode 3: problem section

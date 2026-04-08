@@ -363,6 +363,116 @@ measurable. But in iterative mode, forced engagement is counterproductive:
 The neutral guidance ("Use them if and as you see fit") lets the teacher get
 a clean signal, enabling the hint to converge to its true minimal form.
 
+## Evaluation Independence
+
+**Problem:** In the original implementation, evaluate calls chained
+sequentially — `eval_round_2` referenced `eval_round_1`'s response via
+`previous_response_id`. This meant the evaluator could see its own prior
+scores and analyses, potentially biasing assessments through anchoring
+(inflating scores toward previous values) or creating false convergence signals.
+
+**Fix (v0.6.2):** Evaluate calls now **branch independently** from a shared
+paper-context seed. Each evaluator sees only:
+- The original paper text (via the seed)
+- The current round's student output
+
+It does NOT see:
+- Previous rounds' student outputs
+- Previous rounds' evaluation scores
+- Any hint refinement history
+
+```
+                    ┌─ eval_round_1 (paper + student_output_1)
+paper_context_seed ─┼─ eval_round_2 (paper + student_output_2)   ← BRANCH
+                    └─ eval_round_3 (paper + student_output_3)
+
+                    ┌─ refine_round_1
+paper_context_seed ─┴─ refine_round_2 ─── refine_round_3         ← CHAIN
+```
+
+Refine calls correctly chain sequentially — the teacher needs the full
+history of prior refinements to make informed adjustments.
+
+**Why it matters:** Without this fix, an evaluator that scored round 1 at 3.2
+might anchor at 3.2 for round 2 even if the student output changed
+significantly. Independent evaluation ensures each score reflects only the
+current output's quality.
+
+## Caching & Chaining Strategy
+
+The iterative loop is expensive: 3 LLM calls per round (student, evaluate,
+refine) × 3-5 rounds × 4-6 modes = 36-90 API calls per paper. Three
+optimization layers reduce cost and latency:
+
+### Layer 1: Anthropic Prompt Caching
+
+Uses `cache_control: {"type": "ephemeral"}` on two content blocks:
+
+1. **System prompt** (~1K tokens): marked as cacheable on every call.
+   After the first call, subsequent calls in the same session read from
+   cache at 10% of normal input price.
+
+2. **Paper-text prefix** (~8K tokens): the paper text (first 30K chars)
+   is sent as a separate cached content block in the user message for
+   evaluate and refine calls.
+
+**Savings:** ~45% total cost reduction. Cache TTL is 5 minutes (ephemeral).
+Calls within the same mode run (avg 12 calls over ~6 min) mostly hit cache.
+Cross-mode sharing requires modes to run within the TTL window of each other.
+
+**Minimum block size:** Anthropic requires cached blocks ≥1024 tokens for
+Sonnet, ≥2048 for Opus. The code uses a conservative floor of `> 4096 chars`
+(~1024 tokens). The API silently ignores undersized cache markers.
+
+### Layer 2: OpenAI Stateful Chaining
+
+Uses `previous_response_id` from the Responses API. Refine calls chain
+sequentially — round N+1 references round N's response, so the accumulated
+context (paper text + hint history) is not resent.
+
+**Savings:** ~15% total cost reduction. Only applies to refine calls (eval
+calls branch independently for correctness — see Evaluation Independence).
+
+### Layer 3: Cross-Mode Paper-Context Seeding
+
+`create_context_seed()` sends the paper text once per paper to the OpenAI
+Responses API and returns a `response_id`. All subsequent eval/refine calls
+across all modes branch from or chain to this seed.
+
+**Savings:** ~4% additional reduction. The paper text (~8K tokens) is
+processed once per paper instead of once per mode.
+
+**Anthropic equivalent:** `cache_control` with ephemeral TTL naturally
+handles this — no explicit seed needed.
+
+### Backend Comparison
+
+| Feature | Anthropic | OpenAI |
+|---------|-----------|--------|
+| System prompt caching | `cache_control` (90% off) | Not available |
+| Paper-text caching | `cache_control` on prefix | `previous_response_id` seed |
+| Cross-round chaining | TTL-based (automatic) | Explicit response ID |
+| Cross-mode sharing | TTL if within 5 min | Explicit seed ID |
+| Eval independence | Separate cached calls | Branch from seed |
+| **Total savings** | **~45%** | **~19%** |
+
+### Caveats
+
+1. **OpenAI `instructions` override:** When chaining via `previous_response_id`,
+   downstream calls pass different `instructions` (system prompts) than the seed.
+   The API is expected to use the new `instructions`, but this should be validated
+   empirically. The code conservatively re-sends paper text in the user message
+   to ensure correctness regardless of API semantics.
+
+2. **Cache TTL expiry:** Anthropic's ephemeral cache expires after ~5 minutes.
+   If a mode run takes longer than 5 minutes (common for `problem_method` with
+   5 rounds at ~2 min/round), later rounds may miss the cache. This is harmless
+   (falls back to uncached pricing) but reduces savings.
+
+3. **Seed failure:** If `create_context_seed()` fails (network error, rate
+   limit), the system falls back to stateless mode with an explicit warning.
+   All eval/refine calls then re-send the full paper text per call.
+
 ## Limitations & Open Questions
 
 ### Known Limitations
