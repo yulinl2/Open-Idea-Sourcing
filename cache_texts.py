@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Cache all text data for test papers to data/cached_texts/.
 
-This script downloads PDFs, extracts text (via LLM agentic parser),
-fetches citations from Semantic Scholar, and saves everything to a
-persistent, git-tracked JSON file per paper.
+v2 — Uses SOTA extraction pipeline:
+  - pymupdf4llm (PyMuPDF markdown) as primary extractor
+  - pdfminer.six as fallback
+  - Optional LLM cleaning pass for target papers
+  - Preserves older v1 cache files for cross-check / audit
 
-This means subsequent analysis runs can skip the expensive download +
-LLM extraction steps entirely, and GitHub Actions workflows don't need
-to burn runner time on long API waits.
+This script downloads PDFs, extracts text, fetches citations from
+Semantic Scholar, and saves everything to a persistent, git-tracked
+JSON file per paper.
 
 Usage:
     python cache_texts.py                          # cache all papers in data/test_papers.ndjson
@@ -45,6 +47,7 @@ def _get_openai_client():
 
 
 def _make_llm_json(client, model: str = "gpt-4o"):
+    """Create an LLM callable for JSON-mode responses."""
     def llm_json(system_prompt: str, user_prompt: str) -> str:
         response = client.chat.completions.create(
             model=model,
@@ -58,6 +61,22 @@ def _make_llm_json(client, model: str = "gpt-4o"):
         )
         return response.choices[0].message.content or ""
     return llm_json
+
+
+def _make_llm_text(client, model: str = "gpt-4o"):
+    """Create an LLM callable for plain-text responses (v2 cleaning)."""
+    def llm_text(system_prompt: str, user_prompt: str) -> str:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=16000,
+            temperature=0.0,
+        )
+        return response.choices[0].message.content or ""
+    return llm_text
 
 
 def _extract_arxiv_id(source: str) -> str:
@@ -83,14 +102,17 @@ def is_cached(arxiv_id: str) -> bool:
     return bool(data.get("full_text") and data.get("references"))
 
 
-def cache_single_paper(source: str, client, llm_json) -> Path | None:
-    """Fetch, extract, and cache all text data for a single paper."""
+def cache_single_paper(source: str, client, llm_json, llm_text=None) -> Path | None:
+    """Fetch, extract, and cache all text data for a single paper.
+
+    v2: Uses pymupdf4llm + pdfminer.six pipeline with optional LLM cleaning.
+    Preserves v1 cache files for cross-check / audit.
+    """
     from geo_perplexity.reference_collector import fetch_all_citations
-    from geo_perplexity.text_extractor import (
+    from geo_perplexity.text_extractor_v2 import (
         batch_extract_full_text,
         download_arxiv_pdf,
-        extract_text_llm_agentic,
-        extract_text_pdfplumber,
+        extract_full_text,
     )
     from geo_perplexity.random_reference import find_random_non_cited_reference
 
@@ -100,58 +122,54 @@ def cache_single_paper(source: str, client, llm_json) -> Path | None:
         return None
 
     out_path = cache_path(arxiv_id)
-    if is_cached(arxiv_id):
-        print(f"  Already cached: {out_path}")
-        return out_path
+
+    # Preserve v1 if it exists and we haven't already
+    v1_path = CACHE_DIR / f"{arxiv_id.replace('/', '_')}_v1.json"
+    if out_path.exists() and not v1_path.exists():
+        import shutil
+        shutil.copy2(out_path, v1_path)
+        print(f"  Preserved v1: {v1_path}")
 
     print(f"\n{'='*60}")
-    print(f"Caching: {source} (arXiv:{arxiv_id})")
+    print(f"Caching (v2 SOTA): {source} (arXiv:{arxiv_id})")
     print(f"{'='*60}")
 
-    # Step 1: Download and extract target paper text
-    print("\n[1/4] Downloading and extracting target paper...")
+    # Step 1: Download and extract target paper text (SOTA pipeline)
+    print("\n[1/4] Downloading and extracting target paper (pymupdf4llm)...")
     pdf_path = download_arxiv_pdf(arxiv_id)
     if not pdf_path:
         print(f"  ERROR: could not download PDF for {arxiv_id}", file=sys.stderr)
         return None
 
-    raw_text = extract_text_pdfplumber(pdf_path)
-    if not raw_text:
+    extraction = extract_full_text(
+        pdf_path, llm_json=llm_text, use_llm_cleaning=bool(llm_text),
+    )
+    full_text = extraction["full_text"]
+    raw_md = extraction["raw_md"]
+    title = extraction["title"]
+    abstract = extraction["abstract"]
+    method = extraction["extraction_method"]
+
+    if not full_text:
         print("  ERROR: could not extract text from PDF", file=sys.stderr)
         return None
 
-    full_text = extract_text_llm_agentic(raw_text, llm_json)
-
-    # Extract title and abstract
-    title = ""
-    for line in raw_text.splitlines()[:10]:
-        line = line.strip()
-        if len(line) > 10 and not any(kw in line.lower() for kw in ["abstract", "arxiv", "http"]):
-            title = line
-            break
-
-    abstract = ""
-    m = re.search(
-        r"(?i)abstract[:\s]*\n(.+?)(?=\n\n|\nintroduction|\n1[\.\s])",
-        raw_text,
-        re.DOTALL,
-    )
-    if m:
-        abstract = re.sub(r"\s+", " ", m.group(1)).strip()[:2000]
-
+    print(f"  Method: {method}")
     print(f"  Title: {title[:80]}")
-    print(f"  Text length: {len(full_text)} chars")
+    print(f"  Abstract: {len(abstract)} chars")
+    print(f"  Full text: {len(full_text)} chars (raw: {len(raw_md)} chars)")
 
     # Step 2: Fetch citations
     print("\n[2/4] Fetching cited references from Semantic Scholar...")
     cited_papers = fetch_all_citations(arxiv_id=arxiv_id, title=title)
     print(f"  Found {len(cited_papers)} references")
 
-    # Step 3: Extract full text for citations (batched LLM)
-    print("\n[3/4] Extracting full text for cited papers...")
+    # Step 3: Extract full text for citations (pymupdf4llm, no LLM cleaning)
+    print("\n[3/4] Extracting full text for cited papers (pymupdf4llm)...")
     cited_papers = batch_extract_full_text(cited_papers, llm_json)
     n_with_text = sum(1 for p in cited_papers if p.has_content)
-    print(f"  {n_with_text}/{len(cited_papers)} have text")
+    n_full_text = sum(1 for p in cited_papers if p.full_text and len(p.full_text) > 500)
+    print(f"  {n_with_text}/{len(cited_papers)} have content ({n_full_text} full text)")
 
     # Step 4: Find random reference
     print("\n[4/4] Finding random non-cited reference...")
@@ -170,8 +188,10 @@ def cache_single_paper(source: str, client, llm_json) -> Path | None:
         "title": title or "Unknown",
         "abstract": abstract,
         "full_text": full_text,
-        "raw_text": raw_text,  # preserve pdfplumber output for audit
-        "raw_text_length": len(raw_text),
+        "raw_text": raw_md,  # pymupdf4llm markdown for audit
+        "raw_text_length": len(raw_md),
+        "extraction_method": method,
+        "extraction_version": "v2-sota",
         "references": [
             {
                 "paper_id": p.paper_id,
@@ -197,7 +217,7 @@ def cache_single_paper(source: str, client, llm_json) -> Path | None:
         "stats": {
             "n_references": len(cited_papers),
             "n_with_content": n_with_text,
-            "n_with_full_text": sum(1 for p in cited_papers if p.full_text and len(p.full_text) > 500),
+            "n_with_full_text": n_full_text,
             "n_abstract_only": sum(1 for p in cited_papers if p.content_source in ("abstract", "tldr")),
         },
         "cached_at": datetime.now(timezone.utc).isoformat(),
@@ -215,6 +235,10 @@ def main():
     parser.add_argument("--papers-file", default="data/test_papers.ndjson",
                         help="NDJSON file with paper URLs")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be cached")
+    parser.add_argument("--force", action="store_true",
+                        help="Re-cache even if already cached (preserves v1)")
+    parser.add_argument("--no-llm-clean", action="store_true",
+                        help="Skip LLM cleaning pass for target papers")
     args = parser.parse_args()
 
     sources = []
@@ -236,29 +260,40 @@ def main():
         print("No papers to cache.", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Papers to cache: {len(sources)}")
+    print(f"Papers to cache: {len(sources)} (v2 SOTA pipeline)")
     for s in sources:
         aid = _extract_arxiv_id(s)
         cached = is_cached(aid) if aid else False
-        status = "CACHED" if cached else "PENDING"
+        status = "CACHED" if (cached and not args.force) else "PENDING"
         print(f"  [{status}] {s} → arXiv:{aid}")
 
     if args.dry_run:
         return
 
+    # When forcing re-cache, delete existing cache entries so is_cached returns False
+    if args.force:
+        for s in sources:
+            aid = _extract_arxiv_id(s)
+            if aid:
+                p = cache_path(aid)
+                if p.exists():
+                    p.unlink()
+                    print(f"  Removed old cache: {p}")
+
     client = _get_openai_client()
     llm_json = _make_llm_json(client)
+    llm_text = None if args.no_llm_clean else _make_llm_text(client)
 
     for source in sources:
         try:
-            cache_single_paper(source, client, llm_json)
+            cache_single_paper(source, client, llm_json, llm_text=llm_text)
         except Exception as exc:
             print(f"\nERROR caching {source}: {exc}", file=sys.stderr)
             import traceback
             traceback.print_exc()
             continue
 
-    print("\nDone caching.")
+    print("\nDone caching (v2 SOTA).")
 
 
 if __name__ == "__main__":
