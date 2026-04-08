@@ -94,14 +94,16 @@ def _download_source(source: str) -> str:
     sys.exit(1)
 
 
-def _parse_target_paper(pdf_path: str, llm_json) -> dict:
+def _parse_target_paper(pdf_path: str, _llm_json=None) -> dict:
     """Parse the target paper via the SOTA v2 extractor.
 
     Returns dict with title, abstract, full_text.
+    Uses rule-based cleaning only (no LLM cost); ``_llm_json`` is
+    accepted for backward compatibility but unused.
     """
     from geo_perplexity.text_extractor import extract_full_text
 
-    extraction = extract_full_text(pdf_path, llm_json=llm_json, use_llm_cleaning=False)
+    extraction = extract_full_text(pdf_path, use_llm_cleaning=False)
 
     if not extraction["full_text"]:
         print("ERROR: could not extract any text from PDF", file=sys.stderr)
