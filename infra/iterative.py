@@ -305,6 +305,7 @@ def run_iterative_refinement(
     run_student_fn,
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     output_dir: Path | None = None,
+    paper_context_seed_id: str | None = None,
 ) -> IterativeResult:
     """Run the full iterative hint-refinement loop.
 
@@ -312,6 +313,12 @@ def run_iterative_refinement(
         run_student_fn: callable(client, model, mode, hint, refs_text, audit) -> str
             The student generation function (injected for testability).
         output_dir: If provided, save per-round artifacts here.
+        paper_context_seed_id: (OpenAI) Response ID from create_context_seed().
+            When provided, evaluate calls branch from this seed independently
+            (each eval sees paper context but NOT other evals' outputs).
+            Refine calls chain sequentially from each other (correct — the
+            teacher needs history of prior refinements).
+            For Anthropic, pass None — cache_control handles context sharing.
 
     Returns an IterativeResult with the full trajectory.
     """
@@ -325,10 +332,15 @@ def run_iterative_refinement(
     current_hint = copy.deepcopy(initial_hint)
 
     # Response IDs for stateful chaining (OpenAI Responses API).
-    # Evaluate and refine calls chain across rounds to avoid re-sending
-    # the same paper text + accumulated history on each round.
-    eval_chain_id: str | None = None
-    refine_chain_id: str | None = None
+    #
+    # IMPORTANT correctness constraint:
+    # - Evaluate calls BRANCH from the paper_context_seed (independent).
+    #   Each eval sees the paper but NOT other rounds' eval outputs.
+    #   This prevents the evaluator from being biased by prior scores.
+    # - Refine calls CHAIN sequentially (refine_round_2 from refine_round_1).
+    #   The teacher needs full history of prior refinements.
+    eval_seed_id: str | None = paper_context_seed_id
+    refine_chain_id: str | None = paper_context_seed_id
 
     for round_num in range(1, max_rounds + 1):
         print(f"\n  {'~'*40}")
@@ -376,12 +388,14 @@ def run_iterative_refinement(
         )
 
         try:
-            evaluation, eval_resp_id = evaluate_reconstruction(
+            evaluation, _eval_resp_id = evaluate_reconstruction(
                 client, teacher_model, paper_text, student_output,
                 mode, condition, eval_audit,
-                previous_response_id=eval_chain_id,
+                previous_response_id=eval_seed_id,
             )
-            eval_chain_id = eval_resp_id  # chain next round's eval
+            # NOTE: we do NOT chain eval calls (eval_seed_id stays constant).
+            # Each eval branches independently from the paper-context seed.
+            # This prevents the evaluator from seeing prior rounds' scores.
             eval_audit.mark_finished()
         except Exception as exc:
             eval_audit.mark_finished()

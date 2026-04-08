@@ -31,6 +31,74 @@ _MIN_CACHE_TOKENS_APPROX = 1024
 _CHARS_PER_TOKEN_APPROX = 4  # rough estimate for cache eligibility check
 
 
+def create_context_seed(
+    client,
+    model: str,
+    paper_text: str,
+    audit: AuditLog,
+    paper_id: str = "",
+) -> str | None:
+    """Create a paper-context seed response for cross-call context sharing.
+
+    OpenAI path: sends a minimal prompt with the paper text, returns a
+    response_id that subsequent calls can reference via previous_response_id.
+    This means the paper text (often 30K+ chars) is processed exactly once
+    per paper, then reused across all modes, rounds, and call types.
+
+    Anthropic path: returns None. Anthropic's cache_control with ephemeral
+    TTL (5 min) already handles cross-call caching automatically — no
+    explicit seed is needed.
+    """
+    backend = _detect_backend(client)
+    if backend == "anthropic":
+        return None  # cache_control handles this
+
+    # OpenAI: create a seed response with paper text
+    t0 = time.time()
+    seed_system = (
+        "You are a research paper analysis system. "
+        "Acknowledge receipt of the paper context below. "
+        "Respond with only: CONTEXT_LOADED"
+    )
+    seed_user = f"## Paper context (first 30k chars)\n\n{paper_text[:30_000]}"
+
+    try:
+        response = client.responses.create(
+            model=model,
+            instructions=seed_system,
+            input=seed_user,
+            max_output_tokens=16,
+            temperature=0.0,
+        )
+        resp_id = getattr(response, "id", "")
+        input_tokens = 0
+        output_tokens = 0
+        if hasattr(response, "usage") and response.usage:
+            input_tokens = getattr(response.usage, "input_tokens", 0) or 0
+            output_tokens = getattr(response.usage, "output_tokens", 0) or 0
+
+        duration = time.time() - t0
+        step = StepRecord(
+            step_name="create_context_seed",
+            model=model,
+            system_prompt=seed_system,
+            user_prompt=f"[paper context for {paper_id}, {len(seed_user)} chars]",
+            response="CONTEXT_LOADED",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            duration_seconds=round(duration, 2),
+            metadata={"response_id": resp_id, "backend": backend,
+                       "paper_id": paper_id},
+        )
+        audit.add_step(step)
+        print(f"  [seed] Paper context seeded ({input_tokens} input tokens, "
+              f"resp_id={resp_id[:20]}...)")
+        return resp_id
+    except Exception as e:
+        print(f"  [seed] Failed to create context seed: {e}")
+        return None
+
+
 def llm_call(
     client,
     model: str,

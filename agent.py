@@ -488,6 +488,29 @@ def dispatch_paper(
     refs_text_with = prepare_refs_text(refs)
     refs_text_none = "No references provided. Rely on your own knowledge of the field."
 
+    # Create a paper-context seed for cross-mode context sharing (OpenAI).
+    # This sends the paper text once; all subsequent iterative calls
+    # (eval, refine) branch from or chain to this seed, avoiding
+    # redundant paper-text processing across modes and rounds.
+    # For Anthropic, returns None (cache_control handles this).
+    paper_context_seed_id = None
+    if iterative and paper_text:
+        from infra.llm import create_context_seed
+        seed_audit = AuditLog(
+            paper_id=paper_id,
+            paper_url=paper_url,
+            reconstruction_type="context_seed",
+            student_model=student_model,
+            teacher_model=teacher_model,
+            config={"purpose": "cross-mode paper context sharing"},
+        )
+        paper_context_seed_id = create_context_seed(
+            client, teacher_model, paper_text, seed_audit, paper_id,
+        )
+        seed_audit.mark_finished()
+        if paper_context_seed_id:
+            seed_audit.save(paper_dir / "_teacher" / "context_seed_audit.json")
+
     results = {"paper_id": paper_id, "paper_url": paper_url,
                "text_source": text_source, "conditions": {}}
 
@@ -530,6 +553,7 @@ def dispatch_paper(
                         run_student_fn=iterative_student,
                         max_rounds=max_rounds,
                         output_dir=iter_dir,
+                        paper_context_seed_id=paper_context_seed_id,
                     )
 
                     # Use the BEST round's output (not just last — memoryless
