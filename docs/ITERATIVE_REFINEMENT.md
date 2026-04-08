@@ -51,7 +51,7 @@ Round N: Hint stabilizes → The final hint IS the conceptual residual
 |------|---------|
 | `infra/iterative.py` | Core iterative engine: loop, convergence, data structures |
 | `prompts/teacher_refine_hint.txt` | Teacher prompt for hint refinement |
-| `tests/test_iterative.py` | 42 unit tests covering all components |
+| `tests/test_iterative.py` | 43 unit tests covering all components |
 
 ### Data Structures
 
@@ -287,7 +287,7 @@ the conceptual residual — from high-level framing to specific technical insigh
 
 ## Test Coverage
 
-76 tests in `tests/test_iterative.py`:
+43 tests in `tests/test_iterative.py` (76 total across both test files):
 
 - **Data structures** (8): RoundRecord, IterativeResult creation/serialization
 - **Convergence** (7): max rounds, min rounds, teacher stop, score plateau, hint stability, residual captured
@@ -317,3 +317,90 @@ When the iterative process converges:
 The `refinement_rationale.additions` across all rounds collectively describe
 the paper's novel contributions at a conceptual level, without revealing
 the specific mechanism — a unique form of novelty characterization.
+
+## Two-Fold Optimization & Reference Guidance
+
+The iterative process implements a **two-fold optimization**:
+
+1. **Minimize** the teacher's hint beyond what references + problem context
+   already provide
+2. **Maximize** the student's reconstruction quality across scientific,
+   conceptual, logical, and methodological dimensions
+
+These two objectives are in tension: a larger hint makes reconstruction easier
+but inflates the measured conceptual residual. The iterative refinement
+naturally resolves this by converging to the minimal hint that achieves
+maximal reconstruction — the true conceptual residual.
+
+### Why neutral reference guidance matters
+
+In single-shot mode, forcing the student to engage with references
+("you MUST use these references substantively") ensures reference impact is
+measurable. But in iterative mode, forced engagement is counterproductive:
+
+- It **biases the teacher's signal**: if the student uses references because
+  it was forced to, the teacher can't distinguish "student derived this from
+  refs naturally" from "student mentioned refs because instructed to."
+- It **undermines the two-fold optimization**: the teacher needs to observe
+  what the student does *naturally* with refs + hint to calibrate whether
+  the hint is too large (student already gets it from refs) or too small
+  (student misses key ideas).
+
+The neutral guidance ("Use them if and as you see fit") lets the teacher get
+a clean signal, enabling the hint to converge to its true minimal form.
+
+## Limitations & Open Questions
+
+### Known Limitations
+
+1. **Evaluator variance.** The teacher-evaluator uses a single LLM call per
+   round. Score variance across rounds (e.g., mindmap's 3.0 dip) is partly
+   evaluator noise, not just student variance. Best-round selection mitigates
+   this but doesn't eliminate it.
+
+2. **Problem mode plateau.** The `problem` mode plateaued at 2.8 across all
+   3 rounds — the student consistently proposed CATE-based intervals instead
+   of counterfactual inference. Some novelty may be too fundamental to guide
+   via hints without effectively revealing the answer.
+
+3. **Single paper validation.** Results are from one paper (arxiv:2006.06138).
+   Cross-paper validation is needed to confirm the convergence patterns
+   generalize.
+
+4. **Cost.** Each iterative run costs 3-5x a single-shot run (multiple
+   student + evaluate + refine calls per mode). The 4-mode run used ~16
+   rounds total across modes.
+
+5. **Teacher self-assessment bias.** The teacher's `estimated_residual_captured`
+   and `recommendation` may be overconfident. The teacher recommended stop
+   for `problem` at 2.8 — a low score — suggesting it may underestimate
+   remaining gaps.
+
+### Open Questions
+
+1. **Should the conceptual residual include format-specific findings?**
+   The mindmap residual differs from the problem_method residual in
+   granularity. Should we aggregate across modes for a unified residual?
+
+2. **What's the right max_rounds?** 5 rounds was sufficient for most modes,
+   but mindmap hit the cap without the teacher recommending stop. Would
+   7-10 rounds yield further improvement?
+
+3. **Can the regression guard be smarter?** Currently uses a fixed 0.1
+   threshold. An adaptive threshold based on observed score variance
+   across rounds could be more principled.
+
+4. **How does `no_refs` iterative compare?** All runs used `with_refs`.
+   Running `no_refs` iterative would show how much of the conceptual
+   residual is ref-dependent vs. inherent to the paper's contribution.
+
+## Preserved Run Artifacts
+
+| Directory | Description |
+|-----------|-------------|
+| `reports/2026-04-08T09-50-33Z/` | Pre-fix run (MIN_ROUNDS=2, premature convergence after 2 rounds) |
+| `reports/2026-04-08T09-56-09Z/` | Post-fix run (MIN_ROUNDS=3, regression guard, 4 modes complete) |
+
+Both runs are preserved for comparative analysis of the convergence fix impact.
+The pre-fix run demonstrates the premature convergence problem; the post-fix
+run demonstrates the corrected behavior.
