@@ -64,7 +64,7 @@ def test_real_paper_abstracts():
         return False
 
     from geo_perplexity.reference_collector import fetch_all_citations
-    from geo_perplexity.text_extractor_v2 import (
+    from geo_perplexity.text_extractor import (
         download_arxiv_pdf,
         extract_full_text,
     )

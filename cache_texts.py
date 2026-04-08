@@ -109,7 +109,7 @@ def cache_single_paper(source: str, client, llm_json, llm_text=None) -> Path | N
     Preserves v1 cache files for cross-check / audit.
     """
     from geo_perplexity.reference_collector import fetch_all_citations
-    from geo_perplexity.text_extractor_v2 import (
+    from geo_perplexity.text_extractor import (
         batch_extract_full_text,
         download_arxiv_pdf,
         extract_full_text,

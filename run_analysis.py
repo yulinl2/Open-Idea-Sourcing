@@ -99,7 +99,7 @@ def _parse_target_paper(pdf_path: str, llm_json) -> dict:
 
     Returns dict with title, abstract, full_text.
     """
-    from geo_perplexity.text_extractor_v2 import extract_full_text
+    from geo_perplexity.text_extractor import extract_full_text
 
     extraction = extract_full_text(pdf_path, llm_json=llm_json, use_llm_cleaning=True)
 
@@ -175,7 +175,7 @@ def run_single_paper(
     from geo_perplexity.random_reference import find_random_non_cited_reference
     from geo_perplexity.reference_collector import fetch_all_citations
     from geo_perplexity.report import generate_report, save_report
-    from geo_perplexity.text_extractor_v2 import batch_extract_full_text
+    from geo_perplexity.text_extractor import batch_extract_full_text
 
     print(f"\n{'='*60}")
     print(f"Geo-Perplexity Analysis: {source}")

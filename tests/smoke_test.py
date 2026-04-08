@@ -246,7 +246,7 @@ def test_text_extraction():
     print("\n[Test 4] Text extraction pipeline ...")
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
-    from geo_perplexity.text_extractor_v2 import download_arxiv_pdf, extract_text_pymupdf4llm
+    from geo_perplexity.text_extractor import download_arxiv_pdf, extract_text_pymupdf4llm
 
     test_id = "2006.06138"
     result = {"arxiv_id": test_id}
@@ -281,7 +281,7 @@ def test_text_extraction():
     result["raw_text_preview"] = raw_md[:500]
 
     # Step C: Full v2 extraction pipeline (no LLM needed)
-    from geo_perplexity.text_extractor_v2 import extract_full_text
+    from geo_perplexity.text_extractor import extract_full_text
     try:
         extraction = extract_full_text(pdf_path, use_llm_cleaning=False)
         full_text = extraction["full_text"]
