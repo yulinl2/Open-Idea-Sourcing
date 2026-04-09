@@ -1,0 +1,22 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Emphasized that the fundamental challenge is predicting unobserved counterfactual outcomes (one missing potential outcome) rather than directly predicting treatment effects",
+        "why": "The student treats both potential outcomes symmetrically and jumps directly to ITE prediction, missing that counterfactual inference is the paper's primary building block"
+      },
+      {
+        "what": "Re-added desirable property about maintaining validity when key components are imperfectly estimated",
+        "why": "The doubly robust property is a major theoretical contribution that the student missed - the method works if either propensity scores OR outcome models are accurate"
+      }
+    ],
+    "removals": [],
+    "unchanged": "Kept all the propensity score and covariate shift guidance since the student successfully captured the weighted conformal mechanism with propensity score reweighting"
+  },
+  "convergence": {
+    "hint_changed_substantially": false,
+    "estimated_residual_captured": 0.85,
+    "teacher_confidence": "high",
+    "recommendation": "continue"
+  }
+}

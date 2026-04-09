@@ -30,6 +30,10 @@ DEFAULT_MAX_ROUNDS = 5
 CONVERGENCE_SCORE_THRESHOLD = 0.3   # stop if composite score delta < this
 MIN_ROUNDS = 3                       # always run at least 3 rounds
 
+# Publication-quality configuration
+PUB_QUALITY_SCORE = 4.0             # must reach this score to converge
+PUB_QUALITY_STABLE_ROUNDS = 2      # must be stable at this level for N rounds
+
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -227,10 +231,17 @@ def check_convergence(
     rounds: list[RoundRecord],
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     score_threshold: float = CONVERGENCE_SCORE_THRESHOLD,
+    pub_quality: bool = False,
 ) -> tuple[bool, str]:
     """Check whether the iterative process should stop.
 
     Returns (should_stop, reason).
+
+    When pub_quality=True, enforces stricter convergence:
+    - Score must reach PUB_QUALITY_SCORE (4.0)
+    - Score must be stable at that level for PUB_QUALITY_STABLE_ROUNDS
+    - Teacher "stop" recommendations are downgraded to suggestions
+      unless the score is already at publication level
 
     Guards against premature convergence:
     - Never stops before MIN_ROUNDS
@@ -239,7 +250,7 @@ def check_convergence(
     """
     n = len(rounds)
 
-    # Hard cap
+    # Hard cap (always respected, even in pub-quality mode)
     if n >= max_rounds:
         return True, f"reached max rounds ({max_rounds})"
 
@@ -263,9 +274,34 @@ def check_convergence(
         if scores[-1] < best_score - 0.1:
             return False, f"score regressed ({scores[-1]:.1f} < best {best_score:.1f})"
 
-    # Check teacher's own convergence signal
     latest = rounds[-1]
     signal = latest.convergence_signal
+
+    # --- Publication-quality gate ---
+    if pub_quality:
+        recent_scores = scores[-PUB_QUALITY_STABLE_ROUNDS:] if len(scores) >= PUB_QUALITY_STABLE_ROUNDS else scores
+        all_at_pub_level = all(s >= PUB_QUALITY_SCORE for s in recent_scores)
+        stable = (
+            len(recent_scores) >= PUB_QUALITY_STABLE_ROUNDS
+            and max(recent_scores) - min(recent_scores) < score_threshold
+        )
+
+        if all_at_pub_level and stable:
+            return True, (
+                f"publication quality reached "
+                f"(scores {' -> '.join(f'{s:.1f}' for s in recent_scores)} "
+                f"all >= {PUB_QUALITY_SCORE})"
+            )
+
+        # In pub-quality mode, don't stop early just because teacher says so
+        # or because scores plateaued below the target
+        if not all_at_pub_level:
+            return False, (
+                f"below publication quality "
+                f"(latest={scores[-1]:.1f}, need>={PUB_QUALITY_SCORE})"
+            )
+
+    # Check teacher's own convergence signal
     if signal.get("recommendation") == "stop":
         return True, "teacher recommended stop"
 
@@ -307,6 +343,8 @@ def run_iterative_refinement(
     output_dir: Path | None = None,
     paper_context_seed_id: str | None = None,
     eval_model: str | None = None,
+    resume_from: "IterativeResult | None" = None,
+    pub_quality: bool = False,
 ) -> IterativeResult:
     """Run the full iterative hint-refinement loop.
 
@@ -320,6 +358,11 @@ def run_iterative_refinement(
             Refine calls chain sequentially from each other (correct — the
             teacher needs history of prior refinements).
             For Anthropic, pass None — cache_control handles context sharing.
+        resume_from: If provided, resume from an existing IterativeResult.
+            Existing rounds are preserved, and refinement continues from the
+            final hint. Saves cost by not re-running converged rounds.
+        pub_quality: If True, use stricter publication-quality convergence
+            criteria (score >= 4.0, stable for 2+ rounds).
 
     Returns an IterativeResult with the full trajectory.
     """
@@ -327,14 +370,25 @@ def run_iterative_refinement(
     # Using a cheaper model (Sonnet) for eval reduces cost ~41%.
     eval_model = eval_model or teacher_model
 
-    result = IterativeResult(
-        paper_id=paper_id,
-        mode=mode,
-        condition=condition,
-        initial_hint=copy.deepcopy(initial_hint),
-    )
-
-    current_hint = copy.deepcopy(initial_hint)
+    # Resume from existing result or start fresh
+    if resume_from is not None:
+        result = copy.deepcopy(resume_from)
+        result.converged = False
+        result.convergence_reason = ""
+        current_hint = copy.deepcopy(resume_from.final_hint)
+        start_round = resume_from.total_rounds + 1
+        print(f"\n  [resume] Continuing from round {start_round} "
+              f"(previous: {resume_from.total_rounds} rounds, "
+              f"scores: {' -> '.join(f'{s:.1f}' for s in resume_from.score_trajectory())})")
+    else:
+        result = IterativeResult(
+            paper_id=paper_id,
+            mode=mode,
+            condition=condition,
+            initial_hint=copy.deepcopy(initial_hint),
+        )
+        current_hint = copy.deepcopy(initial_hint)
+        start_round = 1
 
     # Response IDs for stateful chaining (OpenAI Responses API).
     #
@@ -347,7 +401,7 @@ def run_iterative_refinement(
     eval_seed_id: str | None = paper_context_seed_id
     refine_chain_id: str | None = paper_context_seed_id
 
-    for round_num in range(1, max_rounds + 1):
+    for round_num in range(start_round, max_rounds + 1):
         print(f"\n  {'~'*40}")
         print(f"  Iterative round {round_num}/{max_rounds} [{mode}]")
         print(f"  {'~'*40}")
@@ -427,7 +481,7 @@ def run_iterative_refinement(
         # 3. Check convergence before refining (saves an LLM call on last round)
         result.rounds.append(record)
         should_stop, reason = check_convergence(
-            result.rounds, max_rounds=max_rounds,
+            result.rounds, max_rounds=max_rounds, pub_quality=pub_quality,
         )
 
         if should_stop and round_num >= MIN_ROUNDS:
@@ -471,7 +525,7 @@ def run_iterative_refinement(
 
             # Re-check convergence with teacher signal
             should_stop, reason = check_convergence(
-                result.rounds, max_rounds=max_rounds,
+                result.rounds, max_rounds=max_rounds, pub_quality=pub_quality,
             )
             if should_stop and round_num >= MIN_ROUNDS:
                 result.converged = True

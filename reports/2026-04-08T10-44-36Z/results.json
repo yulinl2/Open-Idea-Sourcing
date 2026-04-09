@@ -194,6 +194,22 @@
           }
         }
       }
-    }
+    },
+    "references": [
+      {
+        "id": "arxiv-1904.06019",
+        "title": "Conformal Prediction Under Covariate Shift",
+        "url": "https://arxiv.org/abs/1904.06019",
+        "year": 2020,
+        "venue": "NeurIPS"
+      },
+      {
+        "id": "arxiv-2006.01474",
+        "title": "Conformal Prediction Intervals for the Individual Treatment Effect",
+        "url": "https://arxiv.org/abs/2006.01474",
+        "year": 2020,
+        "venue": "arXiv"
+      }
+    ]
   }
 ]

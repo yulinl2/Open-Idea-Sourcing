@@ -388,6 +388,8 @@ def dispatch_paper(
     max_rounds: int = 5,
     eval_model: str | None = None,
     parallel_modes: bool = False,
+    resume_from_dir: Path | None = None,
+    pub_quality: bool = False,
 ) -> dict:
     """Run all reconstruction modes for a single paper under each condition.
 
@@ -408,6 +410,11 @@ def dispatch_paper(
             which accounts for ~41% of total spend.
         parallel_modes: If True, run modes concurrently within each condition
             using a thread pool. Reduces wall-clock time by ~Nx for N modes.
+        resume_from_dir: Path to a previous run's output directory to resume
+            iterative refinement from. Loads existing IterativeResult for each
+            mode and continues from the final hint.
+        pub_quality: If True, enforce publication-quality convergence criteria
+            (score >= 4.0, stable for 2+ rounds).
 
     Returns a summary dict with paths to all outputs.
     """
@@ -524,8 +531,20 @@ def dispatch_paper(
         if paper_context_seed_id:
             seed_audit.save(paper_dir / "_teacher" / "context_seed_audit.json")
 
+    # Build reference metadata for results tracking
+    refs_meta = [
+        {
+            "id": r.get("id", "unknown"),
+            "title": r.get("title", "untitled"),
+            "url": r.get("url", ""),
+            "year": r.get("year", ""),
+            "venue": r.get("venue", ""),
+        }
+        for r in refs
+    ]
     results = {"paper_id": paper_id, "paper_url": paper_url,
-               "text_source": text_source, "conditions": {}}
+               "text_source": text_source, "references": refs_meta,
+               "conditions": {}}
 
     for condition in conditions:
         refs_text = refs_text_with if condition == "with_refs" else refs_text_none
@@ -547,7 +566,7 @@ def dispatch_paper(
 
             # --- Iterative refinement path ---
             if iterative and paper_text:
-                from infra.iterative import run_iterative_refinement
+                from infra.iterative import run_iterative_refinement, IterativeResult as ItResult
                 from functools import partial
 
                 # In iterative mode, use neutral reference guidance —
@@ -555,6 +574,21 @@ def dispatch_paper(
                 iterative_student = partial(
                     run_student, reference_guidance=REFERENCE_GUIDANCE_NEUTRAL,
                 )
+
+                # Try to load existing iterative result for resumption
+                resume_result = None
+                if resume_from_dir:
+                    prev_iter_path = (
+                        resume_from_dir / paper_id / condition / mode
+                        / "_iterative" / "iterative_result.json"
+                    )
+                    if prev_iter_path.exists():
+                        try:
+                            resume_result = ItResult.load(prev_iter_path)
+                            print(f"  [resume] Loaded {resume_result.total_rounds} "
+                                  f"rounds from {prev_iter_path.parent.parent.parent.parent.parent.name}")
+                        except Exception as exc:
+                            print(f"  [resume] Failed to load {prev_iter_path}: {exc}")
 
                 try:
                     iter_dir = mode_dir / "_iterative"
@@ -573,6 +607,8 @@ def dispatch_paper(
                         output_dir=iter_dir,
                         paper_context_seed_id=paper_context_seed_id,
                         eval_model=eval_model,
+                        resume_from=resume_result,
+                        pub_quality=pub_quality,
                     )
 
                     # Use the BEST round's output (not just last — memoryless
@@ -814,6 +850,18 @@ def write_dispatch_summary(results: list[dict], output_dir: Path,
         lines.append(f"URL: {r['paper_url']}  ")
         lines.append(f"Text source: {r.get('text_source', 'unknown')}")
         lines.append("")
+        refs_meta = r.get("references", [])
+        if refs_meta:
+            lines.append("### References provided to student")
+            lines.append("")
+            for ref in refs_meta:
+                ref_url = ref.get("url", "")
+                ref_link = f" — [{ref_url}]({ref_url})" if ref_url else ""
+                lines.append(
+                    f"- **{ref.get('id', '?')}**: {ref.get('title', '?')} "
+                    f"({ref.get('year', '?')}, {ref.get('venue', '?')}){ref_link}"
+                )
+            lines.append("")
 
         for condition, modes in r.get("conditions", {}).items():
             lines.append(f"### Condition: `{condition}`")
@@ -969,6 +1017,17 @@ def main() -> None:
              "Only used with --iterative.",
     )
     parser.add_argument(
+        "--pub-quality", action="store_true",
+        help="Enforce publication-quality convergence: scores must reach 4.0 "
+             "and remain stable for 2+ rounds. Use with higher --max-rounds.",
+    )
+    parser.add_argument(
+        "--resume-from",
+        help="Timestamp of a previous run to resume from (e.g. 2026-04-08T11-34-51Z). "
+             "Loads existing iterative results and continues refinement from "
+             "the final hint, saving cost by not re-running converged rounds.",
+    )
+    parser.add_argument(
         "--output-dir", default="reports",
         help="Base output directory (default: reports/)",
     )
@@ -983,6 +1042,8 @@ def main() -> None:
     conditions = args.conditions or ["with_refs", "no_refs"]
     iterative = args.iterative
     max_rounds = args.max_rounds
+    pub_quality = args.pub_quality
+    resume_from = args.resume_from
 
     # Initialize LLM client
     client, backend = _make_client(args.backend)
@@ -1030,7 +1091,17 @@ def main() -> None:
     print(f"Conditions: {', '.join(conditions)}")
     print(f"Evaluate:   {args.evaluate}")
     print(f"Iterative:  {iterative} (max {max_rounds} rounds)")
+    print(f"Pub quality: {pub_quality}")
     print(f"Parallel:   {args.parallel_modes}")
+
+    # Resolve resume-from directory
+    resume_from_dir = None
+    if resume_from:
+        resume_from_dir = Path(args.output_dir) / resume_from
+        if not resume_from_dir.exists():
+            print(f"ERROR: Resume directory not found: {resume_from_dir}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Resume from: {resume_from_dir}")
 
     # Dispatch each paper
     all_results = []
@@ -1050,6 +1121,8 @@ def main() -> None:
             max_rounds=max_rounds,
             eval_model=eval_model,
             parallel_modes=args.parallel_modes,
+            resume_from_dir=resume_from_dir,
+            pub_quality=pub_quality,
         )
         all_results.append(result)
 

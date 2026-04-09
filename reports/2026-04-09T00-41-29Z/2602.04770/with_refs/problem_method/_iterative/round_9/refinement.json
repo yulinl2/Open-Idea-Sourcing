@@ -1,0 +1,30 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Added hint about samples having stronger influence when more similar, using physics analogy",
+        "why": "Students consistently miss the kernel-based weighting mechanism that is central to the paper's mean-shift dynamics"
+      },
+      {
+        "what": "Added desirable property about weighting mechanism based on similarity/distance",
+        "why": "The paper uses kernel functions k(x,y) to weight interactions, but students propose generic anti-symmetric fields without this crucial component"
+      },
+      {
+        "what": "Added property about field being a weighted combination of influences from multiple samples",
+        "why": "The paper computes V as an expectation over weighted contributions from positive/negative samples, which students haven't captured"
+      },
+      {
+        "what": "Added to field context about kernel methods and mean-shift algorithms using weighted influences",
+        "why": "These are the specific mathematical tools the paper builds upon, which might guide students toward the kernelized formulation"
+      }
+    ],
+    "removals": [],
+    "unchanged": "Kept all existing hints about sample-level fields, anti-symmetry, pushforward operations, and stop-gradient techniques, as these remain essential components that students need to understand"
+  },
+  "convergence": {
+    "hint_changed_substantially": false,
+    "estimated_residual_captured": 0.85,
+    "teacher_confidence": "high",
+    "recommendation": "continue"
+  }
+}

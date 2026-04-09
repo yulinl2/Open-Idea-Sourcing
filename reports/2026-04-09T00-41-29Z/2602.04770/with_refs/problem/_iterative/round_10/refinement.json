@@ -1,0 +1,31 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Added explicit guidance about computing weighted averages separately for positive and negative samples",
+        "why": "The student used normalized directional vectors instead of the paper's weighted mean-shift formulation"
+      },
+      {
+        "what": "Added specific training loss formulation with stop-gradient",
+        "why": "The student missed the crucial stop-gradient mechanism that treats x + V(x) as a frozen target"
+      },
+      {
+        "what": "Clarified that the drift is the difference between two weighted positions",
+        "why": "To guide toward the V+ - V- formulation without directly revealing it"
+      }
+    ],
+    "removals": [
+      {
+        "what": "Removed vague reference to 'kernel-weighted contributions'",
+        "why": "Replaced with more specific guidance about weighted mean-shift computation"
+      }
+    ],
+    "unchanged": "Kept the core concepts of training-time evolution, anti-symmetry, and equilibrium which the student now understands well"
+  },
+  "convergence": {
+    "hint_changed_substantially": false,
+    "estimated_residual_captured": 0.85,
+    "teacher_confidence": "high",
+    "recommendation": "stop"
+  }
+}

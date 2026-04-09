@@ -1,0 +1,47 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Added explicit clarification that the field operates 'directly on the generated samples themselves - not on the network parameters'",
+        "why": "After 7 rounds, the student consistently proposes parameter-space methods despite hints about sample dynamics. This direct clarification is needed."
+      },
+      {
+        "what": "Added 'This field would take a sample as input and output a direction and magnitude for how that sample should change'",
+        "why": "To make absolutely clear that we're talking about a function from samples to sample movements, not from parameters to parameter updates."
+      },
+      {
+        "what": "Modified desirable property to specify 'a field that takes individual samples as input and outputs how they should move or drift'",
+        "why": "The previous properties weren't explicit enough about the domain and codomain of the field being samples, not parameters."
+      },
+      {
+        "what": "Added clarification about anti-symmetry: 'swapping the roles of two distributions reverses the field direction'",
+        "why": "The student missed the anti-symmetric property despite mathematical hints, so making it more concrete."
+      },
+      {
+        "what": "Modified training objective property to specify 'making the network output equal to itself plus a sample-level correction'",
+        "why": "To distinguish from parameter-level fixed points and clarify that the correction is computed for samples."
+      },
+      {
+        "what": "Added to field context that fields can operate on 'individual particles or samples, not just on system parameters'",
+        "why": "To prime thinking about sample-level fields from physics, which is closer to the paper's approach."
+      },
+      {
+        "what": "Added explicit note about anti-symmetric operations: 'when f(a,b) = -f(b,a), then f(a,a) must equal zero'",
+        "why": "This mathematical fact is key to understanding why the field vanishes at equilibrium."
+      }
+    ],
+    "removals": [
+      {
+        "what": "Removed vague language about 'vector field that governs' without specifying what it governs",
+        "why": "The ambiguity allowed the student to interpret this as parameter-space governance."
+      }
+    ],
+    "unchanged": "The core structure remains the same - problem context, desirable properties, and field context. The emphasis on pushforward operations, training-time evolution, and stop-gradient techniques remains as these are still part of the conceptual residual."
+  },
+  "convergence": {
+    "hint_changed_substantially": true,
+    "estimated_residual_captured": 0.8,
+    "teacher_confidence": "high",
+    "recommendation": "continue"
+  }
+}

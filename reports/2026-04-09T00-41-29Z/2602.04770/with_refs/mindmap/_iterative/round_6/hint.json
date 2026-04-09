@@ -1,0 +1,16 @@
+{
+  "problem_context": "Current generative modeling approaches face fundamental challenges in mapping from one distribution to another efficiently. While discriminative models simply map individual samples to labels, generative models must learn mappings between entire distributions - a significantly more complex task. Existing methods often require iterative procedures at inference time, performing multiple network evaluations to progressively transform samples from noise to data. This creates a trade-off between generation quality and computational efficiency. There is a need for generative models that can produce high-quality samples in a single forward pass, without sacrificing the modeling capacity that makes iterative methods successful. The challenge is to find a training paradigm that can learn complex distribution mappings without requiring iterative refinement during generation. A key insight is that neural network training inherently updates parameters iteratively - what if we could formulate the training process as evolving the output distribution itself through a vector field that governs how samples move? Consider how each training iteration could move generated samples according to their relationship with real data samples.",
+  "desirable_properties": [
+    "Should generate high-quality samples in a single forward pass",
+    "Should be trainable from scratch without requiring pre-trained models",
+    "Should scale effectively to high-resolution data",
+    "Should avoid mode collapse and capture the full data distribution",
+    "Should support conditional generation with flexible conditioning",
+    "Should work across different data modalities beyond just images",
+    "Should define a vector field that determines how each generated sample moves based on weighted contributions from nearby real samples (positive influence) and nearby generated samples (negative influence)",
+    "Should ensure this vector field has a specific mathematical symmetry property: if you swap the roles of generated and real distributions, the field should flip sign",
+    "Should guarantee that when the vector field is zero everywhere, the generated and real distributions must match",
+    "Should use similarity measures between samples to weight their influence on each other's movement"
+  ],
+  "field_context": "Generative modeling is a fundamental problem in machine learning that aims to learn the underlying distribution of data and generate new samples from it. This field has seen rapid progress with various paradigms including adversarial training, variational approaches, and iterative refinement methods, each with their own trade-offs between sample quality, training stability, and inference efficiency. Recent work has explored various ways to reduce inference-time computation, but most still rely on some form of iterative refinement or adversarial dynamics. An underexplored direction is how the training process itself evolves distributions over time through vector fields that govern sample movement."
+}

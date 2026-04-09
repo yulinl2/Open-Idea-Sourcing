@@ -1,0 +1,12 @@
+{
+  "problem_context": "In generative modeling, there is a fundamental challenge in learning mappings from simple distributions to complex data distributions. Current approaches often require iterative procedures during inference, which increases computational cost and complexity. There exists a need for methods that can generate high-quality samples in a single forward pass while maintaining the quality achieved by multi-step approaches. The challenge is particularly acute for high-dimensional data like images, where existing single-step methods struggle to match the performance of their multi-step counterparts. Additionally, many current approaches rely on complex training procedures or adversarial optimization, which can be unstable or difficult to tune.",
+  "desirable_properties": [
+    "Should generate samples in a single forward pass without iterative refinement",
+    "Should achieve generation quality comparable to multi-step methods",
+    "Should work effectively for high-dimensional data such as images",
+    "Should have a stable training procedure without adversarial dynamics",
+    "Should be applicable across different data modalities beyond just images",
+    "Should scale efficiently with data dimensionality and dataset size"
+  ],
+  "field_context": "Generative modeling aims to learn probability distributions from data and sample from them. This field encompasses various approaches for mapping from simple prior distributions to complex data distributions, with applications ranging from image synthesis to robotic control. The efficiency-quality tradeoff remains a central challenge in this domain."
+}

@@ -1,0 +1,39 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Added explicit language about 'when a neural network f maps noise to data (x = f(\u03b5)), the distribution of outputs changes as f's parameters update' to problem_context",
+        "why": "The student completely missed that the paper is about the evolution of pushforward distributions f#p_prior during training - they need to understand this is about how the output distribution changes as the network updates"
+      },
+      {
+        "what": "Changed vector field description to 'governs how the entire output distribution moves at each training step' and 'how the output distribution changes at each training iteration'",
+        "why": "The student thought about individual sample movement but missed that this is about the evolution of the entire distribution during training"
+      },
+      {
+        "what": "Added property about 'explicitly model how the distribution of network outputs evolves as parameters update during training'",
+        "why": "This is the paper's core insight - the pushforward distribution evolution - which the student completely missed"
+      },
+      {
+        "what": "Added to field_context about 'how the distribution of a network's outputs naturally evolves during the training process itself'",
+        "why": "Reinforces that this is about distribution evolution during training, not just sample movement"
+      }
+    ],
+    "removals": [
+      {
+        "what": "Removed phrase about 'how each training iteration could move generated samples' from problem_context",
+        "why": "This was misleading the student to think about individual sample movement rather than distribution evolution"
+      },
+      {
+        "what": "Simplified the vector field property descriptions",
+        "why": "The previous hints were too focused on sample-level details when the key is distribution-level evolution"
+      }
+    ],
+    "unchanged": "Kept the antisymmetry property, equilibrium condition, and kernel-based weighting hints as these are still essential components the student needs to discover"
+  },
+  "convergence": {
+    "hint_changed_substantially": true,
+    "estimated_residual_captured": 0.7,
+    "teacher_confidence": "medium",
+    "recommendation": "continue"
+  }
+}

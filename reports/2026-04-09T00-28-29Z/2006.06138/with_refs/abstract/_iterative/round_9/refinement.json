@@ -1,0 +1,13 @@
+{
+  "rationale": {
+    "additions": [],
+    "removals": [],
+    "unchanged": "The hint has remained unchanged since Round 3 because it successfully guides students to the paper's core conceptual contribution: using weighted conformal inference with propensity score weighting to handle covariate shift in counterfactual prediction. The elements that students consistently miss (specific algorithmic details, exact weight formulas, technical guarantees) are implementation specifics rather than conceptual insights that require hints."
+  },
+  "convergence": {
+    "hint_changed_substantially": false,
+    "estimated_residual_captured": 0.85,
+    "teacher_confidence": "high",
+    "recommendation": "stop"
+  }
+}

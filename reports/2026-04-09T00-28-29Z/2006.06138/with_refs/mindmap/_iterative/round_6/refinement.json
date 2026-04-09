@@ -1,0 +1,35 @@
+{
+  "rationale": {
+    "additions": [
+      {
+        "what": "Emphasized that treatment assignment creates a covariate shift in the problem context",
+        "why": "Students consistently miss that propensity weights ARE covariate shift weights, not a separate type of adjustment"
+      },
+      {
+        "what": "Added desirable property about recognizing counterfactual inference as fundamentally a covariate shift problem",
+        "why": "This is the paper's key conceptual insight that students keep missing by proposing more complex frameworks"
+      }
+    ],
+    "removals": [
+      {
+        "what": "Removed mention of 'study population differs from target population' and related complexity",
+        "why": "This was leading students to propose doubly-weighted approaches when the paper shows a single weighting suffices"
+      },
+      {
+        "what": "Removed several desirable properties about robustness and handling different subject types",
+        "why": "Too many properties were distracting from the core insight about covariate shift"
+      },
+      {
+        "what": "Simplified field context to focus on the unexplored connection between weighted conformal and propensity weighting",
+        "why": "Previous version was too broad and not pointing clearly enough to the specific connection"
+      }
+    ],
+    "unchanged": "Kept the emphasis on finite-sample guarantees and model-free approaches as these are correctly identified by students as key aspects"
+  },
+  "convergence": {
+    "hint_changed_substantially": true,
+    "estimated_residual_captured": 0.7,
+    "teacher_confidence": "high",
+    "recommendation": "continue"
+  }
+}

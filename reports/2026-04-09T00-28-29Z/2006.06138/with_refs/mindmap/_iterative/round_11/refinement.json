@@ -1,0 +1,13 @@
+{
+  "rationale": {
+    "additions": [],
+    "removals": [],
+    "unchanged": "The hint has stabilized after 11 rounds of refinement. It successfully guides students to recognize that propensity scores serve as likelihood ratio weights in weighted conformal inference, addressing the covariate shift inherent in counterfactual prediction. While students miss some technical details (specific weight formulations for different targets, ITE extension), these are implementation details rather than conceptual insights."
+  },
+  "convergence": {
+    "hint_changed_substantially": false,
+    "estimated_residual_captured": 0.85,
+    "teacher_confidence": "high",
+    "recommendation": "stop"
+  }
+}

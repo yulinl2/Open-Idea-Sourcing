@@ -1,0 +1,13 @@
+{
+  "rationale": {
+    "additions": [],
+    "removals": [],
+    "unchanged": "The hint has converged to effectively communicate the paper's conceptual residual. Students consistently identify the core insight about using propensity scores as weights in weighted conformal inference. The technical details they miss (doubly robust property specifics, different inferential targets) are implementation details that can be derived once the core concept is understood."
+  },
+  "convergence": {
+    "hint_changed_substantially": false,
+    "estimated_residual_captured": 0.85,
+    "teacher_confidence": "high",
+    "recommendation": "stop"
+  }
+}
