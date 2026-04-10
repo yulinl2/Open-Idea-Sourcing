@@ -51,6 +51,8 @@ _SOURCE_LABELS = {
     "tldr": "S2-TLDR",
     "full_text_llm": "full-text(LLM)",
     "full_text_raw": "full-text(raw)",
+    "full_text_pymupdf4llm": "full-text(pymupdf)",
+    "full_text_pdfminer": "full-text(pdfminer)",
     "self": "self",
 }
 
@@ -96,7 +98,7 @@ def generate_report(
         "**Exact conditional perplexity** via verbatim-echo with logprobs:",
         "",
         "1. Reference paper text → system message (~6K tokens context)",
-        "2. Target paper text is chunked into ~800-token windows",
+        "2. Target paper text is chunked into ~2000-token windows",
         "3. Model is instructed to reproduce each chunk **verbatim**",
         "4. `logprobs=True` returns P(token_i | context, token_1..i-1) for each echoed token",
         "5. **PPL = exp(−(1/N) Σ log p(token_i))** — exact, not approximate",
