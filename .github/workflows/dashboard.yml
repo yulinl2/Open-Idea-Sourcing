@@ -1,0 +1,142 @@
+name: Build & Deploy Dashboard
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths:
+      - 'reports/**'
+      - 'dashboard/**'
+      - 'dashboard_data.json'
+  workflow_dispatch:
+
+jobs:
+  build-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build dashboard data
+        run: |
+          python3 << 'EOF'
+          import json
+          from pathlib import Path
+          reports = Path("reports")
+          runs = []
+          for iter_json in sorted(reports.glob("*/*/with_refs/*/_iterative/iterative_result.json")):
+              parts = iter_json.parts
+              ts_idx = parts.index("reports") + 1
+              timestamp = parts[ts_idx]
+              paper_id = parts[ts_idx + 1]
+              mode = parts[ts_idx + 3]
+              data = json.loads(iter_json.read_text())
+              iter_dir = iter_json.parent
+              compact_rounds = []
+              for r in data.get("rounds", []):
+                  rn = r["round_number"]
+                  ev = r.get("evaluation", {})
+                  cr = {
+                      "round": rn,
+                      "scores": ev.get("scores", {}),
+                      "composite": ev.get("composite_score", 0),
+                      "key_insight": ev.get("key_insight_identified", "")[:300],
+                      "novelty_gap": ev.get("novelty_gap", "")[:400],
+                      "novelty_rationale": ev.get("novelty_alignment_rationale", "")[:300],
+                      "recon_difficulty": ev.get("reconstruction_difficulty", ""),
+                      "ref_impact": ev.get("reference_impact", ""),
+                      "strongest": ev.get("strongest_aspect", "")[:200],
+                      "weakest": ev.get("weakest_aspect", "")[:200],
+                  }
+                  hint = r.get("hint", {})
+                  cr["hint_problem"] = hint.get("problem_context", "")[:600]
+                  cr["hint_properties"] = hint.get("desirable_properties", [])
+                  cr["hint_field"] = hint.get("field_context", "")[:400]
+                  output = r.get("student_output", "")
+                  round_dir = iter_dir / f"round_{rn}"
+                  out_path = round_dir / "output.md"
+                  if out_path.exists():
+                      output = out_path.read_text()
+                  cr["output_preview"] = output[:1500]
+                  cr["output_len"] = len(output)
+                  cr["refined_hint_problem"] = (r.get("refined_hint") or {}).get("problem_context", "")[:400]
+                  rat = r.get("refinement_rationale", {})
+                  cr["additions"] = rat.get("additions", [])
+                  cr["removals"] = rat.get("removals", [])
+                  conv = r.get("convergence_signal", {})
+                  cr["convergence"] = {
+                      "recommendation": conv.get("recommendation", ""),
+                      "residual_captured": conv.get("estimated_residual_captured", ""),
+                      "hint_changed": conv.get("hint_changed_substantially", ""),
+                      "confidence": conv.get("teacher_confidence", ""),
+                  }
+                  compact_rounds.append(cr)
+              runs.append({
+                  "ts": timestamp, "paper": paper_id, "mode": mode,
+                  "rounds_total": data.get("total_rounds", 0),
+                  "converged": data.get("converged", False),
+                  "conv_reason": data.get("convergence_reason", ""),
+                  "trajectory": data.get("score_trajectory", []),
+                  "best_score": data.get("best_score", 0),
+                  "best_round": data.get("best_round_number", 0),
+                  "rounds": compact_rounds,
+              })
+          papers_meta = {}
+          for line in Path("data/test_papers.ndjson").read_text().splitlines():
+              if line.strip():
+                  p = json.loads(line)
+                  papers_meta[p["paper_id"]] = {
+                      "title": p.get("title",""), "authors": p.get("authors",[]),
+                      "year": p.get("year",""), "venue": p.get("venue",""),
+                      "url": p.get("url",""), "abstract": p.get("abstract","")[:500],
+                  }
+          refs = json.loads(Path("data/references.json").read_text())
+          refs_meta = [{"id":r.get("id",""),"title":r.get("title",""),"url":r.get("url",""),
+                        "year":r.get("year",""),"venue":r.get("venue",""),
+                        "abstract":r.get("abstract","")[:300]} for r in refs]
+          Path("dashboard_data.json").write_text(json.dumps(
+              {"papers":papers_meta,"references":refs_meta,"runs":runs}, default=str))
+          print(f"Built dashboard_data.json: {len(runs)} runs")
+          EOF
+
+      - name: Build dashboard HTML
+        run: python dashboard/build_dashboard.py
+
+      - name: Upload dashboard artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard
+          path: dashboard/index.html
+
+  deploy-pages:
+    needs: build-dashboard
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dashboard
+          path: ./dashboard-artifact
+
+      - uses: actions/checkout@v4
+        with:
+          repository: yulinl2/yulinl2.github.io
+          token: ${{ secrets.PAGES_DEPLOY_TOKEN }}
+          path: pages-repo
+
+      - name: Deploy to GitHub Pages
+        run: |
+          mkdir -p pages-repo/open-idea-sourcing
+          cp dashboard-artifact/index.html pages-repo/open-idea-sourcing/index.html
+          cd pages-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add open-idea-sourcing/index.html
+          git diff --cached --quiet || {
+            git commit -m "Update Open Idea Sourcing dashboard"
+            git push
+          }

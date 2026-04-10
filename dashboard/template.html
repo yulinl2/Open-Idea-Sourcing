@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Idea Sourcing — Iterative Refinement Audit Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --surface2: #21262d;
+  --border: #30363d; --text: #e6edf3; --text2: #8b949e;
+  --accent: #58a6ff; --green: #3fb950; --red: #f85149;
+  --orange: #d29922; --purple: #bc8cff; --pink: #f778ba;
+  --radius: 8px; --shadow: 0 1px 3px rgba(0,0,0,.4);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.5;
+  min-height: 100vh;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Layout */
+.header {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 16px 24px; display: flex; align-items: center; gap: 16px;
+  position: sticky; top: 0; z-index: 100;
+}
+.header h1 { font-size: 18px; font-weight: 600; }
+.header .subtitle { color: var(--text2); font-size: 13px; }
+
+.main { display: flex; height: calc(100vh - 57px); }
+
+/* Sidebar */
+.sidebar {
+  width: 280px; min-width: 280px; background: var(--surface);
+  border-right: 1px solid var(--border); overflow-y: auto;
+  padding: 12px;
+}
+.sidebar h3 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--text2); margin: 12px 0 6px 4px;
+}
+.sidebar-item {
+  padding: 8px 10px; border-radius: var(--radius); cursor: pointer;
+  font-size: 13px; margin-bottom: 2px; transition: background .15s;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.sidebar-item:hover { background: var(--surface2); }
+.sidebar-item.active { background: var(--accent); color: #fff; }
+.sidebar-item .badge {
+  font-size: 11px; padding: 1px 6px; border-radius: 10px;
+  background: var(--surface2); color: var(--text2); font-weight: 600;
+}
+.sidebar-item.active .badge { background: rgba(255,255,255,.2); color: #fff; }
+.sidebar-item .score-badge { font-weight: 700; }
+.score-high { color: var(--green); }
+.score-mid { color: var(--orange); }
+.score-low { color: var(--red); }
+
+/* Content area */
+.content {
+  flex: 1; overflow-y: auto; padding: 24px;
+}
+
+/* Cards */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+  box-shadow: var(--shadow);
+}
+.card h2 { font-size: 16px; margin-bottom: 12px; }
+.card h3 { font-size: 14px; margin: 12px 0 8px; color: var(--accent); }
+
+/* Overview grid */
+.overview-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px; margin-bottom: 20px;
+}
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; text-align: center;
+}
+.stat-value { font-size: 28px; font-weight: 700; }
+.stat-label { font-size: 12px; color: var(--text2); margin-top: 4px; }
+
+/* Chart container */
+.chart-container {
+  position: relative; height: 300px; margin: 12px 0;
+}
+.chart-container.small { height: 180px; }
+
+/* Comparison grid */
+.comparison-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+}
+@media (max-width: 900px) { .comparison-grid { grid-template-columns: 1fr; } }
+
+/* Table */
+table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+th, td {
+  padding: 8px 12px; text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+th { color: var(--text2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+tr:hover { background: var(--surface2); }
+
+/* Round detail panel */
+.round-nav {
+  display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.round-btn {
+  width: 36px; height: 36px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface2);
+  color: var(--text); font-size: 13px; font-weight: 600;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all .15s; position: relative;
+}
+.round-btn:hover { border-color: var(--accent); }
+.round-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.round-btn.best::after {
+  content: ''; position: absolute; top: -3px; right: -3px;
+  width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+}
+.round-btn .round-score {
+  position: absolute; bottom: -16px; font-size: 10px;
+  color: var(--text2); font-weight: 400;
+}
+
+/* Detail sections */
+.detail-section {
+  margin: 16px 0; padding: 16px; background: var(--bg);
+  border-radius: var(--radius); border: 1px solid var(--border);
+}
+.detail-section h4 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--text2); margin-bottom: 8px;
+}
+.detail-section pre {
+  font-size: 12px; white-space: pre-wrap; word-break: break-word;
+  color: var(--text); line-height: 1.6; max-height: 400px; overflow-y: auto;
+}
+.detail-section .property-list {
+  list-style: none; padding: 0;
+}
+.detail-section .property-list li {
+  padding: 4px 0 4px 16px; position: relative; font-size: 13px;
+}
+.detail-section .property-list li::before {
+  content: ''; position: absolute; left: 0; top: 11px;
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+}
+
+/* Score dimensions */
+.dim-grid {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 8px 0;
+}
+.dim-card {
+  text-align: center; padding: 8px; background: var(--bg);
+  border-radius: var(--radius); border: 1px solid var(--border);
+}
+.dim-card .dim-score { font-size: 24px; font-weight: 700; }
+.dim-card .dim-label { font-size: 10px; color: var(--text2); }
+
+/* Changes badges */
+.change-add { color: var(--green); }
+.change-remove { color: var(--red); }
+.change-item {
+  padding: 6px 10px; margin: 4px 0; border-radius: var(--radius);
+  font-size: 12px; border: 1px solid var(--border);
+}
+.change-item.addition { border-left: 3px solid var(--green); }
+.change-item.removal { border-left: 3px solid var(--red); }
+.change-item .change-what { font-weight: 600; }
+.change-item .change-why { color: var(--text2); margin-top: 2px; }
+
+/* Convergence signal */
+.conv-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+}
+.conv-cell {
+  text-align: center; padding: 8px; background: var(--bg);
+  border-radius: var(--radius); font-size: 12px;
+}
+.conv-cell .conv-value { font-weight: 600; font-size: 14px; }
+.conv-cell .conv-label { color: var(--text2); font-size: 10px; }
+
+/* Paper info bar */
+.paper-info {
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  padding: 12px 16px; background: var(--bg); border-radius: var(--radius);
+  margin-bottom: 16px; font-size: 13px;
+}
+.paper-info .paper-tag {
+  padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+}
+.paper-info .tag-target { background: var(--accent); color: #fff; }
+.paper-info .tag-ref { background: var(--purple); color: #fff; }
+
+/* Tabs */
+.tabs {
+  display: flex; gap: 2px; margin-bottom: 16px;
+  border-bottom: 1px solid var(--border); padding-bottom: 0;
+}
+.tab-btn {
+  padding: 8px 16px; border: none; background: none;
+  color: var(--text2); font-size: 13px; cursor: pointer;
+  border-bottom: 2px solid transparent; transition: all .15s;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Run selector */
+.run-selector {
+  display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.run-chip {
+  padding: 4px 12px; border-radius: 16px; font-size: 12px;
+  border: 1px solid var(--border); cursor: pointer; transition: all .15s;
+  background: var(--surface2);
+}
+.run-chip:hover { border-color: var(--accent); }
+.run-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.run-chip .run-rounds { font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Open Idea Sourcing</h1>
+  <span class="subtitle">Iterative Refinement Audit Dashboard &mdash; v0.6.2</span>
+</div>
+
+<div class="main">
+  <nav class="sidebar" id="sidebar"></nav>
+  <div class="content" id="content"></div>
+</div>
+
+<script>
+/* __DASHBOARD_DATA__ */
+
+// ── Helpers ──
+const MODE_LABELS = {
+  abstract: 'Abstract', mindmap: 'Mindmap',
+  problem: 'Problem', problem_method: 'Problem+Method'
+};
+const MODE_COLORS = {
+  abstract: '#58a6ff', mindmap: '#3fb950',
+  problem: '#d29922', problem_method: '#bc8cff'
+};
+
+function scoreClass(s) {
+  if (s >= 4.0) return 'score-high';
+  if (s >= 3.0) return 'score-mid';
+  return 'score-low';
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Group runs by paper
+function groupByPaper() {
+  const groups = {};
+  for (const r of DATA.runs) {
+    if (!groups[r.paper]) groups[r.paper] = [];
+    groups[r.paper].push(r);
+  }
+  return groups;
+}
+
+// Get latest run per paper/mode
+function latestRuns(paper) {
+  const runs = DATA.runs.filter(r => r.paper === paper);
+  const latest = {};
+  for (const r of runs) {
+    if (!latest[r.mode] || r.ts > latest[r.mode].ts) {
+      latest[r.mode] = r;
+    }
+  }
+  return latest;
+}
+
+// All runs for a paper/mode combo
+function runsForPaperMode(paper, mode) {
+  return DATA.runs.filter(r => r.paper === paper && r.mode === mode).sort((a,b) => a.ts.localeCompare(b.ts));
+}
+
+// ── State ──
+let currentView = 'overview';
+let currentPaper = null;
+let currentMode = null;
+let currentRun = null;
+let currentRound = null;
+
+// ── Sidebar ──
+function renderSidebar() {
+  const sb = document.getElementById('sidebar');
+  let html = '';
+  html += `<div class="sidebar-item ${currentView==='overview'?'active':''}" onclick="showOverview()">Overview</div>`;
+
+  const byPaper = groupByPaper();
+  for (const [pid, runs] of Object.entries(byPaper)) {
+    const meta = DATA.papers[pid] || {};
+    const shortName = pid === '2006.06138' ? 'Conformal ITE' : 'Drifting Models';
+    html += `<h3>${shortName} (${pid})</h3>`;
+
+    const latest = latestRuns(pid);
+    const modes = ['abstract','mindmap','problem','problem_method'];
+    for (const m of modes) {
+      const lr = latest[m];
+      if (!lr) continue;
+      const active = currentPaper===pid && currentMode===m ? 'active' : '';
+      const sc = lr.best_score;
+      html += `<div class="sidebar-item ${active}" onclick="showMode('${pid}','${m}')">
+        <span>${MODE_LABELS[m]}</span>
+        <span class="badge score-badge ${scoreClass(sc)}">${sc.toFixed(1)}</span>
+      </div>`;
+    }
+  }
+
+  html += `<h3>References</h3>`;
+  for (const ref of DATA.references) {
+    html += `<div style="padding:4px 10px;font-size:12px;color:var(--text2)">
+      <a href="${ref.url}" target="_blank">${ref.id}</a><br>
+      <span style="font-size:11px">${esc(ref.title)}</span>
+    </div>`;
+  }
+  sb.innerHTML = html;
+}
+
+// ── Overview ──
+function showOverview() {
+  currentView = 'overview'; currentPaper = null; currentMode = null;
+  renderSidebar();
+  const c = document.getElementById('content');
+
+  const papers = Object.keys(groupByPaper());
+  let html = '<h2 style="margin-bottom:16px">Cross-Paper Score Overview</h2>';
+
+  // Stat cards
+  html += '<div class="overview-grid">';
+  for (const pid of papers) {
+    const lr = latestRuns(pid);
+    const modes = Object.values(lr);
+    const avgBest = modes.reduce((s,r)=>s+r.best_score, 0) / modes.length;
+    const peakScore = Math.max(...modes.map(r=>r.best_score));
+    const peakMode = modes.find(r=>r.best_score===peakScore);
+    const shortName = pid === '2006.06138' ? 'Conformal ITE' : 'Drifting Models';
+    html += `<div class="stat-card">
+      <div class="stat-value ${scoreClass(avgBest)}">${avgBest.toFixed(2)}</div>
+      <div class="stat-label">${shortName} &mdash; Avg Best Score</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:4px">
+        Peak: <span class="${scoreClass(peakScore)}" style="font-weight:700">${peakScore.toFixed(1)}</span>
+        in ${MODE_LABELS[peakMode.mode]} (R${peakMode.best_round})
+      </div>
+    </div>`;
+  }
+  html += '</div>';
+
+  // Trajectory comparison chart
+  html += '<div class="card"><h2>Score Trajectories (Latest Runs)</h2>';
+  html += '<div class="comparison-grid">';
+  for (const pid of papers) {
+    const shortName = pid === '2006.06138' ? 'Target A: Conformal ITE' : 'Target B: Drifting Models';
+    html += `<div><h3>${shortName}</h3><div class="chart-container"><canvas id="chart-${pid}"></canvas></div></div>`;
+  }
+  html += '</div></div>';
+
+  // Score table
+  html += '<div class="card"><h2>Best Scores by Mode (Latest Run)</h2><table><thead><tr>';
+  html += '<th>Paper</th><th>Mode</th><th>Best Score</th><th>Best Round</th><th>Total Rounds</th><th>Convergence</th>';
+  html += '</tr></thead><tbody>';
+  for (const pid of papers) {
+    const lr = latestRuns(pid);
+    const shortName = pid === '2006.06138' ? 'Conformal ITE' : 'Drifting Models';
+    for (const m of ['abstract','mindmap','problem','problem_method']) {
+      const r = lr[m];
+      if (!r) continue;
+      html += `<tr style="cursor:pointer" onclick="showMode('${pid}','${m}')">
+        <td>${shortName}</td>
+        <td>${MODE_LABELS[m]}</td>
+        <td class="${scoreClass(r.best_score)}" style="font-weight:700">${r.best_score.toFixed(1)}</td>
+        <td>R${r.best_round}</td>
+        <td>${r.rounds_total}</td>
+        <td style="font-size:12px;color:var(--text2)">${esc(r.conv_reason)}</td>
+      </tr>`;
+    }
+  }
+  html += '</tbody></table></div>';
+
+  // Paper & ref metadata
+  html += '<div class="card"><h2>Paper & Reference Index</h2>';
+  for (const pid of papers) {
+    const meta = DATA.papers[pid];
+    html += `<div class="paper-info">
+      <span class="paper-tag tag-target">TARGET</span>
+      <strong>${pid}</strong>
+      <span>${esc(meta.title)}</span>
+      <a href="${meta.url}" target="_blank">${meta.venue} ${meta.year}</a>
+    </div>`;
+  }
+  for (const ref of DATA.references) {
+    html += `<div class="paper-info">
+      <span class="paper-tag tag-ref">REF</span>
+      <strong>${ref.id}</strong>
+      <span>${esc(ref.title)}</span>
+      <a href="${ref.url}" target="_blank">${ref.venue} ${ref.year}</a>
+    </div>`;
+  }
+  html += '</div>';
+
+  c.innerHTML = html;
+
+  // Render charts
+  for (const pid of papers) {
+    const lr = latestRuns(pid);
+    const ctx = document.getElementById(`chart-${pid}`).getContext('2d');
+    const datasets = [];
+    for (const m of ['abstract','mindmap','problem','problem_method']) {
+      const r = lr[m];
+      if (!r) continue;
+      datasets.push({
+        label: MODE_LABELS[m],
+        data: r.trajectory.map((v,i) => ({x: i+1, y: v})),
+        borderColor: MODE_COLORS[m],
+        backgroundColor: MODE_COLORS[m] + '33',
+        tension: 0.3, pointRadius: 4, pointHoverRadius: 7,
+        borderWidth: 2,
+      });
+    }
+    new Chart(ctx, {
+      type: 'line',
+      data: { datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { type: 'linear', title: { display: true, text: 'Round', color: '#8b949e' },
+               ticks: { stepSize: 1, color: '#8b949e' }, grid: { color: '#21262d' } },
+          y: { min: 1, max: 5, title: { display: true, text: 'Composite Score', color: '#8b949e' },
+               ticks: { color: '#8b949e' }, grid: { color: '#21262d' } }
+        },
+        plugins: {
+          legend: { labels: { color: '#e6edf3', boxWidth: 12 } },
+          annotation: {
+            annotations: {
+              pubLine: {
+                type: 'line', yMin: 4.0, yMax: 4.0,
+                borderColor: '#3fb95066', borderDash: [6,3], borderWidth: 1,
+                label: { content: 'Pub Quality', display: true, position: 'end',
+                         color: '#3fb950', font: { size: 10 } }
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+}
+
+// ── Mode Detail ──
+function showMode(paper, mode) {
+  currentView = 'mode'; currentPaper = paper; currentMode = mode;
+  const allRuns = runsForPaperMode(paper, mode);
+  currentRun = allRuns[allRuns.length - 1]; // latest
+  currentRound = currentRun.best_round;
+  renderSidebar();
+  renderModeView();
+}
+
+function selectRun(ts) {
+  const allRuns = runsForPaperMode(currentPaper, currentMode);
+  currentRun = allRuns.find(r => r.ts === ts) || allRuns[allRuns.length-1];
+  currentRound = currentRun.best_round;
+  renderModeView();
+}
+
+function selectRound(rn) {
+  currentRound = rn;
+  renderModeView();
+}
+
+function renderModeView() {
+  const c = document.getElementById('content');
+  const run = currentRun;
+  const meta = DATA.papers[currentPaper] || {};
+  const shortName = currentPaper === '2006.06138' ? 'Conformal ITE' : 'Drifting Models';
+
+  let html = '';
+
+  // Paper context bar
+  html += `<div class="paper-info">
+    <span class="paper-tag tag-target">${shortName}</span>
+    <strong>${currentPaper}</strong>
+    <span>${esc(meta.title)}</span>
+    <a href="${meta.url}" target="_blank">${meta.venue} ${meta.year}</a>
+  </div>`;
+
+  // Run selector
+  const allRuns = runsForPaperMode(currentPaper, currentMode);
+  if (allRuns.length > 1) {
+    html += '<div class="run-selector">';
+    html += '<span style="font-size:12px;color:var(--text2);line-height:28px;margin-right:4px">Run:</span>';
+    for (const r of allRuns) {
+      const active = r.ts === run.ts ? 'active' : '';
+      html += `<div class="run-chip ${active}" onclick="selectRun('${r.ts}')">
+        ${r.ts.slice(0,10)} <span class="run-rounds">(${r.rounds_total}R)</span>
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  // Header card
+  html += `<div class="card">
+    <h2>${MODE_LABELS[currentMode]} &mdash; ${run.rounds_total} Rounds</h2>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin:8px 0;font-size:13px">
+      <div>Best: <span class="${scoreClass(run.best_score)}" style="font-weight:700;font-size:18px">${run.best_score.toFixed(1)}</span> (R${run.best_round})</div>
+      <div>Converged: <span style="font-weight:600">${run.converged ? 'Yes' : 'No'}</span></div>
+      <div style="color:var(--text2)">${esc(run.conv_reason)}</div>
+    </div>
+    <div class="chart-container"><canvas id="mode-chart"></canvas></div>
+  </div>`;
+
+  // Round navigator
+  html += '<div class="card"><h2>Round Detail</h2>';
+  html += '<div class="round-nav" style="margin-bottom:24px">';
+  for (const rd of run.rounds) {
+    const active = rd.round === currentRound ? 'active' : '';
+    const best = rd.round === run.best_round ? 'best' : '';
+    html += `<div class="round-btn ${active} ${best}" onclick="selectRound(${rd.round})">
+      ${rd.round}
+      <span class="round-score">${(rd.composite||0).toFixed(1)}</span>
+    </div>`;
+  }
+  html += '</div>';
+
+  // Current round detail
+  const rd = run.rounds.find(r => r.round === currentRound);
+  if (rd) {
+    // Score dimensions
+    html += '<h3>Evaluation Scores (Round ' + rd.round + ')</h3>';
+    const dims = rd.scores || {};
+    html += '<div class="dim-grid">';
+    const dimNames = ['problem_understanding','technical_depth','novelty_alignment','writing_quality','completeness'];
+    const dimLabels = ['Problem','Tech Depth','Novelty','Writing','Complete'];
+    for (let i = 0; i < dimNames.length; i++) {
+      const v = dims[dimNames[i]] || 0;
+      html += `<div class="dim-card">
+        <div class="dim-score ${scoreClass(v)}">${v}</div>
+        <div class="dim-label">${dimLabels[i]}</div>
+      </div>`;
+    }
+    html += '</div>';
+
+    // Key insight
+    if (rd.key_insight) {
+      html += `<div class="detail-section"><h4>Key Insight Identified</h4>
+        <pre>${esc(rd.key_insight)}</pre></div>`;
+    }
+
+    // Novelty gap
+    if (rd.novelty_gap) {
+      html += `<div class="detail-section"><h4>Novelty Gap</h4>
+        <pre>${esc(rd.novelty_gap)}</pre></div>`;
+    }
+
+    // Novelty rationale
+    if (rd.novelty_rationale) {
+      html += `<div class="detail-section"><h4>Novelty Alignment Rationale</h4>
+        <pre>${esc(rd.novelty_rationale)}</pre></div>`;
+    }
+
+    // Strongest / weakest
+    if (rd.strongest || rd.weakest) {
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+      if (rd.strongest) {
+        html += `<div class="detail-section"><h4>Strongest Aspect</h4><pre>${esc(rd.strongest)}</pre></div>`;
+      }
+      if (rd.weakest) {
+        html += `<div class="detail-section"><h4>Weakest Aspect</h4><pre>${esc(rd.weakest)}</pre></div>`;
+      }
+      html += '</div>';
+    }
+
+    // Hint
+    html += '<div class="detail-section"><h4>Hint Given to Student (Round ' + rd.round + ')</h4>';
+    html += `<pre style="margin-bottom:8px">${esc(rd.hint_problem)}</pre>`;
+    if (rd.hint_properties && rd.hint_properties.length) {
+      html += '<h4 style="margin-top:8px">Desirable Properties</h4><ul class="property-list">';
+      for (const p of rd.hint_properties) {
+        html += `<li>${esc(typeof p === 'string' ? p : JSON.stringify(p))}</li>`;
+      }
+      html += '</ul>';
+    }
+    if (rd.hint_field) {
+      html += `<h4 style="margin-top:8px">Field Context</h4><pre>${esc(rd.hint_field)}</pre>`;
+    }
+    html += '</div>';
+
+    // Student output
+    if (rd.output_preview) {
+      html += `<div class="detail-section"><h4>Student Output Preview (${(rd.output_len||0).toLocaleString()} chars)</h4>
+        <pre>${esc(rd.output_preview)}</pre>
+        ${(rd.output_len||0) > 1500 ? '<div style="color:var(--text2);font-size:11px;margin-top:4px">[truncated]</div>' : ''}
+      </div>`;
+    }
+
+    // Refinement changes
+    if ((rd.additions && rd.additions.length) || (rd.removals && rd.removals.length)) {
+      html += '<div class="detail-section"><h4>Hint Refinement Changes</h4>';
+      if (rd.additions) {
+        for (const a of rd.additions) {
+          const what = typeof a === 'string' ? a : (a.what || JSON.stringify(a));
+          const why = typeof a === 'object' ? (a.why || '') : '';
+          html += `<div class="change-item addition">
+            <div class="change-what"><span class="change-add">+</span> ${esc(what)}</div>
+            ${why ? `<div class="change-why">${esc(why)}</div>` : ''}
+          </div>`;
+        }
+      }
+      if (rd.removals) {
+        for (const r of rd.removals) {
+          const what = typeof r === 'string' ? r : (r.what || JSON.stringify(r));
+          const why = typeof r === 'object' ? (r.why || '') : '';
+          html += `<div class="change-item removal">
+            <div class="change-what"><span class="change-remove">&minus;</span> ${esc(what)}</div>
+            ${why ? `<div class="change-why">${esc(why)}</div>` : ''}
+          </div>`;
+        }
+      }
+      html += '</div>';
+    }
+
+    // Convergence signal
+    const conv = rd.convergence || {};
+    if (conv.recommendation || conv.residual_captured) {
+      html += '<div class="detail-section"><h4>Convergence Signal</h4><div class="conv-grid">';
+      html += `<div class="conv-cell"><div class="conv-value">${esc(conv.recommendation || '—')}</div><div class="conv-label">Recommendation</div></div>`;
+      html += `<div class="conv-cell"><div class="conv-value">${conv.residual_captured ? (Number(conv.residual_captured)*100).toFixed(0)+'%' : '—'}</div><div class="conv-label">Residual Captured</div></div>`;
+      html += `<div class="conv-cell"><div class="conv-value">${esc(conv.confidence || '—')}</div><div class="conv-label">Confidence</div></div>`;
+      html += `<div class="conv-cell"><div class="conv-value">${conv.hint_changed === true ? 'Yes' : conv.hint_changed === false ? 'No' : '—'}</div><div class="conv-label">Hint Changed</div></div>`;
+      html += '</div></div>';
+    }
+  }
+
+  html += '</div>'; // end card
+
+  c.innerHTML = html;
+
+  // Render trajectory chart
+  const ctx = document.getElementById('mode-chart').getContext('2d');
+  const trajData = run.trajectory.map((v,i) => ({x: i+1, y: v}));
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [{
+        label: MODE_LABELS[currentMode],
+        data: trajData,
+        borderColor: MODE_COLORS[currentMode],
+        backgroundColor: MODE_COLORS[currentMode] + '33',
+        fill: true, tension: 0.3, pointRadius: 5, pointHoverRadius: 8,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      onClick: (evt, elements) => {
+        if (elements.length > 0) {
+          const idx = elements[0].index;
+          selectRound(idx + 1);
+        }
+      },
+      scales: {
+        x: { type: 'linear', title: { display: true, text: 'Round', color: '#8b949e' },
+             ticks: { stepSize: 1, color: '#8b949e' }, grid: { color: '#21262d' },
+             min: 0.5, max: run.rounds_total + 0.5 },
+        y: { min: 1, max: 5, title: { display: true, text: 'Composite Score', color: '#8b949e' },
+             ticks: { color: '#8b949e' }, grid: { color: '#21262d' } }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            afterBody: (items) => {
+              const rn = items[0].parsed.x;
+              const rd = run.rounds.find(r => r.round === rn);
+              if (!rd) return '';
+              const lines = [];
+              if (rd.scores) {
+                for (const [k,v] of Object.entries(rd.scores)) {
+                  lines.push(`  ${k}: ${v}`);
+                }
+              }
+              if (rd.novelty_gap) lines.push('Gap: ' + rd.novelty_gap.slice(0,80) + '...');
+              return lines.join('\n');
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// ── Init ──
+showOverview();
+</script>
+</body>
+</html>
